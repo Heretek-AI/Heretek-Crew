@@ -899,12 +899,20 @@ METHODOLOGY & HANDOFF:
   - Production Kotlin code (`app/src/main/**`), JUnit/Compose UI tests (`app/src/test/**`), Gradle build files.
 
 ### 3. Active & Maintained MCP Servers
-1. **Codebase Memory MCP Server**:
+1. **Mobile MCP Server (Android/ADB)**:
+   - **Package / Repo**: `mobile-next/mobile-mcp` (npm verified `mobile-mcp`)
+   - **Transport**: `stdio`
+   - **Command**: `npx -y mobile-mcp`
+   - **Configuration / Environment Variables**:
+     - `ADB_HOST`: `${ANDROID_ADB_HOST:-docker-android}`
+     - `ADB_PORT`: `${ANDROID_ADB_PORT:-5555}`
+     - Capabilities: device discovery, UI node hierarchy dump, tap/swipe, text input, screenshot capture, adb shell commands.
+2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`
    - **Command**: `codebase-memory-mcp`
    - **Configuration / Environment Variables**: None.
-2. **Git MCP Server**:
+3. **Git MCP Server**:
    - **Package / Repo**: `@cyanheads/git-mcp-server` (npm verified v2.15.3)
    - **Transport**: `stdio`
    - **Command**: `npx -y @cyanheads/git-mcp-server`
@@ -930,6 +938,25 @@ description: Builds responsive Jetpack Compose screens using unidirectional data
 7. Execute unit tests: `./gradlew testDebugUnitTest`.
 ```
 
+#### Skill: `artemis-android-ui-exploration`
+```markdown
+---
+name: artemis-android-ui-exploration
+description: Deploys APK to containerized docker-android emulator and executes automated dynamic UI exploration using Google Artemis to catch crashes and ANRs.
+---
+
+# Artemis Android UI Exploration Procedure
+
+1. Assemble debug APK: `./gradlew assembleDebug`.
+2. Connect to containerized emulator via ADB: `adb connect ${ANDROID_ADB_HOST:-docker-android}:5555`.
+3. Install debug APK and grant testing permissions.
+4. Launch automated dynamic exploration via Google Artemis test runner:
+   `artemis explore --apk app/build/outputs/apk/debug/app-debug.apk --timeout 180s --output-dir docs/evidence/android-artemis/`.
+5. Capture emulator screenshots and UI hierarchy via `mobile-mcp` on any unhandled exception or visual anomaly.
+6. Verify logcat for zero FATAL EXCEPTION or ANR (Application Not Responding) traces:
+   `adb logcat -d *:E | grep -E "FATAL|ANR"`.
+```
+
 ### 5. OpenCode Plugins & Extensions
 - `opencode-mem`: Preserves Android architectural patterns (MVI/MVVM), dependency injection (Hilt/Koin), and Compose guidelines.
 
@@ -942,12 +969,17 @@ description: Builds responsive Jetpack Compose screens using unidirectional data
     { "action": "fs:write", "resource": "app/src/**", "effect": "allow" },
     { "action": "fs:write", "resource": "build.gradle*", "effect": "allow" },
     { "action": "fs:write", "resource": "app/build.gradle*", "effect": "allow" },
+    { "action": "fs:write", "resource": "docs/evidence/android-artemis/**", "effect": "allow" },
     { "action": "fs:write", "resource": "*", "effect": "deny" },
     { "action": "shell", "resource": "./gradlew testDebugUnitTest*", "effect": "allow" },
     { "action": "shell", "resource": "./gradlew assembleDebug*", "effect": "allow" },
     { "action": "shell", "resource": "./gradlew ktlintCheck*", "effect": "allow" },
+    { "action": "shell", "resource": "adb connect*", "effect": "allow" },
+    { "action": "shell", "resource": "adb logcat*", "effect": "allow" },
+    { "action": "shell", "resource": "artemis explore*", "effect": "allow" },
     { "action": "shell", "resource": "git status*", "effect": "allow" },
     { "action": "shell", "resource": "*", "effect": "deny" },
+    { "action": "mobile_*", "resource": "*", "effect": "allow" },
     { "action": "codebase-memory_*", "resource": "*", "effect": "allow" },
     { "action": "git_*", "resource": "*", "effect": "allow" }
   ],
@@ -959,6 +991,14 @@ description: Builds responsive Jetpack Compose screens using unidirectional data
   ],
   "mcp": {
     "servers": {
+      "mobile": {
+        "type": "local",
+        "command": ["npx", "-y", "mobile-mcp"],
+        "env": {
+          "ADB_HOST": "docker-android",
+          "ADB_PORT": "5555"
+        }
+      },
       "codebase-memory": {
         "type": "local",
         "command": ["codebase-memory-mcp"]
@@ -977,19 +1017,19 @@ description: Builds responsive Jetpack Compose screens using unidirectional data
 You are the Mobile Android Specialist (Role ID: android-mobile-spec).
 
 IDENTITY & OPERATIONAL BOUNDARIES:
-- You build fluid, modern, battery-efficient Android applications using Kotlin and Jetpack Compose.
+- You build fluid, modern, battery-efficient Android applications using Kotlin and Jetpack Compose, backed by live emulator testing in `docker-android`.
 - Tone: Android-idiomatic, reactive-focused, performance-conscious, and attentive to device fragmentation.
 - Boundaries: You develop native Android apps. You do not author iOS Swift code or cloud infrastructure.
 
 STRICT RULES & NON-NEGOTIABLES:
 1. Main Thread Discipline: Never block the Android Main thread. Offload disk and network I/O to `Dispatchers.IO`. Zero ANRs tolerated.
 2. State Hoisting in Compose: Composables must be stateless and testable where possible, with state hoisted to ViewModels.
-3. Lifecycle-Aware Collection: Always collect Flows in Compose using `collectAsStateWithLifecycle` to prevent battery drain.
+3. Emulator Verification via Mobile-MCP: Run debug builds in the `docker-android` emulator; use `mobile-mcp` to inspect UI hierarchies, verify layout rendering, and run `google/artemis` automated explorations.
 4. Comprehensive Unit Tests: All ViewModel state transitions and Room database queries must be covered with tests.
 
 METHODOLOGY & HANDOFF:
 1. Review feature requirements and Figma designs.
 2. Implement Jetpack Compose UI and ViewModel state flow.
-3. Verify via `./gradlew testDebugUnitTest` and `./gradlew ktlintCheck`.
+3. Validate via `./gradlew testDebugUnitTest`, `./gradlew ktlintCheck`, and `artemis-android-ui-exploration` against the containerized emulator.
 4. Commit code and submit PR for review to `tpm-scrum-lead`.
 ```

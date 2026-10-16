@@ -90,7 +90,7 @@ flowchart TD
 | `cpp-lowlevel-eng` | C++ Systems & Low-Level Engineer | Specialized Language Engineers | `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | `cmake`, `ninja`, ASan/UBSan, CTest | $350.00 |
 | `java-kotlin-eng` | Java / Kotlin Enterprise Engineer | Specialized Language Engineers | `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | Spring Boot 3 Virtual Threads, Gradle | $300.00 |
 | `ios-mobile-spec` | Mobile iOS Specialist | Specialized Language Engineers | `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | SwiftUI, Swift 6 concurrency, SwiftLint | $300.00 |
-| `android-mobile-spec` | Mobile Android Specialist | Specialized Language Engineers | `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | Jetpack Compose, Coroutines, Gradle | $300.00 |
+| `android-mobile-spec` | Mobile Android Specialist | Specialized Language Engineers | `mobile-mcp` (`mobile-next`), `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | Jetpack Compose, `docker-android` ADB, `google/artemis`, Gradle | $300.00 |
 | `cloud-platform-eng` | Cloud Platform Engineer | Cloud, Platform & Site Reliability | `aws-mcp` (`awslabs/mcp`), `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | `tofu validate`, `tofu plan`, `tflint` | $300.00 |
 | `k8s-orchestrator` | Kubernetes & Container Orchestrator | Cloud, Platform & Site Reliability | `mcp-server-kubernetes`, `docker-mcp` | `helm lint`, `kubeconform`, network policy | $280.00 |
 | `sre-incident-eng` | Site Reliability Engineer (SRE) | Cloud, Platform & Site Reliability | `prometheus-mcp-server`, `@cyanheads/git-mcp-server` | PromQL diagnostics, post-mortem write | $300.00 |
@@ -105,7 +105,7 @@ flowchart TD
 | `release-qa-officer` | Release QA & Acceptance Sign-off Officer | Quality Assurance & Verification | `@modelcontextprotocol/server-github`, `@cyanheads/git-mcp-server` | Release verification, GO/NO-GO veto | $180.00 |
 | `appsec-engineer` | Application Security (AppSec) Engineer | Defensive Security, Binary Analysis & Forensics | `semgrep` (`semgrep mcp --transport stdio`), `codebase-memory-mcp` | SAST call reachability, Trivy, SCA | $300.00 |
 | `cloud-sec-auditor` | Cloud Security & IAM Auditor | Defensive Security, Binary Analysis & Forensics | `aws-mcp` (`awslabs/mcp`), `codebase-memory-mcp` | Checkov, tfsec, Gitleaks, IAM audit | $250.00 |
-| `binary-reverse-eng` | Binary & Protocol Reverse Engineer | Defensive Security, Binary Analysis & Forensics | `r2mcp` (Radare2), `@modelcontextprotocol/server-filesystem` | `r2 -q`, disassembly, protocol specs | $350.00 |
+| `binary-reverse-eng` | Binary & Protocol Reverse Engineer | Defensive Security, Binary Analysis & Forensics | `morluto/rea`, `r2mcp` (Radare2), `@modelcontextprotocol/server-filesystem` | `opencode-rea`, Ghidra CFGs, disassembly, protocol specs | $350.00 |
 | `firmware-sec-analyst` | Firmware & Embedded Security Analyst | Defensive Security, Binary Analysis & Forensics | `r2mcp` (Radare2), `@modelcontextprotocol/server-filesystem` | `binwalk`, `checksec`, ELF header audit | $300.00 |
 | `threat-modeler` | Threat Modeling & Hardening Engineer | Defensive Security, Binary Analysis & Forensics | `codebase-memory-mcp`, `@modelcontextprotocol/server-github` | STRIDE analysis, seccomp/AppArmor | $220.00 |
 | `compliance-auditor` | Compliance & License Auditor | Defensive Security, Binary Analysis & Forensics | `@cyanheads/git-mcp-server`, `@modelcontextprotocol/server-github` | Syft SBOM (CycloneDX), SPDX checks | $160.00 |

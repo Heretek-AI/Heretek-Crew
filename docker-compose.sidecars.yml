@@ -475,6 +475,38 @@ services:
     cpus: "0.5"
     mem_limit: 1g
 
+  # ============================================================================
+  # CATEGORY I: MOBILE DEVICE & EMULATION TESTING
+  # ============================================================================
+  docker-android:
+    image: budtmo/docker-android:emulator_14.0_v3.8.0-p1
+    profiles: ["mobile"]
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - "/dev/kvm:/dev/kvm"
+    expose:
+      - "5555"
+      - "6080"
+    ports:
+      - "127.0.0.1:5555:5555"
+      - "127.0.0.1:6080:6080"
+    environment:
+      EMULATOR_DEVICE: "Samsung Galaxy S10"
+      WEB_VNC: "true"
+    volumes:
+      - docker-android-data:/root
+    healthcheck:
+      test: ["CMD-SHELL", "adb devices | grep -q 'device' || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 4g
+
 # ==============================================================================
 # VOLUMES
 # ==============================================================================
@@ -489,6 +521,7 @@ volumes:
   neo4j-data:
   neo4j-logs:
   minio-data:
+  docker-android-data:
 
 # ==============================================================================
 # NETWORKS
@@ -496,3 +529,4 @@ volumes:
 networks:
   heretek:
     external: true
+

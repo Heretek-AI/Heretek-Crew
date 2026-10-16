@@ -611,6 +611,33 @@ flowchart TB
 
 ---
 
+### Service C.3: REA (Reverse Engineer Anything) & OpenCode-REA
+* **Service Identity**: REA MCP Bridge & Plugin (`morluto/rea` & `Heretek-AI/opencode-rea`)
+* **Repository**: [https://github.com/morluto/rea](https://github.com/morluto/rea) / [https://github.com/Heretek-AI/opencode-rea](https://github.com/Heretek-AI/opencode-rea)
+* **Core Value Proposition**: REA (Reverse Engineer Anything) exposes over 120 specialized reverse engineering tools bridging Ghidra, Binary Ninja, Radare2, and APK tools. Combined with `@heretek-ai/opencode-rea`, it enables OpenCode v2 agents to generate interactive control-flow graphs (CFGs), execute headless decompilation passes, trace data-flow cross references, and semantically rename opaque functions with zero hallucinations.
+* **Target Roles**: Binary & Protocol Reverse Engineer (`binary-reverse-eng`), Firmware Security Analyst (`firmware-sec-analyst`).
+
+#### Agent Integration via OpenCode v2 Plugin & MCP
+In `/roles/binary-reverse-eng/opencode/opencode.json`:
+```json
+{
+  "plugins": ["opencode-rea", "opencode-mem"],
+  "mcp": {
+    "servers": {
+      "rea": {
+        "type": "local",
+        "command": ["npx", "-y", "@morluto/rea-mcp"],
+        "env": {
+          "GHIDRA_INSTALL_DIR": "/opt/ghidra"
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
 ## 4. Category D: Fast Codebase Search, Indexing & AST Analysis
 
 ### Service D.1: ast-grep
@@ -1147,7 +1174,55 @@ curl -s "http://mailpit:8025/api/v1/messages" | jq '.messages[0] | {To, Subject,
 
 ---
 
-## 9. Architecture & Composition Strategy
+## 9. Category I: Mobile Device & Emulation Testing
+
+### Service I.1: Docker-Android Emulator & noVNC
+* **Service Identity**: Docker-Android (`budtmo/docker-android`)
+* **Repository**: [https://github.com/budtmo/docker-android](https://github.com/budtmo/docker-android)
+* **Image Tag**: `budtmo/docker-android:emulator_14.0_v3.8.0-p1`
+* **Core Value Proposition**: Testing native Android applications requires a full Android virtual device (AVD) running hardware acceleration (KVM). Bundling an emulator into an agent container is impossible due to KVM device requirements and X11/noVNC graphics stacks. `docker-android` provides an isolated, containerized Android 14.0 emulator exposing standard ADB on port 5555 and a noVNC web interface on port 6080.
+* **Target Roles**: Mobile Android Specialist (`android-mobile-spec`), Mobile Web Engineer (`mobile-web-eng`), E2E Automation Engineer (`e2e-browser-qa`).
+
+#### Docker Compose Service Block
+```yaml
+  docker-android:
+    image: budtmo/docker-android:emulator_14.0_v3.8.0-p1
+    profiles: ["mobile"]
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - "/dev/kvm:/dev/kvm"
+    expose:
+      - "5555" # ADB bridge
+      - "6080" # noVNC web view
+    ports:
+      - "127.0.0.1:5555:5555"
+      - "127.0.0.1:6080:6080"
+    environment:
+      EMULATOR_DEVICE: "Samsung Galaxy S10"
+      WEB_VNC: "true"
+    volumes:
+      - docker-android-data:/root
+    healthcheck:
+      test: ["CMD-SHELL", "adb devices | grep -q 'device' || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 4g
+```
+
+#### Agent Integration: Mobile-MCP & Google Artemis
+Agents communicate with the containerized emulator via `mobile-next/mobile-mcp` and automate UI exploration with `google/artemis`:
+1. **Mobile-MCP**: Provides MCP tools for UI hierarchy inspection, screen taps, text input, screenshot capture, and ADB shell commands.
+2. **Google Artemis**: Automatic UI testing and exploration framework that uses reinforcement learning and heuristic graph exploration to discover crashes, ANRs, and edge cases.
+
+---
+
+## 10. Architecture & Composition Strategy
 
 ### 1. Compose Profiles Taxonomy
 To ensure lean resource usage, services are segregated into logical Docker Compose profiles. The base stack (`postgres` and `paperclip`) runs under `default` (no profiles specified). Operators start additional capabilities on-demand:
@@ -1157,6 +1232,7 @@ To ensure lean resource usage, services are segregated into logical Docker Compo
 | **`default` / `core`** | `postgres`, `paperclip`, `docker-socket-proxy` | 1.2 GB / 4.5 GB | Standard agent workflow, local code editing, CLI tools |
 | **`--profile web-research`** | `searxng`, `searxng-redis`, `firecrawl`, `firecrawl-redis`, `browserless`, `gotenberg` | 1.8 GB / 6.5 GB | Deep internet research, documentation extraction, web scraping |
 | **`--profile devsec`** | `ghidra`, `radare2`, `semgrep`, `hound`, `docker-socket-proxy` | 2.5 GB / 8.0 GB | Binary reverse engineering, vulnerability audits, firmware triage |
+| **`--profile mobile`** | `docker-android` | 1.5 GB / 4.0 GB | Native Android app testing, ADB bridge, Artemis UI exploration |
 | **`--profile ai-gateway`** | `litellm`, `qdrant`, `neo4j`, `ollama` | 2.2 GB / 12.0 GB | Shared model routing, vector retrieval, codebase knowledge graph |
 | **`--profile qa-testing`** | `piston`, `mailpit`, `wiremock`, `minio`, `browserless` | 1.5 GB / 5.5 GB | Unit/integration testing, mocking APIs, sandboxed scripts |
 | **`--profile observability`**| `jaeger`, `otel-collector` | 0.8 GB / 2.0 GB | Telemetry, token usage tracking, distributed trace visualization |
@@ -1175,16 +1251,17 @@ The following matrix cross-references the 9 functional departments and key speci
 | **Web: Performance Engineer** | `browserless`, `jaeger` | CDP, OTLP Tracing | WS :3000, gRPC :4317 |
 | **Language: C/C++ Specialist** | `radare2`, `piston`, `hound` | `r2mcp`, REST API | HTTP :9090, HTTP :2000, HTTP :6080 |
 | **Language: Rust Specialist** | `piston`, `ast-grep`, `qdrant` | `ast-grep` CLI, `qdrant-mcp` | HTTP :2000, HTTP :6333 |
+| **Language: Android Specialist** | `docker-android` | `mobile-mcp`, ADB | TCP :5555, HTTP :6080 |
 | **Platform: SRE / SecOps** | `mitmproxy`, `docker-socket-proxy`, `jaeger` | REST API, Docker Engine API | HTTP :8081, HTTP :2375, HTTP :16686 |
 | **Platform: DBA Specialist** | `postgres`, `redis`, `qdrant` | Direct TCP client | TCP :5432, TCP :6379, HTTP :6333 |
 | **QA: E2E Automation Eng** | `browserless`, `mailpit`, `wiremock` | Playwright CDP, REST | WS :3000, HTTP :8025, HTTP :8080 |
 | **QA: Red-Proof Saboteur** | `piston`, `mitmproxy`, `browserless` | REST API, HTTP Proxy | HTTP :2000, HTTP :8080 |
-| **DevSec: Reverse Engineer** | `ghidra`, `radare2` | `ghidra-mcp`, `r2mcp` | TCP :1337, HTTP :9090 |
+| **DevSec: Reverse Engineer** | `ghidra`, `radare2` | `rea` MCP (`morluto/rea`), `opencode-rea`, `r2mcp` | TCP :1337, HTTP :9090 |
 | **DevSec: Code Auditor** | `semgrep`, `ast-grep`, `hound` | CLI, `ast-grep-mcp` | Direct volume scan, HTTP :6080 |
 
 ---
 
-## 10. Master `docker-compose.sidecars.yml`
+## 11. Master `docker-compose.sidecars.yml`
 
 This file is designed to be composed seamlessly with `docker-compose.yml`:
 ```bash
@@ -1670,6 +1747,38 @@ services:
     cpus: "0.5"
     mem_limit: 1g
 
+  # ============================================================================
+  # CATEGORY I: MOBILE DEVICE & EMULATION TESTING
+  # ============================================================================
+  docker-android:
+    image: budtmo/docker-android:emulator_14.0_v3.8.0-p1
+    profiles: ["mobile"]
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - "/dev/kvm:/dev/kvm"
+    expose:
+      - "5555"
+      - "6080"
+    ports:
+      - "127.0.0.1:5555:5555"
+      - "127.0.0.1:6080:6080"
+    environment:
+      EMULATOR_DEVICE: "Samsung Galaxy S10"
+      WEB_VNC: "true"
+    volumes:
+      - docker-android-data:/root
+    healthcheck:
+      test: ["CMD-SHELL", "adb devices | grep -q 'device' || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 4g
+
 # ==============================================================================
 # VOLUMES
 # ==============================================================================
@@ -1684,6 +1793,7 @@ volumes:
   neo4j-data:
   neo4j-logs:
   minio-data:
+  docker-android-data:
 
 # ==============================================================================
 # NETWORKS
@@ -1695,7 +1805,7 @@ networks:
 
 ---
 
-## 11. Security Hardening & Isolation Best Practices
+## 12. Security Hardening & Isolation Best Practices
 
 1. **Loopback Only (`127.0.0.1`) for Administrative Endpoints**:
    Services exposing management or browser UIs (Jaeger, Mailpit, SearXNG, WireMock, MinIO Console) are strictly mapped to `127.0.0.1:<port>`. They must never be published to `0.0.0.0` where they could be accessed over local LAN or public networks without authentication.

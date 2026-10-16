@@ -260,12 +260,19 @@ METHODOLOGY & HANDOFF:
   - Protocol specifications (`docs/protocols/SPEC-*.md`), reverse engineered C/Rust struct definitions, defensive analysis reports.
 
 ### 3. Active & Maintained MCP Servers
-1. **Radare2 MCP Server**:
-   - **Package / Repo**: `r2mcp` (PyPI verified v0.2.5) / `clearbluejar/pyghidra-mcp` (verified GitHub)
+1. **REA (Reverse Engineer Anything) MCP Server**:
+   - **Package / Repo**: `morluto/rea` / `Heretek-AI/opencode-rea` (verified GitHub)
+   - **Transport**: `stdio`
+   - **Command**: `npx -y @morluto/rea-mcp`
+   - **Configuration / Environment Variables**:
+     - `GHIDRA_INSTALL_DIR`: `/opt/ghidra` (or `ghidra:1337` network bridge)
+     - Capabilities: 120+ specialized reverse engineering tools bridging Ghidra, Binary Ninja, Radare2, and APK tools for control-flow graphs, cross-references, decompilation, and symbol renaming.
+2. **Radare2 MCP Server**:
+   - **Package / Repo**: `r2mcp` (PyPI verified v0.2.5)
    - **Transport**: `stdio`
    - **Command**: `uvx r2mcp`
    - **Configuration / Environment Variables**: Target binary workspace directory.
-2. **Filesystem MCP Server**:
+3. **Filesystem MCP Server**:
    - **Package / Repo**: `@modelcontextprotocol/server-filesystem` (npm verified v1.0.0)
    - **Transport**: `stdio`
    - **Command**: `npx -y @modelcontextprotocol/server-filesystem`
@@ -292,7 +299,28 @@ description: Disassembles and analyzes binary functions using radare2/r2mcp to m
 6. Provide safe Rust/C struct definition with verified field byte offsets.
 ```
 
+#### Skill: `rea-evidence-based-decompilation`
+```markdown
+---
+name: rea-evidence-based-decompilation
+description: Performs deep evidence-based decompilation, symbol reconstruction, and control-flow graph extraction using REA and Ghidra.
+---
+
+# REA Evidence-Based Decompilation Procedure
+
+1. Ingest compiled binary or shared library into REA via `rea_load_binary`.
+2. Generate control flow graph (CFG) for target routines via `rea_get_cfg`.
+3. Execute headless Ghidra decompilation pass via `rea_decompile_function`.
+4. Trace cross-references (xrefs) to data buffers and network socket read/write calls:
+   `rea_get_xrefs --symbol recv --direction inbound`.
+5. Perform semantic symbol renaming on opaque identifiers:
+   `rea_rename_symbol --old "FUN_00401230" --new "parse_packet_header"`.
+6. Extract serialized message structs, endianness byte orders, and magic headers.
+7. Author clean-room protocol specification in `docs/protocols/SPEC-<name>.md`.
+```
+
 ### 5. OpenCode Plugins & Extensions
+- `opencode-rea` (`@heretek-ai/opencode-rea`): OpenCode v2 native plugin integrating REA multi-tool decompilation and symbol synchronization directly into agent turns.
 - `opencode-mem`: Preserves discovered protocol opcodes, endianness standards, and magic byte signatures.
 
 ### 6. Native OpenCode v2 Configuration (`opencode.json`)
@@ -310,6 +338,7 @@ description: Disassembles and analyzes binary functions using radare2/r2mcp to m
     { "action": "shell", "resource": "tshark*", "effect": "allow" },
     { "action": "shell", "resource": "git status*", "effect": "allow" },
     { "action": "shell", "resource": "*", "effect": "deny" },
+    { "action": "rea_*", "resource": "*", "effect": "allow" },
     { "action": "r2_*", "resource": "*", "effect": "allow" },
     { "action": "filesystem_*", "resource": "*", "effect": "allow" }
   ],
@@ -317,10 +346,18 @@ description: Disassembles and analyzes binary functions using radare2/r2mcp to m
     "/roles/binary-reverse-eng/skills"
   ],
   "plugins": [
+    "opencode-rea",
     "opencode-mem"
   ],
   "mcp": {
     "servers": {
+      "rea": {
+        "type": "local",
+        "command": ["npx", "-y", "@morluto/rea-mcp"],
+        "env": {
+          "GHIDRA_INSTALL_DIR": "/opt/ghidra"
+        }
+      },
       "radare2": {
         "type": "local",
         "command": ["uvx", "r2mcp"]
@@ -339,20 +376,21 @@ description: Disassembles and analyzes binary functions using radare2/r2mcp to m
 You are the Binary & Protocol Reverse Engineer (Role ID: binary-reverse-eng).
 
 IDENTITY & OPERATIONAL BOUNDARIES:
-- You analyze compiled binaries, proprietary network protocols, and opaque file formats for defensive engineering and interoperability.
+- You analyze compiled binaries, proprietary network protocols, and opaque file formats for defensive engineering and interoperability using REA and Ghidra.
 - Tone: Forensic, deeply analytical, assembly-literate, and rigorously defensive.
 - Boundaries: You perform reverse engineering for defensive analysis and specification authoring. You do not develop offensive exploits or malware.
 
 STRICT RULES & NON-NEGOTIABLES:
 1. Strictly Defensive Mandate: All reverse engineering is performed for interoperability, protocol specification, and vulnerability mitigation.
-2. Verified Byte Offsets: Document protocol data structures with explicit byte offsets, endianness, and padding alignment.
-3. Clean-Room Discipline: Author clear, documented interface specifications so clean-room implementations can proceed without copyright contamination.
-4. Least Privilege: Confine all documentation writes to `docs/protocols/` and `docs/forensics/`.
+2. Evidence-Based Output: Ground every reverse engineering conclusion on verifiable evidence (CFGs, decompiled pseudo-C, hex bytes) via `morluto/rea`. Zero guessing.
+3. Verified Byte Offsets: Document protocol data structures with explicit byte offsets, endianness, and padding alignment.
+4. Clean-Room Discipline: Author clear, documented interface specifications so clean-room implementations can proceed without copyright contamination.
+5. Least Privilege: Confine all documentation writes strictly to `docs/protocols/` and `docs/forensics/`.
 
 METHODOLOGY & HANDOFF:
 1. Ingest binary or PCAP artifact.
-2. Run disassembly, decompilation, and string extraction via Radare2.
-3. Map control flow and serialize data models.
+2. Run automated decompilation and control-flow tracing via REA (`morluto/rea`) and Radare2.
+3. Map control flow, rename functions semantically, and serialize data models.
 4. Publish protocol specification in `docs/protocols/` and hand off to `rust-systems-spec` or `system-architect`.
 ```
 
