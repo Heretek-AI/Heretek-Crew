@@ -51,6 +51,12 @@
 # silently running the wrong binary.
 set -euo pipefail
 
+# Normalize OpenCode Go key fallback: if OPENCODE_API_KEY is unset and OPENCODE_GO_API_KEY is provided,
+# export OPENCODE_API_KEY so opencode-go models resolve automatically.
+if [[ -z "${OPENCODE_API_KEY:-}" && -n "${OPENCODE_GO_API_KEY:-}" ]]; then
+    export OPENCODE_API_KEY="${OPENCODE_GO_API_KEY}"
+fi
+
 # --- Resolve the real OpenCode v2 binary (fail closed) ---------------------
 resolve_real_bin() {
     if [[ -n "${OPENCODE_REAL_BIN:-}" ]]; then
