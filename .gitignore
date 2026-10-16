@@ -12,3 +12,6 @@ workspaces/*
 *.log
 .DS_Store
 node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
