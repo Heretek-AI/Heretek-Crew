@@ -1,0 +1,134 @@
+# Heretek-Crew: Paperclip + OpenCode v2 stack.
+#
+# Profiles:
+#   default ................ postgres + paperclip (private, 127.0.0.1:3100)
+#   --profile proxy ........ + caddy reverse proxy with automatic TLS (80/443)
+#   --profile tailscale .... + tailscale sidecar for private mesh access
+#
+# Quickstart (after `cp .env.example .env` and editing secrets):
+#   docker build -t paperclip:official-local /tmp/paperclip   # official base
+#   docker compose build                                       # wave1 layer
+#   docker compose up -d
+#
+# Pinned images (never `latest`): postgres:17-alpine, caddy:2.11.7-alpine,
+# tailscale/tailscale:v1.104.1. The paperclip image pins node:24-trixie-slim
+# (via the official base) and @opencode/cli + @opencode/client 2.0.31
+# (see docker/Dockerfile).
+
+name: heretek-crew
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-paperclip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-paperclip}
+    # Internal network only: no ports published; reachable as `postgres:5432`.
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-paperclip} -d $${POSTGRES_DB:-paperclip}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - heretek
+
+  paperclip:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        PAPERCLIP_BASE_IMAGE: ${PAPERCLIP_BASE_IMAGE:-paperclip:official-local}
+    image: heretek-crew/paperclip:wave1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Loopback-bound: the UI/API is private by default; expose via the
+    # `proxy` (caddy) or `tailscale` profiles for remote access.
+    ports:
+      - "127.0.0.1:3100:3100"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-paperclip}
+      PORT: "3100"
+      SERVE_UI: "true"
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
+      PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set in .env (generate with openssl rand -base64 48)}"
+      # Independent secret for signed approval-gated tool actions.
+      PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: ${PAPERCLIP_TOOL_ACTION_SIGNING_SECRET:-}
+      USER_UID: ${USER_UID:-1000}
+      USER_GID: ${USER_GID:-1000}
+    volumes:
+      - paperclip-data:/paperclip
+      # Per-role OpenCode v2 configs (roles/<role>/opencode/opencode.json),
+      # consumed via each agent's env.XDG_CONFIG_HOME=/roles/<role>.
+      - ./roles:/roles:ro
+      # Agent working checkouts live here on the host for inspection/backup.
+      - ./workspaces:/paperclip/workspaces
+    networks:
+      - heretek
+    # Resource limits: a runaway agent fleet must not starve the host.
+    # Includes the shared 30s adapter-settlement window and final cleanup.
+    cpus: "2.0"
+    mem_limit: 4g
+    pids_limit: 2048
+    stop_grace_period: 90s
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    depends_on:
+      - paperclip
+    # NOTE: PROXY_DOMAIN defaults to `localhost` so the default profile
+    # (`docker compose config/up` without --profile proxy) always parses,
+    # even with PROXY_DOMAIN empty/unset in .env. Set PROXY_DOMAIN to a real
+    # public hostname when using `--profile proxy` to get automatic TLS;
+    # leaving it unset under the proxy profile serves localhost only.
+    command: ["reverse-proxy", "--from", "${PROXY_DOMAIN:-localhost}", "--to", "paperclip:3100"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+    networks:
+      - heretek
+
+  tailscale:
+    image: tailscale/tailscale:v1.104.1
+    profiles: ["tailscale"]
+    restart: unless-stopped
+    depends_on:
+      - paperclip
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ${TS_HOSTNAME:-heretek-paperclip}
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:---advertise-tags=tag:heretek}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    networks:
+      - heretek
+
+volumes:
+  pgdata:
+  paperclip-data:
+  caddy-data:
+  tailscale-state:
+
+networks:
+  heretek:
+    driver: bridge
