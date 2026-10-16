@@ -47,7 +47,8 @@ RUN set -eux; \
         python3 \
         ca-certificates; \
     rm -rf /var/lib/apt/lists/*; \
-    npm install --global --omit=dev \
+    rm -f /usr/local/bin/opencode /usr/local/bin/opencode-bin; \
+    npm install --global --omit=dev --force \
         "@opencode/cli@${OPENCODE_CLI_VERSION}" \
         "@opencode/client@${OPENCODE_CLIENT_VERSION}" \
         "@heretek-ai/opencode-harness@${OPENCODE_HARNESS_VERSION}"; \
