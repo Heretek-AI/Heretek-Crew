@@ -1,0 +1,498 @@
+# Heretek-Crew: Master Supporting Software & Sidecars Specification
+# Composable alongside docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.sidecars.yml --profile web-research up -d
+
+services:
+  # ============================================================================
+  # CATEGORY A: WEB INGESTION, CRAWLING & SEARCH
+  # ============================================================================
+  searxng-redis:
+    image: redis:7.4.1-alpine
+    profiles: ["web-research"]
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "0.2"
+    mem_limit: 256m
+
+  searxng:
+    image: searxng/searxng:2024.10.16-ac56c663b
+    profiles: ["web-research"]
+    restart: unless-stopped
+    depends_on:
+      - searxng-redis
+    expose:
+      - "8080"
+    ports:
+      - "127.0.0.1:8888:8080"
+    environment:
+      SEARXNG_BASE_URL: "http://searxng:8080/"
+      SEARXNG_REDIS_URL: "redis://searxng-redis:6379/0"
+      SEARXNG_SECRET: "${SEARXNG_SECRET:-dev_searxng_secret_key_heretek_crew_2026}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "1.0"
+    mem_limit: 1g
+
+  firecrawl-redis:
+    image: redis:7.4.1-alpine
+    profiles: ["web-research"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - firecrawl-redis-data:/data
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 768m
+
+  firecrawl:
+    image: ghcr.io/mendableai/firecrawl:v1.17.2
+    profiles: ["web-research"]
+    restart: unless-stopped
+    depends_on:
+      firecrawl-redis:
+        condition: service_healthy
+      browserless:
+        condition: service_healthy
+    expose:
+      - "3002"
+    environment:
+      PORT: "3002"
+      REDIS_URL: "redis://firecrawl-redis:6379"
+      USE_PUPPETEER_CACHE: "true"
+      PUPPETEER_WS_ENDPOINT: "ws://browserless:3000"
+      NUM_WORKERS_PER_QUEUE: "4"
+      LOGGING_LEVEL: "warn"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - heretek
+    cpus: "1.5"
+    mem_limit: 2g
+
+  gotenberg:
+    image: gotenberg/gotenberg:8.15.0
+    profiles: ["web-research", "qa-testing"]
+    restart: unless-stopped
+    expose:
+      - "3000"
+    command:
+      - "gotenberg"
+      - "--api-port=3000"
+      - "--chromium-restart-after=30"
+      - "--chromium-auto-start=true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "1.0"
+    mem_limit: 1.5g
+
+  # ============================================================================
+  # CATEGORY B: RESILIENT & STEALTH BROWSER AUTOMATION
+  # ============================================================================
+  browserless:
+    image: ghcr.io/browserless/chromium:v2.24.2
+    profiles: ["web-research", "qa-testing"]
+    restart: unless-stopped
+    expose:
+      - "3000"
+    ports:
+      - "127.0.0.1:3003:3000"
+    environment:
+      CONCURRENT: "5"
+      QUEUED: "10"
+      TIMEOUT: "60000"
+      TOKEN: "${BROWSERLESS_TOKEN:-heretek-stealth-token}"
+      ENABLE_DEBUGGER: "true"
+      DEFAULT_STEALTH: "true"
+      DEFAULT_HEADLESS: "new"
+      CHROME_REFRESH_TIME: "1800000"
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/pressure || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 3g
+
+  mitmproxy:
+    image: mitmproxy/mitmproxy:11.0.2
+    profiles: ["devsec", "qa-testing"]
+    restart: unless-stopped
+    command: ["mitmweb", "--web-host", "0.0.0.0", "--web-port", "8081", "--set", "block_global=false"]
+    expose:
+      - "8080"
+      - "8081"
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - mitmproxy-certs:/home/mitmproxy/.mitmproxy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 512m
+
+  # ============================================================================
+  # CATEGORY C: DEFENSIVE BINARY ANALYSIS & REVERSE ENGINEERING
+  # ============================================================================
+  ghidra:
+    image: blacktop/ghidra:11.2
+    profiles: ["devsec"]
+    restart: unless-stopped
+    expose:
+      - "1337"
+    environment:
+      MAXMEM: "4G"
+    volumes:
+      - ./workspaces/binaries:/samples:ro
+      - ghidra-projects:/ghidra/projects
+    entrypoint: ["/entrypoint.sh"]
+    command: ["server"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f ghidra || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 4g
+
+  radare2:
+    image: radare/radare2:6.0.0
+    profiles: ["devsec"]
+    restart: unless-stopped
+    expose:
+      - "9090"
+    working_dir: /samples
+    volumes:
+      - ./workspaces/binaries:/samples:ro
+    command: ["r2", "-qc=H 0.0.0.0:9090", "/samples"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/cmd/? || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "1.0"
+    mem_limit: 1g
+
+  # ============================================================================
+  # CATEGORY D: FAST CODEBASE SEARCH & AST ANALYSIS
+  # ============================================================================
+  hound:
+    image: ghcr.io/hound-search/hound:v0.6.0
+    profiles: ["devsec", "web-research"]
+    restart: unless-stopped
+    expose:
+      - "6080"
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - ./workspaces:/workspaces:ro
+      - hound-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6080/api/v1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "1.0"
+    mem_limit: 2g
+
+  semgrep:
+    image: semgrep/semgrep:1.97.0
+    profiles: ["devsec", "qa-testing"]
+    restart: unless-stopped
+    volumes:
+      - ./workspaces:/src:ro
+      - semgrep-cache:/root/.cache/semgrep
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 3g
+
+  # ============================================================================
+  # CATEGORY E: ISOLATED EXECUTION SANDBOXES
+  # ============================================================================
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    profiles: ["core", "devsec"]
+    restart: unless-stopped
+    expose:
+      - "2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "1"
+      INFO: "1"
+      VERSION: "1"
+      POST: "1"
+      VOLUMES: "0"
+      NETWORKS: "0"
+      NODES: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2375/version || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "0.2"
+    mem_limit: 128m
+
+  piston:
+    image: ghcr.io/engineer-man/piston:v2.0.0
+    profiles: ["qa-testing", "devsec"]
+    restart: unless-stopped
+    expose:
+      - "2000"
+    volumes:
+      - piston-packages:/piston/packages
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2000/api/v2/runtimes || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 2g
+
+  # ============================================================================
+  # CATEGORY F: AGENT MEMORY, VECTOR STORES & KNOWLEDGE GRAPHS
+  # ============================================================================
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    profiles: ["ai-gateway"]
+    restart: unless-stopped
+    expose:
+      - "6333"
+      - "6334"
+    ports:
+      - "127.0.0.1:6333:6333"
+    environment:
+      QDRANT__SERVICE__ENABLE_TLS: "false"
+      QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS: "4"
+    volumes:
+      - qdrant-storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/readyz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "1.5"
+    mem_limit: 2g
+
+  neo4j:
+    image: neo4j:5.26.0-community-bullseye
+    profiles: ["ai-gateway"]
+    restart: unless-stopped
+    expose:
+      - "7474"
+      - "7687"
+    ports:
+      - "127.0.0.1:7474:7474"
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:-heretek_knowledge_graph_secret_2026}"
+      NEO4J_PLUGINS: '["apoc"]'
+      server_memory_heap_initial__size: "512m"
+      server_memory_heap_max__size: "1536m"
+      server_memory_pagecache_size: "512m"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7474 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+    networks:
+      - heretek
+    cpus: "1.5"
+    mem_limit: 2.5g
+
+  # ============================================================================
+  # CATEGORY G: LLM GATEWAYS & CACHING
+  # ============================================================================
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.54.0
+    profiles: ["ai-gateway"]
+    restart: unless-stopped
+    expose:
+      - "4000"
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:-sk-heretek-proxy-master-key}"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:-paperclip}@postgres:5432/${POSTGRES_DB:-paperclip}"
+      STORE_MODEL_IN_DB: "True"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "1.0"
+    mem_limit: 1.5g
+
+  # ============================================================================
+  # CATEGORY H: DEVELOPER TESTING, MOCKING & OBSERVABILITY
+  # ============================================================================
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    profiles: ["qa-testing"]
+    restart: unless-stopped
+    expose:
+      - "1025"
+      - "8025"
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_DATABASE: ""
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8025/api/v1/messages || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "0.2"
+    mem_limit: 256m
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    profiles: ["qa-testing", "core"]
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    expose:
+      - "9000"
+      - "9001"
+    ports:
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-heretekadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-heretekminiopassword2026}"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 1g
+
+  wiremock:
+    image: wiremock/wiremock:3.10.0-alpine
+    profiles: ["qa-testing"]
+    restart: unless-stopped
+    expose:
+      - "8080"
+    ports:
+      - "127.0.0.1:8089:8080"
+    command: ["--verbose", "--global-response-templating"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/__admin/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 512m
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.63.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    expose:
+      - "4317"
+      - "4318"
+      - "16686"
+    ports:
+      - "127.0.0.1:16686:16686"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:16686 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 1g
+
+# ==============================================================================
+# VOLUMES
+# ==============================================================================
+volumes:
+  firecrawl-redis-data:
+  mitmproxy-certs:
+  ghidra-projects:
+  hound-data:
+  semgrep-cache:
+  piston-packages:
+  qdrant-storage:
+  neo4j-data:
+  neo4j-logs:
+  minio-data:
+
+# ==============================================================================
+# NETWORKS
+# ==============================================================================
+networks:
+  heretek:
+    external: true
