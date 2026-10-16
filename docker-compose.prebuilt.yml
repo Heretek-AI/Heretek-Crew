@@ -1,0 +1,22 @@
+# docker-compose.prebuilt.yml — Heretek-Crew Prebuilt Image Override
+#
+# Allows operators to run the production Heretek-Crew stack using the prebuilt
+# container image from GitHub Container Registry (ghcr.io) without requiring
+# local Paperclip compilation or npm dependencies.
+#
+# Pinned image: ghcr.io/heretek-ai/heretek-crew:v1.0.0
+# (Overrides build block from docker-compose.yml)
+#
+# Quickstart:
+#   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml pull paperclip
+#   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d
+#
+# With supporting sidecars (e.g. web research profile):
+#   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml -f docker-compose.sidecars.yml --profile web-research up -d
+
+name: heretek-crew
+
+services:
+  paperclip:
+    build: !reset null
+    image: ${HERETEK_IMAGE:-ghcr.io/heretek-ai/heretek-crew:v1.0.0}

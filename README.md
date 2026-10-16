@@ -75,6 +75,33 @@ How a run flows:
 
 Prerequisites: Docker with the Compose plugin, `make`, `curl`, `python3`.
 
+### Option A: Prebuilt Image (Zero Compilation — Recommended)
+
+Run the production stack immediately using the official image published to GitHub Container Registry (`ghcr.io/heretek-ai/heretek-crew:v1.0.0`):
+
+```bash
+# 1. Configure secrets
+cp .env.example .env
+# Edit .env: set POSTGRES_PASSWORD, BETTER_AUTH_SECRET,
+# PAPERCLIP_TOOL_ACTION_SIGNING_SECRET, and at least one model API key.
+
+# 2. Pull prebuilt image from GHCR and start
+make prebuilt-pull
+make prebuilt-up
+
+# Alternatively, make prebuilt the automatic default for `docker compose up -d`:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#   docker compose pull paperclip && docker compose up -d
+
+# 3. Seed the 50-agent fleet (or 6-agent bootstrap)
+make seed-50
+
+# 4. Verify
+make test
+```
+
+### Option B: Build Locally from Source
+
 ```bash
 # 1. Configure secrets (never commit .env; never bake keys into images)
 cp .env.example .env
@@ -105,7 +132,10 @@ set `PROXY_DOMAIN`), or `docker compose --profile tailscale up -d`
 
 | Target | What it does |
 |---|---|
-| `make build` | Build the Paperclip + OpenCode v2 image (`docker compose build`) |
+| `make prebuilt-pull` | Pull official prebuilt image from GHCR without building |
+| `make prebuilt-up` | Start stack using prebuilt GHCR image (`docker-compose.prebuilt.yml`) |
+| `make prebuilt-config` | Validate merged Compose configuration for prebuilt deployment |
+| `make build` | Build the Paperclip + OpenCode v2 image locally (`docker compose build`) |
 | `make up` | Start the stack detached |
 | `make down` | Stop the stack (named volumes keep all data) |
 | `make logs` | Follow `paperclip` service logs |
@@ -328,10 +358,15 @@ sandbox; this stack provides it:
 ## Layout
 
 ```
+.github/workflows/
+  docker-publish.yml      multi-arch GHCR publishing pipeline + verification
+  ci.yml                  automated fleet & shim static verification gate
 docker-compose.yml        postgres + paperclip (+ optional caddy/tailscale profiles)
+docker-compose.prebuilt.yml prebuilt GHCR override (build: !reset null)
+docker-compose.override.yml.example template for automatic prebuilt image adoption
 docker/Dockerfile         official-base extension: OpenCode v2 + shim, pinned
 .env.example              secrets template (copy to .env, never commit .env)
-Makefile                  build/up/down/logs/seed/backup/restore/test
+Makefile                  build/up/down/logs/seed/backup/restore/test + prebuilt
 scripts/
   opencode-shim.sh        v1→v2 CLI translation (--dir/--variant/--auto)
   seed-company.sh         idempotent company + 6-agent seeder (supports --dry-run)

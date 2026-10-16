@@ -16,6 +16,7 @@
 export
 
 COMPOSE := docker compose
+COMPOSE_PREBUILT := $(COMPOSE) -f docker-compose.yml -f docker-compose.prebuilt.yml
 BACKUP_SCRIPT := ./scripts/backup-db.sh
 RESTORE_SCRIPT := ./scripts/restore-db.sh
 SEED_SCRIPT := ./scripts/seed-company.sh
@@ -24,7 +25,7 @@ GENERATE_ROLES_SCRIPT := ./scripts/generate-50-roles.py
 SMOKE_SCRIPT := ./scripts/smoke-test.sh
 
 .DEFAULT_GOAL := help
-.PHONY: help build up down logs seed seed-50 generate-roles backup restore test
+.PHONY: help build up down logs seed seed-50 generate-roles backup restore test prebuilt-pull prebuilt-up prebuilt-config
 
 help: ## Show this help (lists all documented targets).
 	@echo "Heretek-Crew — Paperclip + OpenCode v2 stack"
@@ -35,11 +36,20 @@ help: ## Show this help (lists all documented targets).
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
-build: ## Build the Paperclip + OpenCode v2 Docker image.
+build: ## Build the Paperclip + OpenCode v2 Docker image locally.
 	$(COMPOSE) build
 
 up: ## Start the stack in background (postgres + paperclip, private on 127.0.0.1:3100).
 	$(COMPOSE) up -d
+
+prebuilt-pull: ## Pull the prebuilt image from GHCR without building locally.
+	$(COMPOSE_PREBUILT) pull paperclip
+
+prebuilt-up: ## Start the stack using the prebuilt GHCR image (postgres + paperclip).
+	$(COMPOSE_PREBUILT) up -d
+
+prebuilt-config: ## Validate the merged docker-compose config for the prebuilt setup.
+	$(COMPOSE_PREBUILT) config
 
 down: ## Stop the stack (containers kept; data in named volumes is preserved).
 	$(COMPOSE) down

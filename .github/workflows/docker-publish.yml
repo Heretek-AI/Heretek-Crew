@@ -1,0 +1,119 @@
+name: Publish Docker Image to GHCR
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Custom image tag (leave blank for default git tags / sha)"
+        required: false
+        type: string
+        default: ""
+      paperclip_base:
+        description: "Upstream Paperclip base image"
+        required: false
+        type: string
+        default: "ghcr.io/paperclipai/paperclip:sha-73659c6"
+      push:
+        description: "Push images to GHCR (set false for dry-run verification)"
+        required: false
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build & Publish Heretek-Crew
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Metadata & Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+          labels: |
+            org.opencontainers.image.title=heretek-crew
+            org.opencontainers.image.description=Production Paperclip + OpenCode v2 autonomous agent fleet runtime
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+            heretek.paperclip.base=${{ inputs.paperclip_base || 'ghcr.io/paperclipai/paperclip:sha-73659c6' }}
+            heretek.opencode.cli=2.0.31
+            heretek.opencode.client=2.0.31
+            heretek.opencode.harness=1.0.7
+
+      - name: Pre-publish Image Verification (Native amd64)
+        run: |
+          set -euo pipefail
+          echo "Building native amd64 verification image..."
+          BASE_IMG="${{ inputs.paperclip_base || 'ghcr.io/paperclipai/paperclip:sha-73659c6' }}"
+          docker build \
+            --build-arg PAPERCLIP_BASE_IMAGE="${BASE_IMG}" \
+            -f docker/Dockerfile \
+            -t heretek-crew:verify .
+
+          echo "Running verification assertions against built image..."
+          # 1. Verify compatibility shim executes and passes --help
+          docker run --rm heretek-crew:verify /usr/local/bin/opencode --version || \
+            docker run --rm heretek-crew:verify /usr/local/bin/opencode --help >/dev/null
+          # 2. Verify binary opencode-bin is present and functional
+          docker run --rm heretek-crew:verify /usr/local/bin/opencode-bin --version
+          # 3. Verify @heretek-ai/opencode-harness is installed globally
+          docker run --rm heretek-crew:verify npm ls -g --depth=0 @heretek-ai/opencode-harness
+          # 4. Verify system dependencies
+          docker run --rm heretek-crew:verify tini --version
+          docker run --rm heretek-crew:verify rg --version
+          docker run --rm heretek-crew:verify python3 --version
+          echo "Native image verification PASSED."
+
+      - name: Build and Push Multi-Arch Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            PAPERCLIP_BASE_IMAGE=${{ inputs.paperclip_base || 'ghcr.io/paperclipai/paperclip:sha-73659c6' }}
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

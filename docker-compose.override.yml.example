@@ -1,0 +1,15 @@
+# docker-compose.override.yml.example
+#
+# Copy this file to `docker-compose.override.yml` to automatically use the
+# prebuilt Heretek-Crew container image from GHCR by default, without needing
+# to specify `-f docker-compose.prebuilt.yml`.
+#
+# Setup:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#   docker compose pull paperclip
+#   docker compose up -d
+
+services:
+  paperclip:
+    build: !reset null
+    image: ${HERETEK_IMAGE:-ghcr.io/heretek-ai/heretek-crew:v1.0.0}

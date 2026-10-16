@@ -261,3 +261,18 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 ### Multi-Agent Relay Pipeline Runner
 - `scripts/dispatch-pipeline.sh`: Automated assembly line coordinator executing 6-phase relay: PRD (`product-director`) $\rightarrow$ Architecture/ADR (`system-architect`) $\rightarrow$ Decompose/Worktree (`tpm-scrum-lead`) $\rightarrow$ Dev (`<specialist>`) $\rightarrow$ QA (`tester` & `release-qa-officer`) $\rightarrow$ Archive & Merge (`git-drift-coord`).
 
+## Wave 6 Execution Log — GHCR Docker Publishing & Prebuilt Overrides (2026-10-16)
+
+### GitHub Actions GHCR Multi-Arch Publishing Pipeline
+- `.github/workflows/docker-publish.yml`: Automated multi-architecture (`linux/amd64`, `linux/arm64`) Docker container build and publishing workflow pushing to `ghcr.io/heretek-ai/heretek-crew`.
+- Built on top of pinned upstream base `ghcr.io/paperclipai/paperclip:sha-73659c6`.
+- Includes pre-publish in-container validation step verifying `/usr/local/bin/opencode`, `/usr/local/bin/opencode-bin`, and `@heretek-ai/opencode-harness`.
+- Uses BuildKit GitHub Actions cache (`type=gha,mode=max`) and least-privilege token permissions (`contents: read`, `packages: write`).
+
+### Zero-Compilation Prebuilt Docker Compose Stack
+- `docker-compose.prebuilt.yml`: Fail-closed override using `build: !reset null` and pinning `ghcr.io/heretek-ai/heretek-crew:v1.0.0` (with `${HERETEK_IMAGE}` fallback). Enables operators to spin up the entire 50-agent fleet without needing Node.js, pnpm, or source checkouts.
+- `docker-compose.override.yml.example`: Frictionless template allowing operators to opt into automatic prebuilt discovery for standard `docker compose up -d` invocations.
+- `Makefile`: Added `prebuilt-pull`, `prebuilt-up`, and `prebuilt-config` operational targets.
+- `scripts/smoke-test.sh`: Extended static test suite to 225 assertions verifying prebuilt files, config parsing, and absence of `:latest` tags.
+
+

@@ -96,7 +96,9 @@ echo "smoke-test mode=${MODE} url=${PAPERCLIP_URL}"
 # --- 1. required files -------------------------------------------------------
 section "1. required files"
 REQUIRED_FILES=(
-  docker-compose.yml docker/Dockerfile .env.example Makefile
+  docker-compose.yml docker-compose.prebuilt.yml docker-compose.override.yml.example
+  docker/Dockerfile .env.example Makefile
+  .github/workflows/docker-publish.yml
   scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh
   scripts/generate-50-roles.py scripts/worktree-manager.sh scripts/dispatch-pipeline.sh
   scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh
@@ -141,6 +143,14 @@ else
     else
       bad "docker compose config FAILED: $(head -c 300 "${TMP}/compose.err")"
     fi
+  fi
+
+  # Prebuilt compose override validation
+  if POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ \
+    docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml config -q 2>"${TMP}/compose-prebuilt.err"; then
+    ok "docker compose prebuilt override config parses"
+  else
+    bad "docker compose prebuilt override config FAILED: $(head -c 300 "${TMP}/compose-prebuilt.err")"
   fi
 fi
 
@@ -235,10 +245,15 @@ else
   ok "no :latest pins in any roles/*/opencode/opencode.json"
 fi
 if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)|npm install[^@]*opencode[^@]*$' \
-    docker-compose.yml docker/Dockerfile .env.example Makefile 2>/dev/null | grep -v '^.*#.*latest' | grep -q .; then
+    docker-compose.yml docker-compose.prebuilt.yml docker-compose.override.yml.example docker/Dockerfile .env.example Makefile 2>/dev/null | grep -v '^.*#.*latest' | grep -q .; then
   bad "found ':latest' style pin in ops files (must pin exact versions)"
 else
-  ok "no :latest pins in docker-compose.yml / Dockerfile / .env.example / Makefile"
+  ok "no :latest pins in docker-compose.yml / prebuilt overrides / Dockerfile / .env.example / Makefile"
+fi
+if grep -q 'ghcr\.io/heretek-ai/heretek-crew:v1\.0\.0' docker-compose.prebuilt.yml; then
+  ok "pin present: ghcr.io/heretek-ai/heretek-crew:v1.0.0 in docker-compose.prebuilt.yml"
+else
+  bad "pin MISSING: ghcr.io/heretek-ai/heretek-crew:v1.0.0 in docker-compose.prebuilt.yml"
 fi
 for pin in 'postgres:17-alpine' 'node:24-trixie-slim' '@opencode/cli@2.0.31' '127.0.0.1:3100'; do
   case "${pin}" in
