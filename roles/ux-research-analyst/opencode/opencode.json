@@ -1,0 +1,69 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "data/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:read",
+      "resource": "docs/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/research/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "duckdb_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "github_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/ux-research-analyst/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "duckdb": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "mcp-server-duckdb"
+        ]
+      },
+      "github": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@modelcontextprotocol/server-github"
+        ],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+        }
+      }
+    }
+  }
+}

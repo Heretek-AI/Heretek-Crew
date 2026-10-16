@@ -110,6 +110,8 @@ set `PROXY_DOMAIN`), or `docker compose --profile tailscale up -d`
 | `make down` | Stop the stack (named volumes keep all data) |
 | `make logs` | Follow `paperclip` service logs |
 | `make seed` | Seed company + fleet (safe to re-run; patches org-chart/budget drift) |
+| `make generate-roles` | Scaffold the 50-agent fleet on disk (`roles/<role-id>/`, idempotent) |
+| `make seed-50` | Seed the 50-agent fleet (safe to re-run; patches org-chart/budget drift) |
 | `make backup` | `pg_dump` → `backups/backup-YYYYMMDD-HHMMSS.sql.gz`, keeps newest 14 |
 | `make restore FILE=backups/…` | Confirm-then-restore a dump (`ON_ERROR_STOP=1`, fail-closed) |
 | `make test` | Smoke test: `--check-only` static suite, or full live suite when up |
@@ -188,6 +190,87 @@ Three levels, cheapest first:
    (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …); they are injected at runtime,
    never baked into the image.
 
+## 50-agent fleet (`roles-catalog/` → `roles/` → Paperclip)
+
+Beyond the 6-role prototype above, the repo ships a full **50-specialist
+enterprise fleet** specified in `roles-catalog/ROLE_CATALOG_50.md` (plus
+department modules `01_*.md` … `09_*.md`) and scaffolded on disk under
+`roles/<role-id>/`. Each fleet role carries the same four artifacts as the
+prototype roles: `AGENTS.md`, `opencode/opencode.json`,
+`.opencode/agents/<role-id>.md`, and skill packs under
+`.opencode/skills/*/SKILL.md`. The 6 prototype roles remain in place and stay
+covered by the smoke test (which discovers roles dynamically).
+
+### Department breakdown (9 departments, 50 roles)
+
+| Dept | Module | Roles | Count |
+|---|---|---|---|
+| 1. Executive & Product Management | `01_executive_and_product_management.md` | `exec-director`, `product-director`, `tpm-scrum-lead`, `system-architect`, `tech-docs-lead`, `ux-research-analyst` | 6 |
+| 2. Game Development | `02_game_development.md` | `game-systems-dev`, `graphics-shader-eng`, `engine-systems-eng`, `game-ai-dev`, `physics-sim-eng`, `tech-artist-pipeline` | 6 |
+| 3. Web & UI/UX Design | `03_web_and_ui_ux_design.md` | `ui-ux-designer`, `design-system-eng`, `a11y-specialist`, `fe-perf-eng`, `mobile-web-eng`, `brand-copy-spec` | 6 |
+| 4. Specialized Language Engineers | `04_specialized_language_engineers.md` | `rust-systems-spec`, `go-backend-eng`, `python-backend-spec`, `ts-node-fullstack`, `cpp-lowlevel-eng`, `java-kotlin-eng`, `ios-mobile-spec`, `android-mobile-spec` | 8 |
+| 5. Cloud, Platform & SRE | `05_cloud_platform_and_sre.md` | `cloud-platform-eng`, `k8s-orchestrator`, `sre-incident-eng`, `observability-eng`, `dba-specialist`, `cache-streaming-eng` | 6 |
+| 6. Quality Assurance & Verification | `06_quality_assurance_and_verification.md` | `e2e-browser-qa`, `api-contract-tester`, `load-stress-tester`, `sabotage-qa-tester`, `static-analysis-lead`, `release-qa-officer` | 6 |
+| 7. Defensive Security & Forensics | `07_defensive_security_and_forensics.md` | `appsec-engineer`, `cloud-sec-auditor`, `binary-reverse-eng`, `firmware-sec-analyst`, `threat-modeler`, `compliance-auditor` | 6 |
+| 8. Data & AI Systems | `08_data_and_ai_systems.md` | `data-pipeline-eng`, `vector-rag-spec`, `mlops-serving-eng`, `analytics-metrics-eng` | 4 |
+| 9. Operations & Maintenance | `09_operations_and_maintenance.md` | `dependency-patcher`, `git-drift-coord` | 2 |
+
+Notable specialist wiring (see the catalog for the full spec):
+`android-mobile-spec` drives `mobile-mcp` (`@mobile-next/mobile-mcp@0.1.2`)
+against a `docker-android` emulator over ADB (`127.0.0.1:5555`);
+`binary-reverse-eng` pairs `morluto/rea` + `r2mcp` (Radare2) with the
+`opencode-rea` plugin for evidence-based decompilation.
+
+### Seeding the fleet
+
+```bash
+# 1. Scaffold (or re-scaffold) all 50 role directories from the catalog
+make generate-roles            # python3 scripts/generate-50-roles.py (idempotent)
+
+# 2. Preview exactly what would be POSTed — no network calls
+bash scripts/seed-50-fleet.sh --dry-run   # 1 company + 50 agent payloads
+
+# 3. Seed "Heretek Autonomous Fleet" + 50 agents into Paperclip (idempotent)
+make seed-50                   # bash scripts/seed-50-fleet.sh
+```
+
+Model overrides: `MODEL_DEFAULT=…` re-targets all 50 agents,
+`MODEL_COORDINATOR=…` re-targets the three coordination roles
+(`exec-director`, `tpm-scrum-lead`, `system-architect`); heartbeat
+intervals via `TIMER_EXEC_SEC` / `TIMER_TPM_SEC` (defaults 1800 / 3600).
+
+**Budget note — known $90 catalog discrepancy.** The catalog's documented
+fleet cap is **$12,790.00 USD** (1,279,000 cents), but the authoritative
+verbatim per-role values sum to **$12,700.00 USD** (1,270,000 cents) — a
+$90.00 gap. The seeder uses the per-role catalog values verbatim, prints
+the computed total, and emits a `WARNING` on mismatch; it never invents
+budgets to force the total. The smoke test asserts this handling
+(51 payloads + budget total + `WARNING`) so the discrepancy stays visible
+until the catalog is amended.
+
+### How Paperclip routes tasks to on-demand specialists
+
+- **Isolation** — every agent is seeded with
+  `adapterConfig.env.XDG_CONFIG_HOME=/roles/<role-id>`, so Paperclip's
+  `prepareOpenCodeRuntimeConfig` copies that role's `opencode.json` into a
+  temp runtime dir, merges credentials/permissions, and hands it to
+  OpenCode v2. No image rebuild is needed to change a role: edit
+  `roles/<role-id>/`, re-run `make generate-roles` if the change belongs
+  in the generator, and re-seed.
+- **On-demand wake** — 48 of the 50 roles are seeded with
+  `heartbeat.enabled: false, intervalSec: 0, wakeOnAssignment: true,
+  wakeOnMention: true`: they consume no idle tokens and wake only when a
+  ticket is assigned or they are `@mentioned`. Only `exec-director`
+  (1800 s) and `tpm-scrum-lead` (3600 s) run recurring heartbeats.
+- **Hierarchy (`reportsTo`)** — `exec-director` answers to the human
+  board; `product-director` and `system-architect` report to
+  `exec-director`; `tpm-scrum-lead`, `tech-docs-lead`, and
+  `ux-research-analyst` report to `product-director`. Game, Web/Design,
+  Language, QA, and Ops roles report to `tpm-scrum-lead`; Cloud/SRE,
+  Security/Forensics, and Data/AI roles report to `system-architect`.
+  Seeding is two-pass (ensure agents, then PATCH `reportsTo` + budgets on
+  drift), so `make seed-50` is safe to re-run and heals org-chart drift.
+
 ## Version upgrades
 
 | What | Current | Where to change | Notes |
@@ -249,6 +332,8 @@ Makefile                  build/up/down/logs/seed/backup/restore/test
 scripts/
   opencode-shim.sh        v1→v2 CLI translation (--dir/--variant/--auto)
   seed-company.sh         idempotent company + 6-agent seeder (supports --dry-run)
+  generate-50-roles.py    50-role disk scaffolding generator (roles/<role-id>/)
+  seed-50-fleet.sh        idempotent 50-agent fleet seeder (supports --dry-run)
   backup-db.sh            timestamped pg_dump + retention
   restore-db.sh           confirmed, fail-closed restore
   smoke-test.sh           --check-only static suite + live ticket round-trip

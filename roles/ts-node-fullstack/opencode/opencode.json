@@ -1,0 +1,103 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "src/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "package.json",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "npm run build*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npm test*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npx tsc*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npx vitest*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "context7_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/ts-node-fullstack/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      },
+      "context7": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@upstash/context7-mcp"
+        ]
+      },
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server"
+        ]
+      }
+    }
+  }
+}

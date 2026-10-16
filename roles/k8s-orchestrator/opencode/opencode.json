@@ -1,0 +1,103 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "deploy/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "k8s/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "helm lint*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "helm template*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "kubeconform*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "kubectl diff*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "kubectl apply*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "kubectl delete*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "kubernetes_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "docker_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/k8s-orchestrator/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "kubernetes": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "mcp-server-kubernetes"
+        ],
+        "env": {
+          "KUBECONFIG": "/paperclip/secrets/kubeconfig-readonly"
+        }
+      },
+      "docker": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "docker-mcp"
+        ]
+      }
+    }
+  }
+}

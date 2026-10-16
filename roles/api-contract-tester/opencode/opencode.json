@@ -1,0 +1,87 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "tests/api/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "openapi/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "npx newman run*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npx spectral lint*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "schemathesis run*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "openapi_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/api-contract-tester/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "openapi": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "mcp-openapi-schema-explorer"
+        ]
+      },
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "tests/chaos/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/qa/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "cargo mutants*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npx stryker run*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npm test tests/chaos*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "cargo test chaos*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/sabotage-qa-tester/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      },
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "src/main/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "src/test/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "build.gradle*",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "pom.xml",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "./gradlew test*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "./gradlew check*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "./mvnw test*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/java-kotlin-eng/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      },
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server"
+        ]
+      }
+    }
+  }
+}

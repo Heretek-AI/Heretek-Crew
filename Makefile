@@ -19,10 +19,12 @@ COMPOSE := docker compose
 BACKUP_SCRIPT := ./scripts/backup-db.sh
 RESTORE_SCRIPT := ./scripts/restore-db.sh
 SEED_SCRIPT := ./scripts/seed-company.sh
+SEED_50_SCRIPT := ./scripts/seed-50-fleet.sh
+GENERATE_ROLES_SCRIPT := ./scripts/generate-50-roles.py
 SMOKE_SCRIPT := ./scripts/smoke-test.sh
 
 .DEFAULT_GOAL := help
-.PHONY: help build up down logs seed backup restore test
+.PHONY: help build up down logs seed seed-50 generate-roles backup restore test
 
 help: ## Show this help (lists all documented targets).
 	@echo "Heretek-Crew — Paperclip + OpenCode v2 stack"
@@ -47,6 +49,12 @@ logs: ## Follow logs of the paperclip service (Ctrl-C to stop).
 
 seed: ## Seed the company and 6-agent fleet (idempotent; see scripts/seed-company.sh --help).
 	$(SEED_SCRIPT)
+
+generate-roles: ## Scaffold the 50-agent fleet on disk (idempotent; see scripts/generate-50-roles.py --help).
+	python3 $(GENERATE_ROLES_SCRIPT)
+
+seed-50: ## Seed the 50-agent fleet (idempotent; see scripts/seed-50-fleet.sh --help).
+	$(SEED_50_SCRIPT)
 
 backup: ## Create a timestamped database dump in backups/ (with retention pruning).
 	$(BACKUP_SCRIPT)

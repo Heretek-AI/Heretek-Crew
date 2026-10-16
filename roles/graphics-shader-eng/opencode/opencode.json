@@ -1,0 +1,86 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "src/shaders/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "src/rendering/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "glslangValidator*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "naga*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "spirv-val*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "cargo test rendering*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/graphics-shader-eng/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      },
+      "filesystem": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/paperclip/workspaces"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/security/firmware/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "readelf*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "objdump*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "checksec*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "binwalk*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "r2_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "filesystem_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/firmware-sec-analyst/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "radare2": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "r2mcp"
+        ]
+      },
+      "filesystem": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/paperclip/workspaces"
+        ]
+      }
+    }
+  }
+}

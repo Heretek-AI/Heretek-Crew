@@ -1,0 +1,76 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/security/advisories/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "semgrep scan*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "trivy fs*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "semgrep_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/appsec-engineer/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "semgrep": {
+        "type": "local",
+        "command": [
+          "semgrep",
+          "mcp",
+          "--transport",
+          "stdio"
+        ]
+      },
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      }
+    }
+  }
+}

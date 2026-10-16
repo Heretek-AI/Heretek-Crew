@@ -1,0 +1,155 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*lock*",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "package.json",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "Cargo.toml",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "Cargo.lock",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "pyproject.toml",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "go.mod",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "go.sum",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "npm update*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npm install*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "npm test*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "cargo update*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "cargo test*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "uv lock*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "pytest*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "go get*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "go mod tidy*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "go test*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git checkout*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git commit*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/dependency-patcher/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server"
+        ]
+      },
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      }
+    }
+  }
+}

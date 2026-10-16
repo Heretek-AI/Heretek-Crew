@@ -1,0 +1,81 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "schemas/events/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "src/cache/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "deploy/kafka/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "redis_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "kafka_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/cache-streaming-eng/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "redis": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "mcp-server-redis"
+        ],
+        "env": {
+          "REDIS_URL": "redis://redis:6379"
+        }
+      },
+      "kafka": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "kafka-mcp-server"
+        ],
+        "env": {
+          "KAFKA_BROKERS": "kafka:9092"
+        }
+      }
+    }
+  }
+}

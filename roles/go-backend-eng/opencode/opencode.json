@@ -1,0 +1,108 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "cmd/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "internal/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "pkg/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "go.*",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "go build*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "go test*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "golangci-lint*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "go mod*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/go-backend-eng/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      },
+      "context7": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@upstash/context7-mcp"
+        ]
+      },
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server"
+        ]
+      }
+    }
+  }
+}

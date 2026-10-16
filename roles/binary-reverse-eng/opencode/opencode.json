@@ -1,0 +1,109 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/protocols/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/forensics/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "r2 -q*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "rabin2*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "strings*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "tshark*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "rea_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "r2_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "filesystem_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/binary-reverse-eng/skills"
+  ],
+  "plugins": [
+    "opencode-rea",
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "rea": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@morluto/rea-mcp"
+        ],
+        "env": {
+          "GHIDRA_INSTALL_DIR": "/opt/ghidra"
+        }
+      },
+      "radare2": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "r2mcp"
+        ]
+      },
+      "filesystem": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/paperclip/workspaces"
+        ]
+      }
+    }
+  }
+}

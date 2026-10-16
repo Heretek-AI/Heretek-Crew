@@ -1,0 +1,127 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "app/src/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "build.gradle*",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "app/build.gradle*",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/evidence/android-artemis/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "./gradlew testDebugUnitTest*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "./gradlew assembleDebug*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "./gradlew ktlintCheck*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "adb connect*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "adb logcat*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "artemis explore*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "mobile_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/android-mobile-spec/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "mobile": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@mobile-next/mobile-mcp@0.1.2"
+        ],
+        "env": {
+          "ADB_HOST": "docker-android",
+          "ADB_PORT": "5555"
+        }
+      },
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "codebase-memory-mcp"
+        ]
+      },
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server"
+        ]
+      }
+    }
+  }
+}

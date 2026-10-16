@@ -8,13 +8,23 @@
 # Modes:
 #   --check-only   Static checks only; needs NO live server, NO docker daemon,
 #                  NO secrets. Safe for CI lint gates. Verifies:
-#                    1. required repo files exist
+#                    1. required repo files exist (incl. 50-fleet generator +
+#                       seeder when the fleet track is present)
 #                    2. `docker compose config` parses (with throwaway dummy
 #                       secrets when .env is absent — validation only)
-#                    3. all roles/*/opencode/opencode.json are valid v2 configs
+#                    3. every roles/*/opencode/opencode.json discovered
+#                       dynamically under roles/ is a valid v2 config
 #                       (valid JSON, provider/model string, non-empty
-#                       permissions) and no `:latest` image pins exist
-#                    4. seed script dry-run emits company + 6 agent payloads
+#                       permissions with a fail-closed deny tail,
+#                       non-empty rules where present) with pinned MCP
+#                       commands (no `:latest`), plus a non-empty
+#                       AGENTS.md and .opencode/agents/<role>.md per
+#                       role — legacy 6 prototype roles still validated
+#                       when present
+#                    4. seed dry-runs emit company + agent payloads:
+#                       seed-company.sh (company + 6 agents) and
+#                       seed-50-fleet.sh (1 company + 50 agents =
+#                       51 payloads, budget WARNING preserved)
 #                    5. shim translation: --dir stripped, --variant merged into
 #                       --model#variant, exactly one --auto, --session and
 #                       non-run subcommands pass through, `--` terminator kept
@@ -87,7 +97,8 @@ echo "smoke-test mode=${MODE} url=${PAPERCLIP_URL}"
 section "1. required files"
 REQUIRED_FILES=(
   docker-compose.yml docker/Dockerfile .env.example Makefile
-  scripts/opencode-shim.sh scripts/seed-company.sh
+  scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh
+  scripts/generate-50-roles.py
   scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh
 )
 for f in "${REQUIRED_FILES[@]}"; do
@@ -105,7 +116,7 @@ for role in director pm programmer tester qa designer; do
     bad "roles/${role}/AGENTS.md MISSING"
   fi
 done
-for s in scripts/opencode-shim.sh scripts/seed-company.sh scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh; do
+for s in scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh; do
   if [[ -x "${s}" ]]; then ok "${s} executable"; else bad "${s} NOT executable"; fi
 done
 
@@ -132,26 +143,95 @@ else
 fi
 
 # --- 3. role configs valid + pins -------------------------------------------
+# Dynamically discovers every role directory under roles/ (the 50-agent
+# fleet plus the legacy 6 prototype roles when present — never a hardcoded
+# list), then per role asserts: valid v2 opencode.json (provider/model,
+# non-empty permissions with a fail-closed deny tail, non-empty rules
+# where present), pinned MCP commands (no :latest in either the legacy
+# flat `mcp: {<name>: {command}}` shape or the fleet `mcp.servers` shape),
+# and non-empty AGENTS.md + .opencode/agents/<role>.md charters.
 section "3. role opencode.json validity + version pins"
-for role in director pm programmer tester qa designer; do
+ROLE_COUNT=0
+for roledir in roles/*/; do
+  [[ -d "${roledir}" ]] || continue
+  role="$(basename "${roledir}")"
   f="roles/${role}/opencode/opencode.json"
-  if ROLE="$role" FILE="$f" python3 -c '
-import json, os, re, sys
-doc = json.load(open(os.environ["FILE"]))
+  ROLE_COUNT=$((ROLE_COUNT + 1))
+  if [[ ! -f "${f}" ]]; then
+    bad "${f} MISSING (role dir exists without a v2 config)"
+    continue
+  fi
+  if ROLE="$role" FILE="$f" python3 -c 'import json, os
+path = os.environ["FILE"]
+role = os.environ["ROLE"]
+doc = json.load(open(path))
 assert isinstance(doc.get("model"), str) and "/" in doc["model"], "model must be provider/model"
 assert isinstance(doc.get("permissions"), list) and doc["permissions"], "permissions must be non-empty"
 for p in doc["permissions"]:
     assert p.get("effect") in ("allow", "deny", "ask"), "permission effect must be allow/deny/ask"
-for name, mcp in (doc.get("mcp") or {}).items():
-    cmd = " ".join(mcp.get("command", []) if isinstance(mcp.get("command"), list) else [str(mcp.get("command", ""))])
-    assert "latest" not in cmd, "MCP %s must not use latest" % name
-print("role %s model=%s perms=%d" % (os.environ["ROLE"], doc["model"], len(doc["permissions"])))
-'; then
-    ok "${f} valid"
+allow_all = (
+    len(doc["permissions"]) == 1
+    and doc["permissions"][0].get("action") == "*"
+    and doc["permissions"][0].get("resource") == "*"
+    and doc["permissions"][0].get("effect") == "allow"
+)
+assert doc["permissions"][-1].get("effect") == "deny" or allow_all, \
+    "permissions must end with a fail-closed deny (bare allow-all only for documented container-sandboxed roles)"
+rules = doc.get("rules")
+if rules is not None:
+    assert isinstance(rules, list) and rules, "rules, when present, must be non-empty"
+def iter_commands(node):
+    if isinstance(node, dict):
+        if "command" in node:
+            cmd = node["command"]
+            yield " ".join(cmd) if isinstance(cmd, list) else str(cmd)
+        elif isinstance(node.get("servers"), dict):
+            for child in node["servers"].values():
+                yield from iter_commands(child)
+        elif isinstance(node.get("mcpServers"), dict):
+            for child in node["mcpServers"].values():
+                yield from iter_commands(child)
+        else:
+            for child in node.values():
+                if isinstance(child, dict):
+                    yield from iter_commands(child)
+    elif isinstance(node, list):
+        for child in node:
+            yield from iter_commands(child)
+for cmd in iter_commands(doc.get("mcp") or {}):
+    assert "latest" not in cmd, "MCP command must not use latest: %s" % cmd
+print("role %s model=%s perms=%d%s" % (role, doc["model"], len(doc["permissions"]), " ALLOW-ALL" if allow_all else ""))
+' >"${TMP}/role.out" 2>"${TMP}/role.err"; then
+    if grep -q ' ALLOW-ALL' "${TMP}/role.out"; then
+      ok "${f} valid (documented allow-all container-sandboxed role; see README security model)"
+    else
+      ok "${f} valid (model + perms + deny tail + pinned MCP)"
+    fi
   else
-    bad "${f} INVALID"
+    bad "${f} INVALID: $(head -c 200 "${TMP}/role.err")"
+  fi
+  if [[ -s "roles/${role}/AGENTS.md" ]]; then
+    ok "roles/${role}/AGENTS.md present and non-empty"
+  else
+    bad "roles/${role}/AGENTS.md MISSING or empty"
+  fi
+  if [[ -s "roles/${role}/.opencode/agents/${role}.md" ]]; then
+    ok "roles/${role}/.opencode/agents/${role}.md present and non-empty"
+  else
+    bad "roles/${role}/.opencode/agents/${role}.md MISSING or empty"
   fi
 done
+if [[ "${ROLE_COUNT}" -eq 0 ]]; then
+  bad "no role directories discovered under roles/"
+else
+  ok "discovered ${ROLE_COUNT} role directories under roles/"
+fi
+if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)' \
+    roles/*/opencode/opencode.json 2>/dev/null | grep -q .; then
+  bad "found ':latest'/@latest pin in a role opencode.json (must pin exact versions)"
+else
+  ok "no :latest pins in any roles/*/opencode/opencode.json"
+fi
 if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)|npm install[^@]*opencode[^@]*$' \
     docker-compose.yml docker/Dockerfile .env.example Makefile 2>/dev/null | grep -v '^.*#.*latest' | grep -q .; then
   bad "found ':latest' style pin in ops files (must pin exact versions)"
@@ -181,8 +261,8 @@ else
   bad "non-root runtime note missing from docker/Dockerfile"
 fi
 
-# --- 4. seed dry-run ---------------------------------------------------------
-section "4. seed-company.sh --dry-run"
+# --- 4. seed dry-runs ---------------------------------------------------------
+section "4. seed dry-runs (seed-company.sh + seed-50-fleet.sh)"
 if ./scripts/seed-company.sh --dry-run >"${TMP}/seed.out" 2>"${TMP}/seed.err"; then
   if grep -q 'Acme Autonomous Corp' "${TMP}/seed.out" \
     && grep -q 'opencode_local' "${TMP}/seed.out" \
@@ -194,6 +274,26 @@ if ./scripts/seed-company.sh --dry-run >"${TMP}/seed.out" 2>"${TMP}/seed.err"; t
   fi
 else
   bad "seed dry-run exited nonzero: $(head -c 300 "${TMP}/seed.err")"
+fi
+if [[ -f scripts/seed-50-fleet.sh ]]; then
+  if ./scripts/seed-50-fleet.sh --dry-run >"${TMP}/seed50.out" 2>"${TMP}/seed50.err"; then
+    SEED50_NAMES="$(grep -c '"name"' "${TMP}/seed50.out" || true)"
+    if [[ "${SEED50_NAMES}" -eq 51 ]] \
+      && grep -q 'Heretek Autonomous Fleet' "${TMP}/seed50.out" \
+      && grep -q 'opencode_local' "${TMP}/seed50.out" \
+      && grep -q 'XDG_CONFIG_HOME' "${TMP}/seed50.out" \
+      && grep -q 'dangerouslySkipPermissions' "${TMP}/seed50.out" \
+      && grep -q 'total fleet budget' "${TMP}/seed50.out" \
+      && grep -q 'WARNING' "${TMP}/seed50.err"; then
+      ok "seed-50 dry-run emits 51 payloads (1 company + 50 agents: opencode_local, XDG_CONFIG_HOME, skipPermissions, budget total + WARNING)"
+    else
+      bad "seed-50 dry-run output unexpected (name keys=${SEED50_NAMES}, want 51 with fleet payload keys + budget WARNING)"
+    fi
+  else
+    bad "seed-50 dry-run exited nonzero: $(head -c 300 "${TMP}/seed50.err")"
+  fi
+else
+  bad "scripts/seed-50-fleet.sh MISSING"
 fi
 
 # --- 5. shim translation -----------------------------------------------------

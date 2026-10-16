@@ -1,0 +1,84 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "deploy/mlops/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "tools/mlops/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "python3 tools/mlops/*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "curl -s http://*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "ollama_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "docker_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/mlops-serving-eng/skills"
+  ],
+  "plugins": [
+    "opencode-mem"
+  ],
+  "mcp": {
+    "servers": {
+      "ollama": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "ollama-mcp"
+        ],
+        "env": {
+          "OLLAMA_HOST": "http://ollama:11434"
+        }
+      },
+      "docker": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "docker-mcp"
+        ]
+      }
+    }
+  }
+}
