@@ -1,0 +1,14 @@
+# Heretek-Crew ignores — fail-closed hygiene for secrets, dumps, workspace outputs.
+# - .env / .env.local hold real secrets (see .env.example template). NEVER commit them.
+# - backups/ holds pg_dump outputs (database bytes). NEVER commit them.
+# - workspaces/ holds agent checkouts / runtime outputs; keep the dir, ignore contents.
+# - Standard hygiene: logs, OS metadata, node_modules.
+
+.env
+.env.local
+backups/
+workspaces/*
+!workspaces/.gitkeep
+*.log
+.DS_Store
+node_modules/
