@@ -1,1 +1,0 @@
-Bind mount target for Paperclip role configs (populated by Task 3: roles/<role>/opencode/opencode.json). Mounted read-only at /roles.
