@@ -9,7 +9,10 @@
 backups/
 workspaces/*
 !workspaces/.gitkeep
+.worktrees/*
+!.worktrees/.gitkeep
 *.log
+
 .DS_Store
 node_modules/
 __pycache__/

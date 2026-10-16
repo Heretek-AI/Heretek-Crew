@@ -33,6 +33,11 @@
       "effect": "allow"
     },
     {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
@@ -42,7 +47,8 @@
     "/roles/tpm-scrum-lead/skills"
   ],
   "plugins": [
-    "opencode-mem"
+    "opencode-mem",
+    "opencode-harness"
   ],
   "mcp": {
     "servers": {

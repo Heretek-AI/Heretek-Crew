@@ -1,0 +1,36 @@
+name: Heretek-Crew Fleet Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Linting & Verification Tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck curl
+
+      - name: Run Shim Unit Tests
+        run: |
+          bash scripts/test-shim.sh
+
+      - name: Run Static Smoke Tests
+        run: |
+          bash scripts/smoke-test.sh --check-only
+
+      - name: Lint Shell Scripts
+        run: |
+          shellcheck scripts/*.sh

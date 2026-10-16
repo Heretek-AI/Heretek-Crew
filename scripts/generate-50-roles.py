@@ -327,6 +327,9 @@ def normalize_config(role):
             and p.get("effect") == "deny"
         )
     ]
+    harness_perm = {"action": "harness_*", "resource": "*", "effect": "allow"}
+    if harness_perm not in perms:
+        perms.append(harness_perm)
     perms.append(dict(DENY_ALL_SHELL))
     cfg["permissions"] = perms
 
@@ -336,6 +339,8 @@ def normalize_config(role):
 
     if "plugins" not in cfg or not cfg["plugins"]:
         die("role '%s' plugins list is missing or empty" % role_id)
+    if "opencode-harness" not in cfg["plugins"]:
+        cfg["plugins"].append("opencode-harness")
     mcp = cfg.get("mcp")
     if not isinstance(mcp, dict) or not mcp.get("servers"):
         die("role '%s' mcp.servers mapping is missing or empty" % role_id)

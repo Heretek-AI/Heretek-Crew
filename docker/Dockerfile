@@ -29,7 +29,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Promote pins to ENV so `docker inspect` records exactly what is installed.
 ENV OPENCODE_CLI_VERSION=2.0.31 \
-    OPENCODE_CLIENT_VERSION=2.0.31
+    OPENCODE_CLIENT_VERSION=2.0.31 \
+    OPENCODE_HARNESS_VERSION=1.0.7
 
 # Everything in this layer needs root; the runtime user is dropped to `node`
 # by the inherited official entrypoint (see USER note below).
@@ -48,8 +49,9 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     npm install --global --omit=dev \
         "@opencode/cli@${OPENCODE_CLI_VERSION}" \
-        "@opencode/client@${OPENCODE_CLIENT_VERSION}"; \
-    npm ls --global --depth=0 "@opencode/cli" "@opencode/client"; \
+        "@opencode/client@${OPENCODE_CLIENT_VERSION}" \
+        "@heretek-ai/opencode-harness@${OPENCODE_HARNESS_VERSION}"; \
+    npm ls --global --depth=0 "@opencode/cli" "@opencode/client" "@heretek-ai/opencode-harness"; \
     test -x /usr/local/bin/opencode || { echo "ERROR: /usr/local/bin/opencode missing after npm install" >&2; exit 1; }; \
     case "$(readlink /usr/local/bin/opencode)" in \
         *@opencode/cli*) ;; \

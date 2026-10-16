@@ -43,6 +43,11 @@
       "effect": "allow"
     },
     {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
@@ -52,7 +57,8 @@
     "/roles/a11y-specialist/skills"
   ],
   "plugins": [
-    "opencode-mem"
+    "opencode-mem",
+    "opencode-harness"
   ],
   "mcp": {
     "servers": {

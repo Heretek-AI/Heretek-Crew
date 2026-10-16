@@ -68,6 +68,11 @@
       "effect": "allow"
     },
     {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
@@ -77,7 +82,8 @@
     "/roles/k8s-orchestrator/skills"
   ],
   "plugins": [
-    "opencode-mem"
+    "opencode-mem",
+    "opencode-harness"
   ],
   "mcp": {
     "servers": {

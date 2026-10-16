@@ -115,6 +115,9 @@ set `PROXY_DOMAIN`), or `docker compose --profile tailscale up -d`
 | `make backup` | `pg_dump` → `backups/backup-YYYYMMDD-HHMMSS.sql.gz`, keeps newest 14 |
 | `make restore FILE=backups/…` | Confirm-then-restore a dump (`ON_ERROR_STOP=1`, fail-closed) |
 | `make test` | Smoke test: `--check-only` static suite, or full live suite when up |
+| `make worktree-create TICKET=…` | Provision isolated Git worktree for ticket (`workspaces/tickets/<id>`) |
+| `make worktree-archive TICKET=…` | Archive diff, status, and commits to `.worktrees/archive/` and detach |
+| `make pipeline-dry-run PROMPT=…` | Trace 6-phase autonomous factory pipeline (PRD $\rightarrow$ Arch $\rightarrow$ Dev $\rightarrow$ QA $\rightarrow$ Merge) |
 
 Backups live in `backups/` (git-ignored). Retention is configurable via
 `BACKUP_DIR` / `BACKUP_RETENTION_COUNT` env vars. Restore is destructive by

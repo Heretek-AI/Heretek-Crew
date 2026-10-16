@@ -38,6 +38,11 @@
       "effect": "allow"
     },
     {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
@@ -48,7 +53,8 @@
   ],
   "plugins": [
     "opencode-mem",
-    "@prevalentware/opencode-goal-plugin"
+    "@prevalentware/opencode-goal-plugin",
+    "opencode-harness"
   ],
   "mcp": {
     "servers": {

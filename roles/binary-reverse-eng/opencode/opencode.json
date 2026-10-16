@@ -63,6 +63,11 @@
       "effect": "allow"
     },
     {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
@@ -73,7 +78,8 @@
   ],
   "plugins": [
     "opencode-rea",
-    "opencode-mem"
+    "opencode-mem",
+    "opencode-harness"
   ],
   "mcp": {
     "servers": {

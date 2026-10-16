@@ -98,7 +98,7 @@ section "1. required files"
 REQUIRED_FILES=(
   docker-compose.yml docker/Dockerfile .env.example Makefile
   scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh
-  scripts/generate-50-roles.py
+  scripts/generate-50-roles.py scripts/worktree-manager.sh scripts/dispatch-pipeline.sh
   scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh
 )
 for f in "${REQUIRED_FILES[@]}"; do
@@ -116,7 +116,9 @@ for role in director pm programmer tester qa designer; do
     bad "roles/${role}/AGENTS.md MISSING"
   fi
 done
-for s in scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh; do
+for s in scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh \
+         scripts/worktree-manager.sh scripts/dispatch-pipeline.sh \
+         scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh; do
   if [[ -x "${s}" ]]; then ok "${s} executable"; else bad "${s} NOT executable"; fi
 done
 

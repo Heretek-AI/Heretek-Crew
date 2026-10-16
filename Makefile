@@ -69,3 +69,15 @@ restore: ## Restore a dump: make restore FILE=backups/backup-YYYYMMDD-HHMMSS.sql
 
 test: ## Run the end-to-end smoke test (static checks; live checks when the stack is up).
 	$(SMOKE_SCRIPT)
+
+worktree-create: ## Create isolated ticket worktree: make worktree-create TICKET=tkt-101 [BRANCH=main]
+	@if [ -z "$(TICKET)" ]; then echo "error: TICKET= is required" >&2; exit 1; fi
+	./scripts/worktree-manager.sh create "$(TICKET)" "$${BRANCH:-main}"
+
+worktree-archive: ## Archive ticket worktree: make worktree-archive TICKET=tkt-101 [BRANCH=main]
+	@if [ -z "$(TICKET)" ]; then echo "error: TICKET= is required" >&2; exit 1; fi
+	./scripts/worktree-manager.sh archive "$(TICKET)" "$${BRANCH:-main}"
+
+pipeline-dry-run: ## Trace 6-phase autonomous relay pipeline: make pipeline-dry-run PROMPT="Feature desc"
+	./scripts/dispatch-pipeline.sh --dry-run "$${PROMPT:-Build test feature}"
+

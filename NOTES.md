@@ -245,3 +245,19 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
   - `roles/tpm-scrum-lead/.opencode/skills/planning-with-files/SKILL.md`
   - `roles/brand-copy-spec/.opencode/skills/humanizer/SKILL.md`
 
+## Wave 5 Execution Log — Autonomous AI Factory Upgrades (2026-10-16)
+
+### Git Worktree Concurrency & Archiving Engine
+- `scripts/worktree-manager.sh`: Isolated worktree lifecycle engine. Prevents multi-agent git concurrency collisions by spinning up per-ticket worktrees (`workspaces/tickets/<ticket-id>`). On task completion, archives git diffs, status logs, commit history, and manifests into `.worktrees/archive/<ticket-id>-<timestamp>/` before worktree detachment.
+
+### Containerized Local CI/CD Runner (`act`)
+- `docker-compose.sidecars.yml`: Added Category J `local-ci-runner` (`ghcr.io/catthehacker/ubuntu:act-22.04`) under profiles `ci` and `qa-testing`. Connects to `docker-socket-proxy:2375` on the `heretek` network to execute GitHub Actions workflows locally inside Docker.
+- `.github/workflows/ci.yml`: Standard fleet verification workflow executing shim tests, static smoke assertions, and shellcheck linting.
+
+### OpenCode Harness (`@heretek-ai/opencode-harness@1.0.7`) Fleet Integration
+- `docker/Dockerfile`: Installed `@heretek-ai/opencode-harness@1.0.7` globally in the container.
+- `scripts/generate-50-roles.py`: Injected `"opencode-harness"` into `plugins` and `{ "action": "harness_*", "resource": "*", "effect": "allow" }` into `permissions` across all 50 roles. Provides FNV-1a hash-anchored edits (`file_hash_edit`), AST structural transforms, blast radius analysis, and doom-loop recovery circuit breakers.
+
+### Multi-Agent Relay Pipeline Runner
+- `scripts/dispatch-pipeline.sh`: Automated assembly line coordinator executing 6-phase relay: PRD (`product-director`) $\rightarrow$ Architecture/ADR (`system-architect`) $\rightarrow$ Decompose/Worktree (`tpm-scrum-lead`) $\rightarrow$ Dev (`<specialist>`) $\rightarrow$ QA (`tester` & `release-qa-officer`) $\rightarrow$ Archive & Merge (`git-drift-coord`).
+

@@ -73,6 +73,11 @@
       "effect": "allow"
     },
     {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
@@ -82,7 +87,8 @@
     "/roles/git-drift-coord/skills"
   ],
   "plugins": [
-    "opencode-mem"
+    "opencode-mem",
+    "opencode-harness"
   ],
   "mcp": {
     "servers": {

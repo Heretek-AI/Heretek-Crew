@@ -507,6 +507,23 @@ services:
     cpus: "2.0"
     mem_limit: 4g
 
+  # ============================================================================
+  # CATEGORY J: CONTAINERIZED LOCAL CI/CD RUNNER (ACT)
+  # ============================================================================
+  local-ci-runner:
+    image: ghcr.io/catthehacker/ubuntu:act-22.04
+    profiles: ["ci", "qa-testing"]
+    restart: "no"
+    environment:
+      DOCKER_HOST: "tcp://docker-socket-proxy:2375"
+    volumes:
+      - ./.github/workflows:/workflows:ro
+      - ./workspaces:/workspaces
+    networks:
+      - heretek
+    cpus: "2.0"
+    mem_limit: 4g
+
 # ==============================================================================
 # VOLUMES
 # ==============================================================================
