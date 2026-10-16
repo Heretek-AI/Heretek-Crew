@@ -24,33 +24,33 @@ Paperclip source: extended from the official build in `/tmp/paperclip`
 
 ```mermaid
 graph TD
-    Human([Human board]) -->|HTTPS / Tailscale| Proxy
+    Human(["Human board"]) -->|HTTPS / Tailscale| Proxy
     Human -->|http://127.0.0.1:3100| Paperclip
 
-    subgraph Host / Docker network `heretek` - private by default
-        Proxy{Caddy reverse proxy<br/>profile: proxy<br/>+ Tailscale sidecar<br/>profile: tailscale}
+    subgraph HostNetwork ["Host / Docker network 'heretek' (private by default)"]
+        Proxy{"Caddy reverse proxy<br/>profile: proxy<br/>+ Tailscale sidecar<br/>profile: tailscale"}
         Proxy -->|paperclip:3100| Paperclip
 
-        subgraph Paperclip container - user `node` UID 1000
-            Server[Paperclip server + UI<br/>PORT 3100]
-            Shim[opencode shim<br/>/usr/local/bin/opencode]
-            RealBin[real OpenCode v2 CLI<br/>/usr/local/bin/opencode-bin<br/>@opencode/cli@2.0.31]
-            Server -->|spawn `opencode run --format json`<br/>cwd = agent workspace| Shim
-            Shim -->|strips `--dir`<br/>merges `--variant` into `--model#variant`<br/>injects `--auto`| RealBin
+        subgraph PaperclipContainer ["Paperclip container (user 'node' UID 1000)"]
+            Server["Paperclip server + UI<br/>PORT 3100"]
+            Shim["opencode shim<br/>/usr/local/bin/opencode"]
+            RealBin["real OpenCode v2 CLI<br/>/usr/local/bin/opencode-bin<br/>@opencode/cli@2.0.31"]
+            Server -->|spawn opencode run --format json<br/>cwd = agent workspace| Shim
+            Shim -->|strips --dir<br/>merges --variant into --model#variant<br/>injects --auto| RealBin
         end
 
-        Server -->|DATABASE_URL<br/>postgres:5432| Postgres[(PostgreSQL 17<br/>volume pgdata)]
+        Server -->|DATABASE_URL<br/>postgres:5432| Postgres[("PostgreSQL 17<br/>volume pgdata")]
         Server -->|reads company / agents / runs| Postgres
 
-        RolesDir([./roles - mounted ro at /roles<br/>per-role opencode.json])
+        RolesDir(["./roles - mounted ro at /roles<br/>per-role opencode.json"])
         Server -->|agent env XDG_CONFIG_HOME=/roles/role<br/>copied to temp runtime config| RolesDir
         RealBin -->|loads merged role config| RolesDir
 
-        Workspaces([./workspaces - mounted at<br/>/paperclip/workspaces<br/>agent checkouts])
+        Workspaces(["./workspaces - mounted at<br/>/paperclip/workspaces<br/>agent checkouts"])
         RealBin -->|edits / runs in| Workspaces
     end
 
-    EnvFile[.env - secrets, never baked into image] -.->|POSTGRES_PASSWORD<br/>BETTER_AUTH_SECRET<br/>API keys| Paperclip
+    EnvFile[".env - secrets, never baked into image"] -.->|POSTGRES_PASSWORD<br/>BETTER_AUTH_SECRET<br/>API keys| Paperclip
     EnvFile -.-> Postgres
 ```
 
