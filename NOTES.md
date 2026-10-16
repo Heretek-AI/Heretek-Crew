@@ -225,3 +225,23 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
   (`companies.ts`, `agents.ts`), `packages/shared/src/validators/agent.ts`,
   `packages/shared/src/constants.ts` (`AGENT_ROLES`)
 
+## Wave 4 Execution Log — 50-Role Fleet & 41-Repo Adversarial Review (2026-10-16)
+
+### 50-Agent Fleet Scaffolding & Seeding Engine
+- `scripts/generate-50-roles.py`: Parser-driven generator creating 50 concrete role directories (`roles/<role-id>/`), 52 procedural `SKILL.md` files, and native `opencode.json` files with strict Least-Privilege permissions.
+- `scripts/seed-50-fleet.sh`: Two-pass idempotent Paperclip seeding script provisioning the complete 50-agent corporate hierarchy, on-demand heartbeats (`wakeOnAssignment: true`, `wakeOnMention: true`), and exact per-role budgets summing to $12,700.00 USD (1,270,000 cents).
+- `scripts/smoke-test.sh`: Expanded to dynamically discover all 56 roles under `roles/` (50 fleet + 6 bootstrap), verifying valid JSON, fail-closed deny tails, non-empty `AGENTS.md`, and zero `:latest` pins across 216 static assertions.
+
+### 41-Repository Adversarial Review Decisions
+- Council evaluated 41 ecosystem repositories across 6 domains: 7 Adopt, 15 Adapt, 10 Watchlist, 9 Reject.
+- Top 5 High-Impact Adoptions:
+  1. `NVIDIA/SkillSpector`: Pre-install CI gate scanning agent skills across 71 detection rules (SARIF output).
+  2. `OthmanAdi/planning-with-files`: State persistence (`task_plan.md`, `findings.md`, `progress.md`) surviving context compaction.
+  3. `anthropics/skills`: Conformance baseline for metadata and discovery.
+  4. `pbakaus/impeccable` + `leonxlnx/taste-skill`: Deterministic UI polish and layout verification loop via `browserless`.
+  5. `alibaba/open-code-review`: Multi-pass semantic LLM code review pilot.
+- Concrete skills vendored directly into `roles/`:
+  - `roles/design-system-eng/.opencode/skills/impeccable-taste/SKILL.md`
+  - `roles/tpm-scrum-lead/.opencode/skills/planning-with-files/SKILL.md`
+  - `roles/brand-copy-spec/.opencode/skills/humanizer/SKILL.md`
+
