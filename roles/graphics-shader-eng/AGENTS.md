@@ -34,11 +34,12 @@
    - **Transport**: `stdio`
    - **Command**: `codebase-memory-mcp`
    - **Configuration / Environment Variables**: None.
-2. **Filesystem MCP Server**:
-   - **Package / Repo**: `@modelcontextprotocol/server-filesystem` (npm verified v1.0.0)
-   - **Transport**: `stdio`
-   - **Command**: `npx -y @modelcontextprotocol/server-filesystem`
-   - **Configuration / Environment Variables**: Scoped to workspace root.
+
+> Note (Wave 2 P0-2): this role declares no filesystem MCP server — the
+> shared-workspace-rooted entry carried no matching permission allow, so it
+> was dead config and a latent bypass risk. Shader reads/writes go through
+> the `fs:*` permissions in `opencode.json` (`src/shaders/**`,
+> `src/rendering/**`).
 
 ## 5. Skills
 

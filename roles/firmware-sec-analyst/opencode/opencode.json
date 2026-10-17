@@ -48,14 +48,129 @@
       "effect": "allow"
     },
     {
+      "action": "filesystem_read*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "filesystem_list*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "filesystem_directory*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "filesystem_search*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "filesystem_get*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "filesystem_write*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "filesystem_edit*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "filesystem_create*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "filesystem_move*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
       "action": "filesystem_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "harness_file_hash_read",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_file_hash_edit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ast_structural_search",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ast_structural_rewrite",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ui_geometry_audit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_repo_map",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_blast_radius",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_file_outline",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_symbol_references",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_rename_symbol",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_verify_scoped",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_architecture_audit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_checkpoint_create",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_checkpoint_rollback",
       "resource": "*",
       "effect": "allow"
     },
     {
       "action": "harness_*",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "shell",
@@ -85,7 +200,7 @@
           "npx",
           "-y",
           "@modelcontextprotocol/server-filesystem@1.0.0",
-          "/paperclip/workspaces"
+          "/paperclip/workspaces/binaries"
         ]
       }
     }

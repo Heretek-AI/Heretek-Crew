@@ -34,6 +34,12 @@
    - **Transport**: `stdio`
    - **Command**: `npx -y aws-mcp`
    - **Configuration / Environment Variables**: `AWS_REGION`, `AWS_PROFILE` or AWS session tokens.
+   - **Wave 2 P0-2 containment:** `run-aws-code` (arbitrary-AWS-code primitive)
+     is denied in `opencode.json` (`aws_run*` + `aws_*` tail); only
+     credential/profile inspection reads remain. Write containment is
+     enforced at the resource layer: the configured profile/role MUST carry
+     a read-only IAM policy (no `terraform apply` from agent runtime either —
+     see the `tofu/terraform apply*` shell denies).
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`

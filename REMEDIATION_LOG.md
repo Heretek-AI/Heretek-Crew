@@ -513,3 +513,194 @@ progress).
   dropped caps, no-new-privileges under real entrypoints, read-only-root
   feasibility, image build, proxy/tailscale health.
 - No commits, no merges, no subagents used.
+
+---
+
+# Stage 4 Remediation Log — Wave 2 Sandbox escapes (P0-2, P0-3, P0-4, P0-5 + P1-8 secrets)
+
+**Worktree:** `/home/john/Projects/Heretek-Crew/.worktrees/wave2` (branch `remediate/wave2-sandbox-escapes`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` P0-2/P0-3/P0-4/P0-5 + P1-8, `PROMPT_REMEDIATION_HANDOFF.md` §2 Wave 2
+**Status:** all Wave 2 items closed, verified empirically. Changes left UNCOMMITTED for QA/Drift-Guard.
+
+## Empirical tool-surface enumeration (no guessing; commands + results)
+
+- Harness: `cd /tmp/opencode/harness-probe && npm pack @heretek-ai/opencode-harness@1.0.7`
+  (Dockerfile line-58 version) → `heretek-ai-opencode-harness-1.0.7.tgz` (114 files).
+  `dist/index.js` exports `HARNESS_TOOL_NAMES` (5: file_hash_read, file_hash_edit,
+  ast_structural_search, ast_structural_rewrite, ui_geometry_audit) and
+  `EXTENDED_HARNESS_TOOL_NAMES` (14 = those 5 + repo_map, blast_radius, file_outline,
+  symbol_references, rename_symbol, verify_scoped, architecture_audit,
+  checkpoint_create, checkpoint_rollback). The live path (`default export
+  OpenCodeV2Plugin.setup` → `setupOpenCodeV2Harness` → `buildExtendedHarnessTools`)
+  registers all **14** — the smoke manifest pins those 14. README confirms
+  "wires all 14 direct tools". Direct tools register with `codemode: false`;
+  8 pinned companions re-register under the `tools.harness.*` namespace.
+- Git MCP: `npm pack @cyanheads/git-mcp-server@2.15.3` → dist bundle
+  `allToolDefinitions` = 28 tools; read set = the 8 carrying
+  `readOnlyHint: true` (git_blame, git_changelog_analyze, git_diff, git_log,
+  git_reflog, git_show, git_status, git_wrapup_instructions). The other 20
+  (push/commit/rebase/checkout/merge/reset/worktree/...) stay denied.
+- Filesystem MCP: `server-filesystem@1.0.0` `dist/server.js` `registerTool`
+  calls = 14 tools (10 read: read_file/read_text_file/read_media_file/
+  read_multiple_files/list_directory/list_directory_with_sizes/directory_tree/
+  search_files/get_file_info/list_allowed_directories; 4 write: write_file,
+  edit_file, create_directory, move_file).
+- Postgres MCP: `server-postgres@0.6.2` exposes exactly one tool, `query`,
+  self-enforcing `BEGIN TRANSACTION READ ONLY` + ROLLBACK.
+- Kubernetes MCP: `pip download mcp-server-kubernetes==0.1.6` wheel →
+  5 tools: kubectl_describe, kubectl_get_by_name,
+  kubectl_get_by_kind_in_namespace, kubectl_previous_logs (read) +
+  kubectl_exec_into_pod (exec primitive, denied). NOTE: no `create_pod`-style
+  tool exists in the pinned version — the audit PoC name was illustrative of
+  the class; the real exec primitive (`kubectl_exec_into_pod`) is now denied.
+- Docker MCP: `pip download docker-mcp==0.2.0` wheel → 4 tools:
+  list-containers + get-logs (read) vs create-container + deploy-compose
+  (write, denied).
+- AWS MCP: `npm pack aws-mcp@1.0.2` → 3 tools: run-aws-code (arbitrary-AWS-code
+  primitive, denied at this layer), list-credentials, select-profile (read).
+  Write containment for AWS is enforced at the resource layer (read-only IAM
+  policy on the configured profile — permission lists are advisory-only,
+  AGENTS.md §4).
+
+## P0-2/P0-3: namespace scoping (51 role files)
+
+- `harness_*` allow-all → 14 per-tool allows + `harness_*` deny tail in all
+  51 files (50 fleet + programmer). Before→after: 51 bare allows → 0;
+  714 per-tool allows + 51 deny tails.
+- `k8s-orchestrator`: `kubernetes_kubectl_get*/describe*/previous_logs*`
+  allows, `kubernetes_kubectl_exec*` + `kubernetes_*` denies;
+  `docker_list*/get*` allows, `docker_create*/deploy*` + `docker_*` denies.
+- `dba-specialist`: `postgres_query*` allow + `postgres_*` deny (psql shell
+  deny retained).
+- `cloud-platform-eng` + `cloud-sec-auditor`: `aws_list*/select*` allows,
+  `aws_run*` + `aws_*` denies.
+- `mlops-serving-eng`: `docker_*` allow → `docker_list*/get*` + deny tail.
+- `git_*` (24 roles) → 8 read-verb allows + `git_*` deny tail each
+  (192 allows + 24 denies, zero write verbs). NO role retains `git_push` via
+  MCP: no role ever held a push shell allow (only git-drift-coord held
+  force-with-lease, now removed); local `commit`/`checkout` stay on
+  dependency-patcher's existing shell allows; every push is human-gated.
+- `filesystem_*`: binary-reverse-eng + firmware-sec-analyst re-rooted
+  `/paperclip/workspaces` → `/paperclip/workspaces/binaries` (the `:ro`
+  sample mount shared with ghidra/radare2) with read-verb allows +
+  write-verb denies + tail; brand-copy-spec's server + allow removed
+  (docs role; reads via git MCP, writes via fs:write). Two adjacent gaps the
+  new fsroot gate caught (graphics-shader-eng, tech-artist-pipeline declared
+  shared-root filesystem servers with NO matching allow — dead config):
+  servers removed, charters updated. Before→after: 3 bare allows → 0.
+- Every touched file keeps its dialect terminal deny (50 fleet `shell`,
+  programmer `shell`, qa/tester legacy `bash` untouched); 56/56 tails present.
+- `scripts/generate-50-roles.py`: new `scope_mcp_permissions()` table +
+  harness/filesystem-root/git-drift normalizations (+ fixed the bare
+  `"opencode-harness"` plugins-append wart so regen cannot regress P0-1).
+  Proof: regen with `--root` into scratch → permissions identical to disk
+  for all 50 roles (0 mismatches), RE roots + brand/graphic/artist server
+  removals reproduced.
+
+## Provisioning (P0-2/P1-8): read-only PG role + URLs + tokens + kubeconfig
+
+- `scripts/postgres-init-readonly-role.sh` (new, executable, `--dry-run` +
+  `--help`, shellcheck-clean): initdb hook creating `paperclip_reader`
+  (SELECT-only GRANTs + `CONNECTION LIMIT 5` +
+  `default_transaction_read_only = on`; secret via `psql -v`, never
+  interpolated; refuses `CHANGE_ME__`). `--dry-run` prints the SQL without a
+  live DB (used by the smoke gate).
+- `.env.example`: `POSTGRES_READER_PASSWORD`, `POSTGRES_READONLY_URL`
+  (paperclip_reader user required), `GITHUB_TOKEN` (scoped read-only PAT for
+  the 7 github-backed roles), `KUBECONFIG_READONLY_PATH`
+  (`./secrets/kubeconfig-readonly`) — all `CHANGE_ME__`/documented.
+- `docker-compose.yml`: postgres env `POSTGRES_READER_PASSWORD :?` + initdb
+  hook `:ro` mount; paperclip env `POSTGRES_READONLY_URL :?` +
+  `GITHUB_TOKEN :?`; kubeconfig bind `${KUBECONFIG_READONLY_PATH :?}:...:ro`.
+  No `:-` defaults on any of the three.
+- `scripts/seed-50-fleet.sh`: `require_provisioned_secrets` preflight runs on
+  dry-run AND live — rejects missing/placeholder `POSTGRES_READONLY_URL`,
+  rejects non-`paperclip_reader` (superuser) URLs by shape, rejects
+  missing/placeholder `GITHUB_TOKEN`, requires the kubeconfig path to be a
+  regular file. Values never echoed.
+- `.gitignore`: `secrets/*` (+ `!secrets/.gitkeep`); empty `secrets/.gitkeep`.
+- Proof: absent → exit 1 with all three messages; superuser URL → exit 1;
+  dummy-present → exit 0 with 51 payloads, budget total == cap.
+
+## P0-5: git-drift-coord disarmed
+
+- Removed shell allows `git worktree*`, `git rebase*`,
+  `git push --force-with-lease*` (the `git push --force *` deny stays as
+  defense-in-depth); `git_*` MCP → 8 read verbs + deny tail; no push allow of
+  any form remains (gate asserts). Charter rewritten to detect-and-report
+  (§§1/3/4/7): drift detection on status/branch/merge-base/diff/log,
+  reports to `docs/ops/**`, every mutation human-executed with pushes gated
+  by `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` (config = deny entries +
+  existing compose secret env; no mock).
+
+## P0-4: negative probes + advisory-only documentation
+
+- `smoke-test.sh §3b`: reference argv-aware matcher (any of `;&|`$><()\n`
+  → deny) refuses `git status; id`, `npm test && id`, `curl -s http://x; id`
+  (all 3 must deny); every one of the 192 shell/bash allows asserted to be a
+  single-command prefix (no chaining metachar baked in); per-probe INFO lines
+  show which naive-prefix allow each probe WOULD match (e.g.
+  `git status; id` → `git status*`), documenting why allows are advisory-only.
+- AGENTS.md §4 already carried both limitation notes (prefix-matcher +
+  MCP-bypass, Stage 2) — no edit needed; role charters repeat the
+  resource-layer rule where it binds (k8s/dba/cloud/aws/mlops).
+
+## Test results (must-keep-green set + Wave 2 proofs)
+
+- `bash scripts/smoke-test.sh --check-only` → **244 passed, 0 failed,
+  3 skipped** (233 baseline → 244: +11 Wave 2 gates, zero regressions).
+- `bash scripts/test-shim.sh` → **39 passed, 0 failed** (unchanged).
+- `shellcheck -S warning scripts/*.sh` → zero warnings; `bash -n` all OK.
+- `bash scripts/seed-company.sh --dry-run` → 7 payloads, skip false (untouched).
+- `bash scripts/seed-50-fleet.sh --dry-run` → exit 1 absent/superuser-URL,
+  exit 0 + 51 payloads with dummies (cap == sum, no WARNING).
+- `grep -rn ':latest'` → only two pre-existing prose comments (policy text,
+  not pins); `grep -L 'deny'` → all 56 tails present.
+- `docker compose config` exit 0: default, prebuilt, web-research, devsec,
+  ai-gateway, observability, mobile, core+ci, qa-testing+core,
+  proxy+tailscale. `qa-testing` ALONE still fails on the documented
+  pre-existing runner→proxy profile pairing (Stage 2 P1-6, sidecars file
+  untouched — not a Wave 2 regression).
+- `make test` (live mode, stack down) → 244 passed / same 2 environmental
+  fails as every prior baseline (`postgres not healthy`, `paperclip not
+  responding`) — no new failures; full green needs `make up` (live stage).
+
+## Files changed (uncommitted, Wave 2 only)
+
+- 51× `roles/*/opencode/opencode.json` (namespace scoping; +programmer
+  `plugins: ["@heretek-ai/opencode-harness"]` to match its harness allows;
+  -filesystem servers in brand-copy/graphics/tech-artist)
+- `scripts/generate-50-roles.py` (scope table + normalizations + plugins fix)
+- `scripts/postgres-init-readonly-role.sh` (new initdb hook)
+- `scripts/seed-50-fleet.sh` (provisioning preflight + header docs)
+- `scripts/smoke-test.sh` (§2 dummies + provisioning asserts + §3b
+  manifest/namespace/root/drift/negative-probe gates + §4 seed dummies +
+  harness NOTE rewrite)
+- `docker-compose.yml` (reader password, initdb mount, readonly URL, github
+  token, kubeconfig ro volume), `.env.example` (4 vars), `.gitignore`
+  (secrets/), `secrets/.gitkeep` (new)
+- 9 charters: git-drift-coord (posture), binary-reverse-eng + firmware
+  (re-root), brand-copy/graphics-shader/tech-artist (server removal),
+  k8s-orchestrator + cloud-platform-eng + cloud-sec-auditor +
+  mlops-serving-eng (containment notes), dba-specialist (provisioning note)
+
+## Self-audit notes (Wave 2)
+
+- Fail-closed kept: namespace deny tails everywhere; initdb hook + compose
+  :? + seed preflight triple-gate provisioning (URL user-shape enforced);
+  reference matcher denies chained probes; no `|| true`/`TODO`/dummy returns
+  added; no floating tags (harness 1.0.7 re-pinned by manifest, MCP pins
+  untouched); no secrets in repo (placeholders + `__smoke_only__` dummies
+  only, never echoed); scripts keep `--help`/`--dry-run` + `set -euo pipefail`.
+- Tracked residuals (not blocking, recorded honestly): the runtime
+  enforcer's exact `<server>_<tool>` vs bare-`<tool>` mapping is still
+  unverified — allows use the namespaced form + deny tails so both mappings
+  fail closed (same caveat as Stage 2); `github_*` allow-all in 7 roles is
+  NOT tool-scoped this wave (token scoping + approval gating are the
+  controls; needs enforcer contract + follow-up); `ollama_*`/`r2_*`/`rea_*`/
+  `codebase-memory_*`/`context7_*` wildcards untouched (outside Wave 2
+  scope); live verifications still need `make up` (harness tool
+  registration, read-only-role boot on fresh volume, kubeconfig mount,
+  deny-tail runtime probe); existing (non-fresh) pgdata volumes need the
+  manual GRANT step from the hook's `--dry-run` output.
+- No commits, no merges, no subagents used.

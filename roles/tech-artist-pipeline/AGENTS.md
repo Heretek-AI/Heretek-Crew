@@ -29,16 +29,18 @@
 
 ## 4. MCP Servers & Tool Access
 
-1. **Filesystem MCP Server**:
-   - **Package / Repo**: `@modelcontextprotocol/server-filesystem` (npm verified v1.0.0)
-   - **Transport**: `stdio`
-   - **Command**: `npx -y @modelcontextprotocol/server-filesystem`
-   - **Configuration / Environment Variables**: Workspace assets directory.
-2. **Git MCP Server**:
+1. **Git MCP Server**:
    - **Package / Repo**: `@cyanheads/git-mcp-server` (npm verified v2.15.3)
    - **Transport**: `stdio`
    - **Command**: `npx -y @cyanheads/git-mcp-server`
-   - **Configuration / Environment Variables**: None.
+   - **Configuration / Environment Variables**: None (read-only verbs only —
+     see `opencode.json`; no push/commit via MCP).
+
+> Note (Wave 2 P0-2): this role declares no filesystem MCP server — the
+> shared-workspace-rooted entry carried no matching permission allow, so it
+> was dead config and a latent bypass risk. Asset reads/writes go through
+> the `fs:*` permissions in `opencode.json` (`assets/**`,
+> `tools/asset-pipeline/**`).
 
 ## 5. Skills
 

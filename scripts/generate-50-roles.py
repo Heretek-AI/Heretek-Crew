@@ -47,6 +47,158 @@ MODEL_FALLBACK = "anthropic/claude-sonnet-4-5"
 # values are authoritative) rather than failing.
 DOCUMENTED_FLEET_CAP_CENTS = 1270000
 DENY_ALL_SHELL = {"action": "shell", "resource": "*", "effect": "deny"}
+# Wave 2 (P0-2/P0-3) MCP sandbox scoping: bare-namespace MCP allow-all
+# entries are replaced with read-verb-scoped allows + same-namespace deny
+# tails. Verb sets grounded in the pinned servers' real tool lists,
+# enumerated empirically 2026-10-17 (see scope tables below); the runtime
+# enforcer's exact <server>_<tool> vs bare-<tool> mapping is still a tracked
+# product decision (REMEDIATION_LOG.md), so allows use the namespaced form
+# and every namespace ends in an explicit deny (fail-closed either way).
+#
+# Harness manifest: npm pack @heretek-ai/opencode-harness@1.0.7 ->
+# dist/index.js EXTENDED_HARNESS_TOOL_NAMES (14 tools; the live
+# setupOpenCodeV2Harness path registers all 14).
+HARNESS_TOOL_NAMES = [
+    "file_hash_read",
+    "file_hash_edit",
+    "ast_structural_search",
+    "ast_structural_rewrite",
+    "ui_geometry_audit",
+    "repo_map",
+    "blast_radius",
+    "file_outline",
+    "symbol_references",
+    "rename_symbol",
+    "verify_scoped",
+    "architecture_audit",
+    "checkpoint_create",
+    "checkpoint_rollback",
+]
+# Git read verbs: the 8 tools carrying readOnlyHint:true in
+# @cyanheads/git-mcp-server@2.15.3 (28 tools total; the other 20 mutate
+# history, refs, index, or working tree and stay denied fleet-wide — no
+# role retains git_push/commit via MCP; local commits stay on shell
+# allows where already granted, pushes are human-approval-gated).
+GIT_READ_TOOLS = [
+    "git_blame",
+    "git_changelog_analyze",
+    "git_diff",
+    "git_log",
+    "git_reflog",
+    "git_show",
+    "git_status",
+    "git_wrapup_instructions",
+]
+# Filesystem read verbs (server-filesystem@1.0.0: 10 read tools named
+# read_*/list_*/directory_tree/search_files/get_file_info; write/edit/
+# create/move stay denied).
+FS_READ_VERBS = [
+    "filesystem_read*",
+    "filesystem_list*",
+    "filesystem_directory*",
+    "filesystem_search*",
+    "filesystem_get*",
+]
+FS_WRITE_DENIES = [
+    "filesystem_write*",
+    "filesystem_edit*",
+    "filesystem_create*",
+    "filesystem_move*",
+]
+# mcp-server-kubernetes==0.1.6 tools: kubectl_describe,
+# kubectl_get_by_name, kubectl_get_by_kind_in_namespace,
+# kubectl_previous_logs (read) + kubectl_exec_into_pod (exec primitive,
+# denied — the shell layer never allowed exec either).
+K8S_READ = [
+    "kubernetes_kubectl_get*",
+    "kubernetes_kubectl_describe*",
+    "kubernetes_kubectl_previous_logs*",
+]
+K8S_DENIES = ["kubernetes_kubectl_exec*", "kubernetes_*"]
+# docker-mcp==0.2.0 tools: list-containers + get-logs (read) vs
+# create-container + deploy-compose (write, denied).
+DOCKER_READ = ["docker_list*", "docker_get*"]
+DOCKER_DENIES = ["docker_create*", "docker_deploy*", "docker_*"]
+# server-postgres@0.6.2 exposes exactly one tool, `query`, which
+# self-enforces BEGIN TRANSACTION READ ONLY; the allow names it, the deny
+# closes the namespace, and the URL must be the read-only role (seed gate
+# + compose :? guard enforce provisioning).
+PG_READ = ["postgres_query*"]
+PG_DENIES = ["postgres_*"]
+# aws-mcp@1.0.2 tools: list-credentials + select-profile (read) vs
+# run-aws-code (arbitrary-AWS-code primitive, denied at this layer;
+# write containment is enforced by the IAM policy on the configured
+# profile — see cloud-platform-eng / cloud-sec-auditor charters).
+AWS_READ = ["aws_list*", "aws_select*"]
+AWS_DENIES = ["aws_run*", "aws_*"]
+
+
+def _allow(action):
+    return {"action": action, "resource": "*", "effect": "allow"}
+
+
+def _deny(action):
+    return {"action": action, "resource": "*", "effect": "deny"}
+
+
+def scope_mcp_permissions(role_id, perms):
+    """Replace bare-namespace MCP allows with scoped allows + deny tails."""
+    scoped = []
+    for p in perms:
+        if not isinstance(p, dict) or p.get("effect") != "allow":
+            scoped.append(p)
+            continue
+        action = p.get("action")
+        if action == "harness_*":
+            scoped.extend(_allow("harness_" + t) for t in HARNESS_TOOL_NAMES)
+            scoped.append(_deny("harness_*"))
+        elif action == "git_*":
+            scoped.extend(_allow(t) for t in GIT_READ_TOOLS)
+            scoped.append(_deny("git_*"))
+        elif action == "filesystem_*" and role_id in (
+            "binary-reverse-eng",
+            "firmware-sec-analyst",
+        ):
+            scoped.extend(_allow(v) for v in FS_READ_VERBS)
+            scoped.extend(_deny(v) for v in FS_WRITE_DENIES)
+            scoped.append(_deny("filesystem_*"))
+        elif action == "filesystem_*" and role_id == "brand-copy-spec":
+            # Docs-scoped role: the filesystem MCP server entry is removed
+            # in normalize_config below; its allow is dropped here.
+            continue
+        elif action == "filesystem_*":
+            # No other role may carry filesystem MCP.
+            die(
+                "role '%s' carries filesystem_* outside the allowlist "
+                "(remove the MCP server instead)" % role_id
+            )
+        elif action == "kubernetes_*" and role_id == "k8s-orchestrator":
+            scoped.extend(_allow(v) for v in K8S_READ)
+            scoped.extend(_deny(v) for v in K8S_DENIES)
+        elif action == "docker_*" and role_id in (
+            "k8s-orchestrator",
+            "mlops-serving-eng",
+        ):
+            scoped.extend(_allow(v) for v in DOCKER_READ)
+            scoped.extend(_deny(v) for v in DOCKER_DENIES)
+        elif action == "postgres_*" and role_id == "dba-specialist":
+            scoped.extend(_allow(v) for v in PG_READ)
+            scoped.extend(_deny(v) for v in PG_DENIES)
+        elif action == "aws_*" and role_id in (
+            "cloud-platform-eng",
+            "cloud-sec-auditor",
+        ):
+            scoped.extend(_allow(v) for v in AWS_READ)
+            scoped.extend(_deny(v) for v in AWS_DENIES)
+        elif action in ("kubernetes_*", "docker_*", "postgres_*", "aws_*"):
+            die(
+                "role '%s' carries %s outside its allowlisted role "
+                "(fail-closed)" % (role_id, action)
+            )
+        else:
+            scoped.append(p)
+    return scoped
+
 
 # Pinned MCP supply chain (P1-7): exact versions resolved live against the
 # npm/PyPI registries 2026-10-17 (catalog "verified v" annotations agree).
@@ -419,9 +571,17 @@ def normalize_config(role):
             and p.get("effect") == "deny"
         )
     ]
-    harness_perm = {"action": "harness_*", "resource": "*", "effect": "allow"}
-    if harness_perm not in perms:
-        perms.append(harness_perm)
+    harness_present = any(
+        isinstance(p, dict) and p.get("action", "").startswith("harness_")
+        for p in perms
+    )
+    if not harness_present:
+        perms = scope_mcp_permissions(
+            role_id,
+            perms + [{"action": "harness_*", "resource": "*", "effect": "allow"}],
+        )
+    else:
+        perms = scope_mcp_permissions(role_id, perms)
     perms.append(dict(DENY_ALL_SHELL))
     cfg["permissions"] = perms
 
@@ -431,8 +591,11 @@ def normalize_config(role):
 
     if "plugins" not in cfg or not cfg["plugins"]:
         die("role '%s' plugins list is missing or empty" % role_id)
-    if "opencode-harness" not in cfg["plugins"]:
-        cfg["plugins"].append("opencode-harness")
+    if (
+        "opencode-harness" not in cfg["plugins"]
+        and "@heretek-ai/opencode-harness" not in cfg["plugins"]
+    ):
+        cfg["plugins"].append("@heretek-ai/opencode-harness")
     mcp = cfg.get("mcp")
     if not isinstance(mcp, dict) or not mcp.get("servers"):
         die("role '%s' mcp.servers mapping is missing or empty" % role_id)
@@ -446,6 +609,60 @@ def normalize_config(role):
         env.setdefault("ADB_HOST", "docker-android")
         env.setdefault("ADB_PORT", "5555")
         mobile["env"] = env
+
+    # Wave 2 (P0-2) filesystem MCP roots: the catalog grants the RE roles
+    # the shared-workspace root; generation re-roots to the read-only
+    # sample scope (/paperclip/workspaces/binaries, the :ro sample mount
+    # used by the ghidra/radare2 sidecars) and drops the docs-scoped
+    # brand-copy-spec server entirely (its reads go through git MCP,
+    # writes through fs:write).
+    if role_id in ("binary-reverse-eng", "firmware-sec-analyst"):
+        fs_srv = mcp["servers"].get("filesystem")
+        if not isinstance(fs_srv, dict) or not isinstance(fs_srv.get("command"), list):
+            die("role '%s' lost its filesystem MCP server entry" % role_id)
+        if fs_srv["command"][-1:] == ["/paperclip/workspaces"]:
+            fs_srv["command"][-1] = "/paperclip/workspaces/binaries"
+        elif fs_srv["command"][-1:] != ["/paperclip/workspaces/binaries"]:
+            die("role '%s' has an unexpected filesystem MCP root" % role_id)
+    if role_id == "brand-copy-spec" and "filesystem" in mcp["servers"]:
+        del mcp["servers"]["filesystem"]
+
+    # Wave 2 (P0-2) filesystem server allowlist: only the two RE roles may
+    # declare a filesystem MCP server (re-rooted above). Any other role
+    # carrying one (e.g. catalog drift) loses it here — a server without a
+    # matching scoped allow is dead config and a latent bypass risk.
+    if role_id not in ("binary-reverse-eng", "firmware-sec-analyst"):
+        if "filesystem" in mcp["servers"]:
+            del mcp["servers"]["filesystem"]
+
+    # Wave 2 (P0-5): git-drift-coord loses the history-rewrite shell
+    # primitives (worktree / rebase / push --force-with-lease). Detection
+    # stays on status/branch/merge-base/diff/log; any push is
+    # human-approval-gated (PAPERCLIP_TOOL_ACTION_SIGNING_SECRET).
+    if role_id == "git-drift-coord":
+        cfg["permissions"] = [
+            p
+            for p in cfg.get("permissions", [])
+            if not (
+                isinstance(p, dict)
+                and p.get("action") == "shell"
+                and p.get("effect") == "allow"
+                and p.get("resource")
+                in (
+                    "git worktree*",
+                    "git rebase*",
+                    "git push --force-with-lease*",
+                )
+            )
+        ]
+        if any(
+            isinstance(p, dict)
+            and p.get("action") == "shell"
+            and p.get("effect") == "allow"
+            and str(p.get("resource")).startswith("git push")
+            for p in cfg["permissions"]
+        ):
+            die("role 'git-drift-coord' retains a git push shell allow")
 
     for server_name, server in mcp["servers"].items():
         if not isinstance(server, dict):

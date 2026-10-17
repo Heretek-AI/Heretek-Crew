@@ -39,6 +39,9 @@
    - **Transport**: `stdio`
    - **Command**: `uvx docker-mcp`
    - **Configuration / Environment Variables**: None.
+   - **Wave 2 P0-2 containment:** list/get-logs reads only — container
+     creation and compose deployment are denied (`docker_create*`,
+     `docker_deploy*`, `docker_*` tail in `opencode.json`).
 
 ## 5. Skills
 

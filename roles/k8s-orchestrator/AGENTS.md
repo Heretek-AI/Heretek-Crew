@@ -34,11 +34,21 @@
    - **Transport**: `stdio`
    - **Command**: `uvx mcp-server-kubernetes`
    - **Configuration / Environment Variables**: `KUBECONFIG` (read-only cluster context).
+   - **Wave 2 P0-2 containment:** `KUBECONFIG=/paperclip/secrets/kubeconfig-readonly`
+     (bind-mounted `:ro` by `docker-compose.yml` from `KUBECONFIG_READONLY_PATH`;
+     the seed-50 preflight requires it to be a regular file). The mounted
+     context MUST be bound to a read-only ClusterRole (no `exec` into pods —
+     `kubectl_exec_into_pod` is denied in `opencode.json` alongside the
+     `kubernetes_*` tail; only `get`/`describe`/`previous-logs` reads are
+     allowed).
 2. **Docker MCP Server**:
    - **Package / Repo**: `docker-mcp` (PyPI verified v0.2.0)
    - **Transport**: `stdio`
    - **Command**: `uvx docker-mcp`
    - **Configuration / Environment Variables**: Docker socket path.
+   - **Wave 2 P0-2 containment:** list/get-logs reads only — container
+     creation and compose deployment are denied (`docker_create*`,
+     `docker_deploy*`, `docker_*` tail).
 
 ## 5. Skills
 

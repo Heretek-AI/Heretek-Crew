@@ -83,9 +83,79 @@
       "effect": "allow"
     },
     {
-      "action": "harness_*",
+      "action": "harness_file_hash_read",
       "resource": "*",
       "effect": "allow"
+    },
+    {
+      "action": "harness_file_hash_edit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ast_structural_search",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ast_structural_rewrite",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ui_geometry_audit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_repo_map",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_blast_radius",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_file_outline",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_symbol_references",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_rename_symbol",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_verify_scoped",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_architecture_audit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_checkpoint_create",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_checkpoint_rollback",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "deny"
     },
     {
       "action": "shell",
@@ -93,6 +163,11 @@
       "effect": "deny"
     }
   ],
-  "skills": ["zero-stub-implementation"],
-  "mcp": {}
+  "skills": [
+    "zero-stub-implementation"
+  ],
+  "mcp": {},
+  "plugins": [
+    "@heretek-ai/opencode-harness"
+  ]
 }

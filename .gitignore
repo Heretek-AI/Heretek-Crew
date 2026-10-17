@@ -7,6 +7,10 @@
 .env
 .env.local
 backups/
+# ./secrets/ holds the read-only kubeconfig (KUBECONFIG_READONLY_PATH) and
+# any other host-side credential files. NEVER commit cluster credentials.
+secrets/*
+!secrets/.gitkeep
 workspaces/*
 !workspaces/.gitkeep
 .worktrees/*

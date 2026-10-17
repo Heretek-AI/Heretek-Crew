@@ -24,8 +24,12 @@
 #                       (programmer has no allow-all + terminal shell deny,
 #                       qa/tester bash narrowed to named test commands +
 #                       terminal bash deny, dba/k8s MCP-boundary shell
-#                       denies intact, seeds set dangerouslySkipPermissions
-#                       False, socket proxy denies POST/BUILD/EXEC)
+#                       denies intact, harness manifest == per-tool allows
+#                       with no wildcard, MCP namespaces scoped to read
+#                       verbs + deny tails, negative prefix-chain probes
+#                       denied by the reference matcher, seeds set
+#                       dangerouslySkipPermissions False, socket proxy
+#                       denies POST/BUILD/EXEC)
 #                    4. seed dry-runs emit company + agent payloads:
 #                       seed-company.sh (company + 6 agents) and
 #                       seed-50-fleet.sh (1 company + 50 agents =
@@ -52,11 +56,17 @@
 # workspace-file check) ./workspaces visible on the host. Timeouts:
 #   HEALTH_TIMEOUT_SEC (default 30 here), RUN_TIMEOUT_SEC (default 600).
 #
-# NOTE (P1-7): harness_* MCP tool registration cannot be verified statically —
-# the harness tarball ships implementation files without a tool() manifest, so
-# no static gate can prove the runtime registers those tools. Registration is
-# asserted only by a live agent run invoking a harness tool (tracked; needs
-# `make up` + seeded fleet).
+# NOTE (P1-7 / Wave 2 P0-3): the harness tool manifest IS verified
+# statically. HARNESS_MANIFEST in §3b pins the 14 tools registered by
+# @heretek-ai/opencode-harness@1.0.7 (enumerated empirically via
+# `npm pack` + dist/index.js EXTENDED_HARNESS_TOOL_NAMES — the live
+# setupOpenCodeV2Harness path registers all 14): every role that declares
+# the harness plugin must allow exactly that set (per-tool allows, no
+# `harness_*` allow) and carry a `harness_*` deny tail. A bump of the
+# harness version requires re-enumeration + manifest update here.
+# Live tool-registration (the runtime actually exposing those tools to an
+# agent run) is still asserted only by a live agent run invoking a harness
+# tool (tracked; needs `make up` + seeded fleet).
 #
 # Exit code: 0 when nothing FAILs (SKIPs are informational), 1 otherwise.
 # Fail-closed: every check reports PASS/FAIL/SKIP explicitly; unknown states
@@ -137,6 +147,12 @@ done
 
 # --- 2. compose config parses -----------------------------------------------
 section "2. docker compose config"
+# Throwaway dummy secrets: validation only, never written anywhere.
+# Wave 2: the provisioning :? guards (POSTGRES_READER_PASSWORD,
+# POSTGRES_READONLY_URL, GITHUB_TOKEN, KUBECONFIG_READONLY_PATH) need
+# dummies too; the kubeconfig dummy points at a real repo file so the
+# bind-mount source exists. Defined once for every config invocation below.
+SMOKE_DUMMY_ENV=(POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ POSTGRES_READER_PASSWORD=__smoke_only__ POSTGRES_READONLY_URL=postgres://paperclip_reader:__smoke_only__@postgres:5432/paperclip GITHUB_TOKEN=__smoke_only__ KUBECONFIG_READONLY_PATH=./secrets/.gitkeep)
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   skip "'docker compose' not available; config validation skipped"
 else
@@ -147,9 +163,7 @@ else
       bad "docker compose config FAILED: $(head -c 300 "${TMP}/compose.err")"
     fi
   else
-    # Throwaway dummy secrets: validation only, never written anywhere.
-    if POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ \
-      docker compose config -q 2>"${TMP}/compose.err"; then
+    if env "${SMOKE_DUMMY_ENV[@]}" docker compose config -q 2>"${TMP}/compose.err"; then
       ok "docker compose config parses (dummy secrets, .env absent)"
     else
       bad "docker compose config FAILED: $(head -c 300 "${TMP}/compose.err")"
@@ -157,7 +171,7 @@ else
   fi
 
   # Prebuilt compose override validation
-  if POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ \
+  if env "${SMOKE_DUMMY_ENV[@]}" \
     docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml config -q 2>"${TMP}/compose-prebuilt.err"; then
     ok "docker compose prebuilt override config parses"
   else
@@ -167,11 +181,59 @@ else
   # P1-4 defense-in-depth: paperclip must render
   # OPENCODE_DISABLE_PROJECT_CONFIG=true (explicit env beats upstream
   # defaults; OS env overrides .env here, so this holds either way).
-  if POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ \
+  if env "${SMOKE_DUMMY_ENV[@]}" \
     docker compose config 2>/dev/null | grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG: .true'; then
     ok "paperclip renders OPENCODE_DISABLE_PROJECT_CONFIG=true (project-config defense-in-depth)"
   else
     bad "paperclip rendered config lacks OPENCODE_DISABLE_PROJECT_CONFIG=true"
+  fi
+
+  # Wave 2 (P0-2/P1-8) provisioning: the read-only PG URL + scoped github
+  # token must reach the paperclip runtime env, the kubeconfig must mount
+  # read-only at the path k8s-orchestrator's MCP server expects, and the
+  # initdb hook that provisions paperclip_reader must be mounted.
+  if env "${SMOKE_DUMMY_ENV[@]}" \
+    docker compose config 2>/dev/null | grep -q 'POSTGRES_READONLY_URL'; then
+    ok "paperclip renders POSTGRES_READONLY_URL (read-only-role URL provisioned)"
+  else
+    bad "paperclip rendered config lacks POSTGRES_READONLY_URL"
+  fi
+  if env "${SMOKE_DUMMY_ENV[@]}" \
+    docker compose config 2>/dev/null | grep -q 'GITHUB_TOKEN'; then
+    ok "paperclip renders GITHUB_TOKEN (scoped PAT provisioned)"
+  else
+    bad "paperclip rendered config lacks GITHUB_TOKEN"
+  fi
+  if env "${SMOKE_DUMMY_ENV[@]}" \
+    docker compose config 2>/dev/null | grep -A 3 'target: /paperclip/secrets/kubeconfig-readonly' | grep -q 'read_only: true'; then
+    ok "kubeconfig read-only volume renders (/paperclip/secrets/kubeconfig-readonly:ro)"
+  else
+    bad "rendered config lacks the read-only kubeconfig volume"
+  fi
+  if env "${SMOKE_DUMMY_ENV[@]}" \
+    docker compose config 2>/dev/null | grep -q 'target: /docker-entrypoint-initdb.d/01-readonly-role.sh'; then
+    ok "postgres renders the read-only-role initdb hook (01-readonly-role.sh:ro)"
+  else
+    bad "rendered config lacks the postgres read-only-role initdb hook"
+  fi
+  # The init hook itself: --dry-run SQL must create the SELECT-only role
+  # with read-only default transactions and no write grants; placeholders
+  # must be rejected before any live execution.
+  if POSTGRES_USER=paperclip POSTGRES_DB=paperclip POSTGRES_READER_PASSWORD=__smoke_only__ \
+    ./scripts/postgres-init-readonly-role.sh --dry-run >"${TMP}/readonly.sql" 2>"${TMP}/readonly.err" \
+    && grep -q 'CREATE ROLE paperclip_reader' "${TMP}/readonly.sql" \
+    && grep -q 'GRANT SELECT ON ALL TABLES IN SCHEMA public TO paperclip_reader' "${TMP}/readonly.sql" \
+    && grep -q 'default_transaction_read_only = on' "${TMP}/readonly.sql" \
+    && ! grep -qE 'GRANT (INSERT|UPDATE|DELETE|ALL PRIVILEGES)' "${TMP}/readonly.sql"; then
+    ok "read-only-role hook SQL grants SELECT-only + read-only transactions (no write grants)"
+  else
+    bad "read-only-role hook SQL shape unexpected: $(head -c 200 "${TMP}/readonly.err" "${TMP}/readonly.sql")"
+  fi
+  if POSTGRES_USER=paperclip POSTGRES_DB=paperclip POSTGRES_READER_PASSWORD=CHANGE_ME__x \
+    ./scripts/postgres-init-readonly-role.sh --dry-run >/dev/null 2>&1; then
+    bad "read-only-role hook accepted a CHANGE_ME__ placeholder (must fail closed)"
+  else
+    ok "read-only-role hook rejects CHANGE_ME__ placeholders (fail-closed)"
   fi
 fi
 
@@ -414,6 +476,176 @@ print("dba psql deny + k8s kubectl apply/delete denies present")
 else
   bad "MCP-boundary shell deny REGRESSED: $(head -c 200 "${TMP}/mcpbound.err")"
 fi
+# Wave 2 P0-3: harness tool manifest assertion. Manifest pinned from the
+# registry tarball @heretek-ai/opencode-harness@1.0.7 (dist/index.js
+# EXTENDED_HARNESS_TOOL_NAMES — the live setupOpenCodeV2Harness path
+# registers all 14): any role declaring the harness plugin must allow
+# exactly this set (per-tool allows, NEVER a `harness_*` allow) and end
+# the namespace with a `harness_*` deny tail (future manifest additions
+# stay denied until explicitly allowed here). Roles without the plugin
+# must carry no harness allows at all.
+HARNESS_MANIFEST="file_hash_read file_hash_edit ast_structural_search ast_structural_rewrite ui_geometry_audit repo_map blast_radius file_outline symbol_references rename_symbol verify_scoped architecture_audit checkpoint_create checkpoint_rollback"
+if HARNESS_MANIFEST="${HARNESS_MANIFEST}" python3 -c '
+import glob, json, os, sys
+manifest = os.environ["HARNESS_MANIFEST"].split()
+problems = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    doc = json.load(open(f))
+    perms = doc.get("permissions", [])
+    allows = sorted(p["action"][len("harness_"):] for p in perms
+                    if p.get("action", "").startswith("harness_")
+                    and p.get("effect") == "allow")
+    deny_tail = any(p.get("action") == "harness_*" and p.get("effect") == "deny"
+                    for p in perms)
+    has_plugin = any("harness" in str(pl) for pl in doc.get("plugins", []))
+    if any(p.get("action") == "harness_*" and p.get("effect") == "allow"
+           for p in perms):
+        problems.append("%s: bare harness_* allow (must be per-tool)" % role)
+    elif has_plugin:
+        if allows != sorted(manifest):
+            problems.append("%s: harness allows != manifest (got %s)" % (role, allows))
+        if not deny_tail:
+            problems.append("%s: missing harness_* deny tail" % role)
+    elif allows:
+        problems.append("%s: harness allows without the harness plugin" % role)
+if problems:
+    sys.exit("; ".join(problems))
+print("51 roles allow exactly the 14-tool manifest + deny tail")
+' >"${TMP}/harness.out" 2>"${TMP}/harness.err"; then
+  ok "harness manifest enforced ($(cat "${TMP}/harness.out"))"
+else
+  bad "harness manifest VIOLATION: $(head -c 400 "${TMP}/harness.err")"
+fi
+# Wave 2 P0-2: MCP namespace scoping. No bare-namespace allow may remain
+# for kubernetes/docker/postgres/aws/git/filesystem (harness covered
+# above); each scoped namespace must end in its deny tail, and the
+# filesystem MCP roots must be re-rooted off the shared workspace.
+if python3 -c '
+import glob, json, sys
+BARE = ("kubernetes_*", "docker_*", "postgres_*", "aws_*", "git_*",
+        "filesystem_*")
+problems = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    perms = json.load(open(f)).get("permissions", [])
+    for p in perms:
+        if p.get("action") in BARE and p.get("effect") == "allow":
+            problems.append("%s: bare %s allow" % (role, p["action"]))
+def need(role, allows, denies):
+    perms = json.load(open("roles/%s/opencode/opencode.json" % role))["permissions"]
+    have_allow = {p["action"] for p in perms if p.get("effect") == "allow"}
+    have_deny = {p["action"] for p in perms if p.get("effect") == "deny"}
+    for a in allows:
+        if a not in have_allow:
+            problems.append("%s: missing allow %s" % (role, a))
+    for d in denies:
+        if d not in have_deny:
+            problems.append("%s: missing deny %s" % (role, d))
+need("k8s-orchestrator",
+     ["kubernetes_kubectl_get*", "kubernetes_kubectl_describe*",
+      "kubernetes_kubectl_previous_logs*", "docker_list*", "docker_get*"],
+     ["kubernetes_kubectl_exec*", "kubernetes_*", "docker_create*",
+      "docker_deploy*", "docker_*"])
+need("mlops-serving-eng", ["docker_list*", "docker_get*"],
+     ["docker_create*", "docker_deploy*", "docker_*"])
+need("dba-specialist", ["postgres_query*"], ["postgres_*"])
+need("cloud-platform-eng", ["aws_list*", "aws_select*"],
+     ["aws_run*", "aws_*"])
+need("cloud-sec-auditor", ["aws_list*", "aws_select*"],
+     ["aws_run*", "aws_*"])
+for r in ("binary-reverse-eng", "firmware-sec-analyst"):
+    need(r, ["filesystem_read*", "filesystem_list*", "filesystem_directory*",
+             "filesystem_search*", "filesystem_get*"],
+         ["filesystem_write*", "filesystem_edit*", "filesystem_create*",
+          "filesystem_move*", "filesystem_*"])
+if problems:
+    sys.exit("; ".join(problems))
+print("namespaces scoped to read verbs + deny tails")
+' >"${TMP}/nscope.out" 2>"${TMP}/nscope.err"; then
+  ok "MCP namespaces scoped ($(cat "${TMP}/nscope.out"))"
+else
+  bad "MCP namespace scoping VIOLATION: $(head -c 400 "${TMP}/nscope.err")"
+fi
+# Filesystem MCP roots: the shared-workspace root must be gone (re-rooted
+# to the read-only sample scope, or the server removed for docs roles).
+if python3 -c '
+import glob, json, sys
+problems = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    servers = (json.load(open(f)).get("mcp") or {}).get("servers") or {}
+    fs = servers.get("filesystem")
+    if fs is None:
+        continue
+    roots = [a for a in (fs.get("command") or []) if str(a).startswith("/")]
+    if "/paperclip/workspaces" in roots:
+        problems.append("%s: filesystem MCP rooted at shared /paperclip/workspaces" % role)
+    if role in ("binary-reverse-eng", "firmware-sec-analyst") and roots != ["/paperclip/workspaces/binaries"]:
+        problems.append("%s: unexpected filesystem roots %r" % (role, roots))
+if problems:
+    sys.exit("; ".join(problems))
+print("filesystem MCP roots re-rooted off the shared workspace")
+' >"${TMP}/fsroot.out" 2>"${TMP}/fsroot.err"; then
+  ok "$(cat "${TMP}/fsroot.out")"
+else
+  bad "filesystem MCP root VIOLATION: $(head -c 300 "${TMP}/fsroot.err")"
+fi
+# Wave 2 P0-5: git-drift-coord must not hold history-rewrite primitives.
+if python3 -c '
+import json, sys
+perms = json.load(open("roles/git-drift-coord/opencode/opencode.json"))["permissions"]
+for banned in ("git worktree*", "git rebase*", "git push --force-with-lease*"):
+    if any(p.get("action") == "shell" and p.get("resource") == banned and p.get("effect") == "allow" for p in perms):
+        sys.exit("git-drift-coord still allows %s" % banned)
+if any(p.get("action") == "shell" and p.get("effect") == "allow" and str(p.get("resource")).startswith("git push") for p in perms):
+    sys.exit("git-drift-coord retains a git push shell allow (pushes are human-approval-gated)")
+print("no worktree/rebase/force-push allows; pushes human-gated")
+' >"${TMP}/drift.out" 2>"${TMP}/drift.err"; then
+  ok "git-drift-coord history-rewrite removed ($(cat "${TMP}/drift.out"))"
+else
+  bad "git-drift-coord P0-5 VIOLATION: $(head -c 300 "${TMP}/drift.err")"
+fi
+# Wave 2 P0-4: negative prefix-chain probes. Shell allows are advisory-only
+# string prefixes (see AGENTS.md §4): a prefix enforcer grants
+# `git status; <payload>` via the `git status*` allow. This gate pins the
+# fail-closed reference matcher — any command containing shell chaining
+# metacharacters is denied — and requires the three sabotage probes to be
+# denied by it. It also requires every shell/bash allow to be a single
+# command prefix (no chaining metacharacter baked into an allow itself),
+# and prints (informational, NOT a failure) which naive-prefix allow each
+# probe would have matched, documenting WHY allows are advisory-only.
+if python3 -c '
+import glob, json, re, sys
+META = re.compile(r"[;&|`$><()\n]")
+def reference_deny(cmd):
+    """Fail-closed argv-aware reference: chaining metachars -> deny."""
+    return bool(META.search(cmd))
+probes = ["git status; id", "npm test && id", "curl -s http://x; id"]
+refused = [p for p in probes if reference_deny(p)]
+if refused != probes:
+    sys.exit("reference matcher granted a chained probe: %s"
+             % [p for p in probes if not reference_deny(p)])
+allows = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    for p in json.load(open(f)).get("permissions", []):
+        if p.get("action") in ("shell", "bash") and p.get("effect") == "allow":
+            res = str(p.get("resource", ""))
+            if META.search(res):
+                sys.exit("%s: shell allow bakes in chaining metachars: %r" % (role, res))
+            allows.append((role, res.rstrip("*")))
+print("reference matcher denies all %d chained probes; %d shell allows are single-command prefixes"
+      % (len(probes), len(allows)))
+for probe in probes:
+    hits = sorted("%s:%s*" % (r, a) for r, a in allows if probe.startswith(a))
+    print("advisory-only demo: %r would match naive-prefix %s" % (probe, hits[:3]))
+' >"${TMP}/negprobe.out" 2>"${TMP}/negprobe.err"; then
+  ok "negative prefix probes denied ($(head -n 1 "${TMP}/negprobe.out"))"
+  while IFS= read -r line; do printf '  [INFO] %s\n' "${line}"; done < <(tail -n +2 "${TMP}/negprobe.out")
+else
+  bad "negative prefix probe FAILED: $(head -c 300 "${TMP}/negprobe.err")"
+fi
 
 # --- 4. seed dry-runs ---------------------------------------------------------
 section "4. seed dry-runs (seed-company.sh + seed-50-fleet.sh)"
@@ -431,7 +663,14 @@ else
   bad "seed dry-run exited nonzero: $(head -c 300 "${TMP}/seed.err")"
 fi
 if [[ -f scripts/seed-50-fleet.sh ]]; then
-  if ./scripts/seed-50-fleet.sh --dry-run >"${TMP}/seed50.out" 2>"${TMP}/seed50.err"; then
+  # Wave 2 (P0-2/P1-8): the seed preflight requires provisioned MCP
+  # credentials even for --dry-run (fail-closed); throwaway dummies here
+  # (validation only), with a scratch regular file for the kubeconfig path.
+  printf 'apiVersion: v1\nkind: Config\nclusters: []\n' >"${TMP}/kubeconfig.smoke-dummy"
+  if POSTGRES_READONLY_URL='postgres://paperclip_reader:__smoke_only__@postgres:5432/paperclip' \
+     GITHUB_TOKEN=__smoke_only__ \
+     KUBECONFIG_READONLY_PATH="${TMP}/kubeconfig.smoke-dummy" \
+     ./scripts/seed-50-fleet.sh --dry-run >"${TMP}/seed50.out" 2>"${TMP}/seed50.err"; then
     SEED50_NAMES="$(grep -c '"name"' "${TMP}/seed50.out" || true)"
     SEED50_TOTAL="$(grep -oE 'total fleet budget: [0-9]+ cents' "${TMP}/seed50.out" | grep -oE '[0-9]+' || true)"
     SEED50_CAP="$(grep -oE '\(cap [0-9]+ cents\)' "${TMP}/seed50.out" | grep -oE '[0-9]+' || true)"

@@ -49,6 +49,13 @@
        -- No INSERT/UPDATE/DELETE/DDL grants: writes fail at the DB layer
        -- even if an MCP tool path bypasses the shell deny above.
        ```
+     - Provisioning (Wave 2 P0-2/P1-8, fail-closed): fresh stacks create this
+       role at first boot via `scripts/postgres-init-readonly-role.sh`
+       (initdb hook, `POSTGRES_READER_PASSWORD`); `POSTGRES_READONLY_URL`
+       (compose `:?` guard + seed-50 preflight, which rejects superuser
+       URLs) is the only URL this role may use. Existing volumes predate the
+       hook — apply the SQL above (or the hook's `--dry-run` output) manually
+       before enabling this role against production data.
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`

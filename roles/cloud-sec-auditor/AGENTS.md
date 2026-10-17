@@ -34,6 +34,11 @@
    - **Transport**: `stdio`
    - **Command**: `npx -y aws-mcp`
    - **Configuration / Environment Variables**: Read-only AWS audit credentials.
+   - **Wave 2 P0-2 containment:** `run-aws-code` (arbitrary-AWS-code primitive)
+     is denied in `opencode.json` (`aws_run*` + `aws_*` tail); only
+     credential/profile inspection reads remain. The audit credentials above
+     MUST carry a read-only IAM policy — the permission list is
+     defense-in-depth, not the enforcement boundary.
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`

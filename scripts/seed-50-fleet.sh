@@ -42,6 +42,17 @@
 #                             computed sum differs (e.g. via env override).
 #   HEALTH_TIMEOUT_SEC        How long to wait for Paperclip health.
 #                             Default: 120
+#   POSTGRES_READONLY_URL       REQUIRED (dry-run and live): paperclip_reader
+#                             role URL for dba-specialist's postgres MCP.
+#                             Must match postgres://paperclip_reader:*@*:*/*;
+#                             placeholders and superuser URLs are rejected.
+#   GITHUB_TOKEN                REQUIRED (dry-run and live): scoped read-only
+#                             PAT for the 7 github-backed roles. CHANGE_ME__
+#                             placeholders are rejected. Never echoed.
+#   KUBECONFIG_READONLY_PATH    Host path of the read-only kubeconfig bound
+#                             to /paperclip/secrets/kubeconfig-readonly.
+#                             Default: ./secrets/kubeconfig-readonly. Must be
+#                             a regular file; absence fails the run.
 #
 # Paperclip REST API assumptions (verified against /tmp/paperclip sources):
 #   * Routes are mounted under /api (see server/src/routes/*.ts, e.g.
@@ -114,6 +125,45 @@ if [ "${DRY_RUN}" != "true" ] && [ -z "${PAPERCLIP_TOKEN}" ]; then
   echo "error: PAPERCLIP_TOKEN (or ADMIN_API_KEY) must be set" >&2
   exit 1
 fi
+
+# Wave 2 (P0-2/P1-8) provisioning preflight (fail-closed, dry-run AND live):
+# the fleet's MCP configs reference ${POSTGRES_READONLY_URL}
+# (dba-specialist), ${GITHUB_TOKEN} (7 github-backed roles) and
+# /paperclip/secrets/kubeconfig-readonly (k8s-orchestrator). Seeding with
+# any of them absent or still a CHANGE_ME__ placeholder leaves agents with
+# unresolvable credentials — refuse instead. Secret VALUES are never echoed;
+# only the variable name and the remediation are printed.
+require_provisioned_secrets() {
+  local missing=0
+  local readonly_url="${POSTGRES_READONLY_URL:-}"
+  case "${readonly_url}" in
+    postgres://paperclip_reader:*@*:*/*)
+      ;;
+    CHANGE_ME__*|"")
+      echo "error: POSTGRES_READONLY_URL must be set to the paperclip_reader role URL (see .env.example; provision the role with scripts/postgres-init-readonly-role.sh)" >&2
+      missing=1
+      ;;
+    *)
+      echo "error: POSTGRES_READONLY_URL must use the paperclip_reader user (read-only role) — superuser URLs are rejected" >&2
+      missing=1
+      ;;
+  esac
+  case "${GITHUB_TOKEN:-}" in
+    ""|CHANGE_ME__*)
+      echo "error: GITHUB_TOKEN must be set to a scoped read-only PAT (see .env.example)" >&2
+      missing=1
+      ;;
+  esac
+  local kube_path="${KUBECONFIG_READONLY_PATH:-./secrets/kubeconfig-readonly}"
+  if [ ! -f "${kube_path}" ]; then
+    echo "error: KUBECONFIG_READONLY_PATH '${kube_path}' is not a regular file — place the read-only kubeconfig there (see .env.example)" >&2
+    missing=1
+  fi
+  if [ "${missing}" -ne 0 ]; then
+    exit 1
+  fi
+}
+require_provisioned_secrets
 
 command -v curl >/dev/null 2>&1 || { echo "error: curl is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; exit 1; }

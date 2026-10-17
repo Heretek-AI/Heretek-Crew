@@ -38,7 +38,10 @@
    - **Package / Repo**: `@modelcontextprotocol/server-filesystem` (npm verified v1.0.0)
    - **Transport**: `stdio`
    - **Command**: `npx -y @modelcontextprotocol/server-filesystem`
-   - **Configuration / Environment Variables**: Workspace directory.
+   - **Configuration / Environment Variables**: Read-only sample scope
+     `/paperclip/workspaces/binaries` (Wave 2 P0-2 re-root off the shared
+     workspace; read verbs only — write/edit/create/move denied in
+     `opencode.json`, findings go through `fs:write`).
 
 ## 5. Skills
 
