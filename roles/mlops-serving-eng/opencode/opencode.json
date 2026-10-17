@@ -72,7 +72,7 @@
         "command": [
           "npx",
           "-y",
-          "ollama-mcp"
+          "ollama-mcp@2.1.0"
         ],
         "env": {
           "OLLAMA_HOST": "http://ollama:11434"
@@ -82,7 +82,7 @@
         "type": "local",
         "command": [
           "uvx",
-          "docker-mcp"
+          "docker-mcp==0.2.0"
         ]
       }
     }

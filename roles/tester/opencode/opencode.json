@@ -10,11 +10,17 @@
     { "action": "edit", "resource": "**/*{test,spec}.*", "effect": "allow" },
     { "action": "write", "resource": "**/tests/**", "effect": "allow" },
     { "action": "write", "resource": "**/*{test,spec}.*", "effect": "allow" },
-    { "action": "bash", "resource": "*", "effect": "allow" },
+    { "action": "bash", "resource": "npm test*", "effect": "allow" },
+    { "action": "bash", "resource": "npm run test*", "effect": "allow" },
+    { "action": "bash", "resource": "npx vitest*", "effect": "allow" },
+    { "action": "bash", "resource": "pytest*", "effect": "allow" },
+    { "action": "bash", "resource": "cargo test*", "effect": "allow" },
+    { "action": "bash", "resource": "go test*", "effect": "allow" },
     { "action": "todoread", "resource": "*", "effect": "allow" },
     { "action": "todowrite", "resource": "*", "effect": "allow" },
     { "action": "edit", "resource": "*", "effect": "deny" },
-    { "action": "write", "resource": "*", "effect": "deny" }
+    { "action": "write", "resource": "*", "effect": "deny" },
+    { "action": "bash", "resource": "*", "effect": "deny" }
   ],
   "skills": ["coverage-verification"],
   "mcp": {}

@@ -3,6 +3,12 @@
 # seed-50-fleet.sh — idempotently seed "Heretek Autonomous Fleet" and its
 # 50-agent specialist fleet into Paperclip.
 #
+# Scope note (P3-4): this seeds ONLY the 50 fleet roles. The 6 legacy
+# prototype roles (director, pm, programmer, tester, qa, designer) are
+# seeded by scripts/seed-company.sh. Both sets coexist on disk under roles/
+# (56 dirs); scripts/smoke-test.sh discovers them dynamically and asserts
+# each seed's own payload count (51 vs 7 documents).
+#
 # Usage:
 #   ./scripts/seed-50-fleet.sh [--dry-run] [--help]
 #
@@ -30,9 +36,10 @@
 #   TIMER_TPM_SEC             Scheduler heartbeat interval for tpm-scrum-lead.
 #                             0 disables. Default: 3600 (1h)
 #   FLEET_BUDGET_CAP_CENTS    Documented total fleet budget cap, in cents.
-#                             Default: 1279000 ($12,790.00 USD). The script uses
-#                             verbatim per-role catalog values (authoritative)
-#                             and emits a WARNING when their sum differs.
+#                             Default: 1270000 ($12,700.00 USD) — exactly the
+#                             sum of the verbatim per-role catalog values
+#                             (authoritative). A WARNING is emitted when the
+#                             computed sum differs (e.g. via env override).
 #   HEALTH_TIMEOUT_SEC        How long to wait for Paperclip health.
 #                             Default: 120
 #
@@ -46,7 +53,9 @@
 #     budgetMonthlyCents (integer CENTS), reportsTo (agent UUID)}.
 #   * opencode_local adapterConfig keys (packages/adapters/opencode-local/src/
 #     index.ts): {model (required, provider/model), env (map, optional),
-#     dangerouslySkipPermissions (bool, default true)}.
+#     dangerouslySkipPermissions (bool, default true)}. env carries
+#     XDG_CONFIG_HOME=/roles/<role> plus OPENCODE_DISABLE_PROJECT_CONFIG=true
+#     (defense-in-depth with docker-compose.yml paperclip environment).
 #   * Per-role isolation: adapterConfig.env.XDG_CONFIG_HOME=/roles/<role-id> is
 #     picked up by prepareOpenCodeRuntimeConfig, which copies
 #     $XDG_CONFIG_HOME/opencode into the runtime temp dir (NOTES.md §4).
@@ -69,11 +78,10 @@
 #     -> system-architect
 #
 # Budgets: exact integer cents from roles-catalog/ROLE_CATALOG_50.md
-# (authoritative per-role values). KNOWN DISCREPANCY: the catalog per-role
-# values sum to 1270000 cents ($12,700.00 USD), not the documented fleet cap of
-# 1279000 cents ($12,790.00 USD) — a $90.00 gap. This script uses the verbatim
-# per-role values, prints the computed total, and emits a WARNING on mismatch.
-# It never invents budgets to force the total.
+# (authoritative per-role values), summing to 1270000 cents ($12,700.00 USD),
+# which equals FLEET_BUDGET_CAP_CENTS. Per-role values are used verbatim and
+# never invented to force a total; print_budget_summary still warns if an
+# env override makes the cap disagree with the computed sum.
 #
 set -euo pipefail
 
@@ -84,7 +92,7 @@ MODEL_DEFAULT="${MODEL_DEFAULT:-anthropic/claude-sonnet-4-5}"
 MODEL_COORDINATOR="${MODEL_COORDINATOR:-${MODEL_DEFAULT}}"
 TIMER_EXEC_SEC="${TIMER_EXEC_SEC:-1800}"
 TIMER_TPM_SEC="${TIMER_TPM_SEC:-3600}"
-FLEET_BUDGET_CAP_CENTS="${FLEET_BUDGET_CAP_CENTS:-1279000}"
+FLEET_BUDGET_CAP_CENTS="${FLEET_BUDGET_CAP_CENTS:-1270000}"
 HEALTH_TIMEOUT_SEC="${HEALTH_TIMEOUT_SEC:-120}"
 
 DRY_RUN="false"
@@ -345,6 +353,10 @@ build_agent_payload() {
   if [ "${timer_sec}" != "0" ]; then
     heartbeat_enabled="true"
   fi
+  # Fail-closed permissions: dangerouslySkipPermissions MUST stay False.
+  # NOTE: even the per-role opencode.json allow-lists are only hints once the
+  # CLI runs with --auto (see scripts/opencode-shim.sh) — treat them as
+  # defense-in-depth, not as a sandbox boundary. Never set this to True.
   ROLE_DIR="$1" \
   ROLE_NAME="$(role_display_name "${role}")" \
   ROLE_ENUM="$(role_paperclip_role "${role}")" \
@@ -364,8 +376,11 @@ payload = {
     "adapterType": "opencode_local",
     "adapterConfig": {
         "model": os.environ["ROLE_MODEL"],
-        "env": {"XDG_CONFIG_HOME": "/roles/" + os.environ["ROLE_DIR"]},
-        "dangerouslySkipPermissions": True,
+        "env": {
+            "XDG_CONFIG_HOME": "/roles/" + os.environ["ROLE_DIR"],
+            "OPENCODE_DISABLE_PROJECT_CONFIG": "true",
+        },
+        "dangerouslySkipPermissions": False,
     },
     "runtimeConfig": {
         "heartbeat": {
@@ -536,11 +551,14 @@ for role in "${ROLE_LIST[@]}"; do
   want_budget="$(role_budget_cents "${role}")"
   if [ "${current_reports}" != "${want_reports}" ] || [ "${current_budget}" != "${want_budget}" ]; then
     log "updating '${name}': reportsTo=${want_reports:-none} budgetMonthlyCents=${want_budget}"
+    # Explicit reportsTo in every PATCH (null clears a stray reportsTo, e.g.
+    # on exec-director which must report to none / the Human Board).
     PATCH_REPORTS_TO="${want_reports}" PATCH_BUDGET="${want_budget}" python3 -c '
 import json, os
-payload = {"budgetMonthlyCents": int(os.environ["PATCH_BUDGET"])}
-if os.environ["PATCH_REPORTS_TO"]:
-    payload["reportsTo"] = os.environ["PATCH_REPORTS_TO"]
+payload = {
+    "budgetMonthlyCents": int(os.environ["PATCH_BUDGET"]),
+    "reportsTo": os.environ["PATCH_REPORTS_TO"] or None,
+}
 print(json.dumps(payload))
 ' > "${TMPDIR_WORK}/patch-${role}.json"
     api PATCH "/api/agents/${agent_id}" "${TMPDIR_WORK}/patch-${role}.json" > /dev/null

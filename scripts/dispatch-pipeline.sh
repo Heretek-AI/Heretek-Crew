@@ -8,7 +8,9 @@
 #   3. DECOMPOSE: TPM / Scrum Lead creates ticket, provisions isolated worktree.
 #   4. DEV: Specialist engineer implements changes using opencode-harness.
 #   5. QA: Tester & Release QA Officer verify via local CI and browser tests.
-#   6. MERGE: Git Drift Coordinator fast-forwards to main and archives worktree.
+#   6. ARCHIVE-ONLY: no auto-merge is performed (fail-closed). The worktree is
+#      retained for explicit manual review + git merge; archiving runs only
+#      after a human merges (see Phase 6 body).
 #
 # Usage:
 #   ./scripts/dispatch-pipeline.sh [options] "<feature-prompt>"
@@ -144,23 +146,25 @@ fi
 # Phase 5: Local CI & QA Acceptance
 log_stage "5/6 QA" "Automated testing and QA sign-off gate"
 log_step "Roles: tester (Automation) + release-qa-officer (Acceptance Gate)"
-log_step "Local CI Runner: docker compose --profile ci (act runner) / scripts/smoke-test.sh"
 if [ "${DRY_RUN}" = "true" ]; then
+  log_step "[DRY-RUN] Local CI Runner: docker compose --profile core --profile ci (act runner; core schedules the socket proxy) / scripts/smoke-test.sh"
   log_step "[DRY-RUN] Triggered local-ci-runner container on 'heretek' network"
   log_step "[DRY-RUN] Executed: bash scripts/smoke-test.sh --check-only"
   log_step "[DRY-RUN] Acceptance verification: release-qa-officer signed off"
 fi
 
-# Phase 6: Merge & Non-Destructive Archiving
-log_stage "6/6 RELEASE" "Fast-forward merge and worktree archival"
+# Phase 6: Archive ONLY (no merge performed — see below)
+log_stage "6/6 ARCHIVE-ONLY" "Worktree retained for explicit manual merge; no auto-merge"
 log_step "Role: git-drift-coord (Department: Operations & Maintenance)"
-log_step "Action: Archive worktree to .worktrees/archive/${TICKET_ID}-<timestamp>/"
+log_step "Action: MANUAL merge required — auto-merge is disabled (fail-closed)"
 if [ "${DRY_RUN}" = "true" ]; then
-  log_step "[DRY-RUN] Executing: git -C ${WORKTREE_DIR} rebase ${BASE_BRANCH}"
-  log_step "[DRY-RUN] Executing: bash scripts/worktree-manager.sh archive ${TICKET_ID} ${BASE_BRANCH}"
+  log_step "[DRY-RUN] Would require: review ${WORKTREE_DIR}, then run git merge explicitly"
+  log_step "[DRY-RUN] Only after merge: bash scripts/worktree-manager.sh archive ${TICKET_ID} ${BASE_BRANCH}"
   log_step "[DRY-RUN] Saved patch diff, status log, and commit manifest to .worktrees/archive/"
 else
-  bash scripts/worktree-manager.sh archive "${TICKET_ID}" "${BASE_BRANCH}"
+  echo "error: auto-merge disabled (fail-closed): review ${WORKTREE_DIR} then run git merge explicitly" >&2
+  echo "worktree retained at ${WORKTREE_DIR}; archive only after merge: bash scripts/worktree-manager.sh archive \"${TICKET_ID}\" \"${BASE_BRANCH}\"" >&2
+  exit 1
 fi
 
-log_stage "COMPLETE" "Autonomous relay pipeline finished successfully for ticket ${TICKET_ID}"
+log_stage "COMPLETE" "Pipeline trace finished for ticket ${TICKET_ID} (execute mode stops fail-closed at Phase 6: manual merge still required)"

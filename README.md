@@ -11,8 +11,8 @@ All versions are pinned — never `latest` (see [Version upgrades](#version-upgr
 |---|---|---|
 | Node base image | `node:24-trixie-slim` | `docker/Dockerfile` (inherited from official Paperclip base) |
 | PostgreSQL | `postgres:17-alpine` | `docker-compose.yml` |
-| OpenCode CLI | `@opencode/cli@2.0.31` | `docker/Dockerfile` (`OPENCODE_CLI_VERSION`) |
-| OpenCode client SDK | `@opencode/client@2.0.31` | `docker/Dockerfile` (`OPENCODE_CLIENT_VERSION`) |
+| OpenCode CLI | `@opencode/cli@2.0.32` | `docker/Dockerfile` (`OPENCODE_CLI_VERSION`) |
+| OpenCode client SDK | `@opencode/client@2.0.32` | `docker/Dockerfile` (`OPENCODE_CLIENT_VERSION`) |
 | Reverse proxy (optional) | `caddy:2.11.7-alpine` | `docker-compose.yml` |
 | Mesh sidecar (optional) | `tailscale/tailscale:v1.104.1` | `docker-compose.yml` |
 | QA/Designer browser MCP | `@playwright/mcp@0.0.83` | `roles/qa`, `roles/designer` `opencode.json` |
@@ -34,7 +34,7 @@ graph TD
         subgraph PaperclipContainer ["Paperclip container (user 'node' UID 1000)"]
             Server["Paperclip server + UI<br/>PORT 3100"]
             Shim["opencode shim<br/>/usr/local/bin/opencode"]
-            RealBin["real OpenCode v2 CLI<br/>/usr/local/bin/opencode-bin<br/>@opencode/cli@2.0.31"]
+            RealBin["real OpenCode v2 CLI<br/>/usr/local/bin/opencode-bin<br/>@opencode/cli@2.0.32"]
             Server -->|spawn opencode run --format json<br/>cwd = agent workspace| Shim
             Shim -->|strips --dir<br/>merges --variant into --model#variant<br/>injects --auto| RealBin
         end
@@ -308,7 +308,7 @@ until the catalog is amended.
 
 | What | Current | Where to change | Notes |
 |---|---|---|---|
-| OpenCode CLI/client | `2.0.31` | `docker/Dockerfile` `ENV OPENCODE_CLI_VERSION` / `OPENCODE_CLIENT_VERSION` | Bump together; re-run shim + smoke tests (`--dir`/`--variant`/`--auto` behavior may change upstream) |
+| OpenCode CLI/client | `2.0.32` | `docker/Dockerfile` `ENV OPENCODE_CLI_VERSION` / `OPENCODE_CLIENT_VERSION` | Bump together; re-run shim + smoke tests (`--dir`/`--variant`/`--auto` behavior may change upstream) |
 | Node base | `node:24-trixie-slim` | inherited from official base rebuilt from `/tmp/paperclip` | Rebuild `paperclip:official-local` first |
 | PostgreSQL | `postgres:17-alpine` | `docker-compose.yml` `postgres.image` | `make backup` before major bumps; PG data volume may need `pg_upgrade`/dump-restore |
 | Caddy | `caddy:2.11.7-alpine` | `docker-compose.yml` `caddy.image` | proxy profile only |

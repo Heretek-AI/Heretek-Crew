@@ -66,14 +66,12 @@
         "type": "local",
         "command": [
           "uvx",
-          "k6-mcp-server"
+          "k6-mcp-server==2.2.0"
         ]
       },
       "codebase-memory": {
         "type": "local",
-        "command": [
-          "codebase-memory-mcp"
-        ]
+        "command": ["npx", "-y", "codebase-memory-mcp@0.12.1"]
       }
     }
   }

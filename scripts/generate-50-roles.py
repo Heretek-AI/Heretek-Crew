@@ -16,6 +16,9 @@ Normalization applied to every parsed opencode.json (fail-closed):
     MODEL_DEFAULT) when the catalog block omits it,
   * re-appends {"action": "shell", "resource": "*", "effect": "deny"} so the
     permissions array always ends with deny-all shell,
+  * pins every mcp.servers npx/uvx command to exact registry versions
+    (npx pkg@ver, uvx pkg==ver; sole tracked exception @morluto/rea-mcp,
+    unpublished upstream) and dies on any other unpinned package,
   * pins Role 26 (android-mobile-spec) mobile MCP to
     npx -y @mobile-next/mobile-mcp@0.1.2 (catalog text names mobile-mcp;
     the fleet spec mandates the scoped pinned package),
@@ -39,10 +42,99 @@ from pathlib import Path
 
 MODEL_FALLBACK = "anthropic/claude-sonnet-4-5"
 # Fleet cap as stated in roles-catalog/ROLE_CATALOG_50.md and the fleet brief.
-# The per-role matrix in the catalog sums to 1270000; a mismatch is reported
-# as a WARNING (per-role values are authoritative) rather than failing.
-DOCUMENTED_FLEET_CAP_CENTS = 1279000
+# The per-role matrix in the catalog sums to 1270000, which equals the cap;
+# a mismatch (e.g. after a catalog edit) is reported as a WARNING (per-role
+# values are authoritative) rather than failing.
+DOCUMENTED_FLEET_CAP_CENTS = 1270000
 DENY_ALL_SHELL = {"action": "shell", "resource": "*", "effect": "deny"}
+
+# Pinned MCP supply chain (P1-7): exact versions resolved live against the
+# npm/PyPI registries 2026-10-17 (catalog "verified v" annotations agree).
+# normalize_config() rewrites every mcp.servers command through this map and
+# dies on any unpinned npx/uvx package not listed here. npx pins use pkg@ver,
+# uvx pins use pkg==ver (uv tool-run requirement syntax, verified live).
+MCP_NPX_PINS = {
+    "@executeautomation/playwright-mcp-server": "@executeautomation/playwright-mcp-server@1.0.12",
+    "@cyanheads/git-mcp-server": "@cyanheads/git-mcp-server@2.15.3",
+    "mcp-openapi-schema-explorer": "mcp-openapi-schema-explorer@1.3.5",
+    "aws-mcp": "aws-mcp@1.0.2",
+    "@modelcontextprotocol/server-github": "@modelcontextprotocol/server-github@2025.4.8",
+    "@modelcontextprotocol/server-postgres": "@modelcontextprotocol/server-postgres@0.6.2",
+    "@modelcontextprotocol/server-filesystem": "@modelcontextprotocol/server-filesystem@1.0.0",
+    "@modelcontextprotocol/server-memory": "@modelcontextprotocol/server-memory@1.0.0",
+    "@upstash/context7-mcp": "@upstash/context7-mcp@4.4.2",
+    "ollama-mcp": "ollama-mcp@2.1.0",
+    "codebase-memory-mcp": "codebase-memory-mcp@0.12.1",
+}
+MCP_UVX_PINS = {
+    "mcp-clickhouse": "mcp-clickhouse==0.7.0",
+    "r2mcp": "r2mcp==0.2.5",
+    "mcp-server-redis": "mcp-server-redis==0.1.1",
+    "kafka-mcp-server": "kafka-mcp-server==0.1.1",
+    "mcp-server-duckdb": "mcp-server-duckdb==1.1.0",
+    "mcp-server-kubernetes": "mcp-server-kubernetes==0.1.6",
+    "docker-mcp": "docker-mcp==0.2.0",
+    "k6-mcp-server": "k6-mcp-server==2.2.0",
+    "prometheus-mcp-server": "prometheus-mcp-server==1.6.2",
+    "mcp-server-qdrant": "mcp-server-qdrant==0.8.1",
+}
+# Sole unpinned exception (product decision pending): @morluto/rea-mcp is not
+# published on npm (registry 404 2026-10-17; upstream ships `rea-agents`
+# instead). Left as-is and tracked; any OTHER unpinned package fails the run.
+MCP_UNPINNED_EXCEPTIONS = {"@morluto/rea-mcp"}
+
+
+def pin_mcp_command(role_id, server_name, command):
+    """Rewrite one mcp.servers command argv through the pin maps (fail-closed)."""
+    if not isinstance(command, list) or not command:
+        die("role '%s' mcp server '%s' has no command argv" % (role_id, server_name))
+    if command[0] == "npx":
+        try:
+            y = command.index("-y")
+        except ValueError:
+            die(
+                "role '%s' mcp server '%s' npx argv lacks -y: %r"
+                % (role_id, server_name, command)
+            )
+        if y + 1 >= len(command):
+            die(
+                "role '%s' mcp server '%s' npx -y has no package: %r"
+                % (role_id, server_name, command)
+            )
+        pkg = command[y + 1]
+        if "@" in pkg.rsplit("/", 1)[-1]:
+            return command  # already pinned (pkg@ver)
+        if pkg in MCP_UNPINNED_EXCEPTIONS:
+            return command  # tracked exception, see map comment
+        if pkg not in MCP_NPX_PINS:
+            die(
+                "role '%s' mcp server '%s' unpinned npx package '%s'"
+                % (role_id, server_name, pkg)
+            )
+        return command[: y + 1] + [MCP_NPX_PINS[pkg]] + command[y + 2 :]
+    if command[0] == "uvx":
+        if len(command) < 2:
+            die(
+                "role '%s' mcp server '%s' uvx argv has no package"
+                % (role_id, server_name)
+            )
+        pkg = command[1]
+        if "==" in pkg:
+            return command  # already pinned (pkg==ver)
+        if pkg in MCP_UNPINNED_EXCEPTIONS:
+            return command
+        if pkg not in MCP_UVX_PINS:
+            die(
+                "role '%s' mcp server '%s' unpinned uvx package '%s'"
+                % (role_id, server_name, pkg)
+            )
+        return [command[0], MCP_UVX_PINS[pkg]] + command[2:]
+    if command == ["codebase-memory-mcp"]:
+        # Bare binary (pre-pin form): resolve via pinned npx so the exact
+        # registry artifact runs (npm bin codebase-memory-mcp exists @0.12.1).
+        return ["npx", "-y", MCP_NPX_PINS["codebase-memory-mcp"]]
+    return command
+
 
 # Canonical 50 role IDs in catalog order (Roles 01-50).
 EXPECTED_IDS = [
@@ -354,6 +446,11 @@ def normalize_config(role):
         env.setdefault("ADB_HOST", "docker-android")
         env.setdefault("ADB_PORT", "5555")
         mobile["env"] = env
+
+    for server_name, server in mcp["servers"].items():
+        if not isinstance(server, dict):
+            die("role '%s' mcp server '%s' is not a mapping" % (role_id, server_name))
+        server["command"] = pin_mcp_command(role_id, server_name, server.get("command"))
 
     ordered = {
         "$schema": cfg["$schema"],

@@ -11,17 +11,17 @@
 - **Official Agent Harnesses in Dockerfile**:
   - Line 177 in official `Dockerfile` installs:
     `npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai @google/gemini-cli@latest @moonshot-ai/kimi-code@latest`
-  - Notice: It installs `opencode-ai` (which is OpenCode v1, pinned at 1.19.3). OpenCode v2 is `@opencode/cli` (currently 2.0.31).
+  - Notice: It installs `opencode-ai` (which is OpenCode v1, pinned at 1.19.3). OpenCode v2 is `@opencode/cli` (currently 2.0.32).
 - **Decision**: Extend Paperclip's official `docker/docker-compose.yml` and `Dockerfile` (or build an extended image layer on top of Paperclip's Dockerfile) rather than reinventing the stack from scratch.
 
 ### 2. OpenCode Package Naming & Version Pinning
 - **OpenCode v1**: `opencode-ai` (latest v1: `1.19.3`).
-- **OpenCode v2 CLI**: `@opencode/cli` (latest: `2.0.31`).
-- **OpenCode v2 Client SDK**: `@opencode/client` (latest: `2.0.31`).
-- **Install command**: `npm install -g @opencode/cli@2.0.31`
+- **OpenCode v2 CLI**: `@opencode/cli` (latest: `2.0.32`).
+- **OpenCode v2 Client SDK**: `@opencode/client` (latest: `2.0.32`).
+- **Install command**: `npm install -g @opencode/cli@2.0.32`
 - **Pinned versions for this stack**:
-  - `@opencode/cli`: `2.0.31`
-  - `@opencode/client`: `2.0.31`
+  - `@opencode/cli`: `2.0.32`
+  - `@opencode/client`: `2.0.32`
   - `postgres`: `17-alpine`
   - Node base: `node:24-trixie-slim`
 
@@ -128,7 +128,7 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 
 ### Verified facts (wave 1)
 - Pins: `node:24-trixie-slim` (official base), `postgres:17-alpine`,
-  `@opencode/cli@2.0.31` + `@opencode/client@2.0.31` via
+  `@opencode/cli@2.0.32` + `@opencode/client@2.0.32` via
   `OPENCODE_CLI_VERSION`/`OPENCODE_CLIENT_VERSION` ENV, `caddy:2.11.7-alpine`,
   `tailscale/tailscale:v1.104.1`. No `latest` anywhere in ops files
   (smoke §3 greps for it).
@@ -218,8 +218,8 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 - Paperclip: https://github.com/paperclipai/paperclip (reference clone:
   `/tmp/paperclip`; official compose `docker/docker-compose.yml`, official
   `Dockerfile` root)
-- OpenCode v2 CLI: `@opencode/cli@2.0.31` (`npm install -g @opencode/cli@2.0.31`);
-  v2 client SDK `@opencode/client@2.0.31`; v1 package name `opencode-ai@1.19.3`
+- OpenCode v2 CLI: `@opencode/cli@2.0.32` (`npm install -g @opencode/cli@2.0.32`);
+  v2 client SDK `@opencode/client@2.0.32`; v1 package name `opencode-ai@1.19.3`
 - Key upstream files read: `packages/adapters/opencode-local/src/server/execute.ts`
   (`--dir`/`--variant`/`OPENCODE_DISABLE_PROJECT_CONFIG`), `server/src/routes/`
   (`companies.ts`, `agents.ts`), `packages/shared/src/validators/agent.ts`,

@@ -1,6 +1,6 @@
 # AGENTS.md — Heretek-Crew Repository Guide for Autonomous Agents
 
-Welcome to **Heretek-Crew**. This repository contains a production-grade, self-hosted Docker Compose stack running **Paperclip** (`paperclipai/paperclip`) as the orchestrator and WebUI for an enterprise fleet of **OpenCode v2** (`@opencode/cli@2.0.31`) autonomous agents.
+Welcome to **Heretek-Crew**. This repository contains a production-grade, self-hosted Docker Compose stack running **Paperclip** (`paperclipai/paperclip`) as the orchestrator and WebUI for an enterprise fleet of **OpenCode v2** (`@opencode/cli@2.0.32`) autonomous agents.
 
 Any AI coding assistant, autonomous agent, or paired developer working on this codebase MUST adhere strictly to the rules, invariants, and operational procedures outlined below.
 
@@ -10,7 +10,7 @@ Any AI coding assistant, autonomous agent, or paired developer working on this c
 
 ### Core Tech Stack
 - **Orchestrator**: Paperclip (Node.js 24, TypeScript, Fastify/Prisma backend, Vite/React WebUI).
-- **Agent Runtime**: OpenCode v2 (`@opencode/cli@2.0.31` + `@opencode/client@2.0.31`).
+- **Agent Runtime**: OpenCode v2 (`@opencode/cli@2.0.32` + `@opencode/client@2.0.32`).
 - **Database**: PostgreSQL 17 (`postgres:17-alpine`) with healthcheck and backup automation.
 - **Compatibility Layer**: Custom POSIX shell shim (`scripts/opencode-shim.sh`) installed at `/usr/local/bin/opencode` in the container.
 - **Network & Ingress**: Isolated user-defined bridge network (`heretek`), loopback-bound ports (`127.0.0.1:3100`), optional Caddy TLS reverse proxy (`--profile proxy`), and Tailscale mesh sidecar (`--profile tailscale`).
@@ -53,7 +53,7 @@ Any AI coding assistant, autonomous agent, or paired developer working on this c
 │   └── 01_*.md ... 09_*.md         # Departmental specifications
 ├── scripts/
 │   ├── opencode-shim.sh            # Production CLI shim
-│   ├── test-shim.sh                # 28-assertion unit test suite for the shim
+│   ├── test-shim.sh                # 39-assertion unit test suite for the shim
 │   ├── seed-company.sh             # 6-agent bootstrap seeding script
 │   ├── seed-50-fleet.sh            # 50-agent fleet seeding script
 │   ├── generate-50-roles.py        # 50-role disk scaffolding generator
@@ -74,7 +74,7 @@ Always use the `Makefile` or explicit scripts. Never construct ad-hoc commands t
 
 ```bash
 # Verification & Testing (run before committing any changes)
-make test                           # Runs unit shim tests (28/28 assertions)
+make test                           # Runs unit shim tests (39/39 assertions)
 bash scripts/smoke-test.sh --check-only   # 48+ static verification assertions
 
 # Environment Initialization
@@ -115,6 +115,24 @@ When modifying this repository, follow these non-negotiable rules:
      ```json
      { "action": "shell", "resource": "*", "effect": "deny" }
      ```
+     (fleet dialect) or `{ "action": "bash", "resource": "*", "effect": "deny" }`
+     (legacy 6-role dialect, which uses `read`/`glob`/`grep`/`list`/`edit`/`write`/`bash`
+     instead of `fs:*`/`shell`). Every role file MUST end in its dialect's deny tail —
+     `scripts/smoke-test.sh` §3/§3b enforces this mechanically.
+   - **Known limitation — prefix matching is not an argv-aware sandbox.**
+     `shell`/`bash` allows are string-prefix patterns (`git status*`, `npm test*`):
+     continuations such as `git status; <payload>` match the prefix when the
+     enforcer is prefix-based. Treat these lists as defense-in-depth hints, not
+     as a sandbox boundary; never rely on them alone for untrusted input.
+   - **Known limitation — MCP namespaces bypass shell denies.** A role that
+     denies `kubectl apply/delete` or `psql*` via `shell` but allows
+     `kubernetes_*` / `postgres_*` MCP tools can still perform those operations
+     through MCP. Sensitive MCP paths MUST additionally be constrained at the
+     resource layer (e.g. a true read-only Postgres role via GRANTs — see
+     `roles/dba-specialist/AGENTS.md` §4; kubeconfig scoped to a read-only
+     ClusterRole for `k8s-orchestrator`). Full single-dialect unification plus
+     per-namespace MCP deny tails require the runtime enforcer's tool-name
+     contract and remain a tracked product decision (see REMEDIATION_LOG.md).
 3. **No Unpinned Versions**:
    - Forbidden: `:latest`, `@latest`, unversioned package installations.
 4. **Shell Script Standards**:

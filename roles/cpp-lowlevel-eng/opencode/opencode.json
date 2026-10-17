@@ -89,16 +89,14 @@
     "servers": {
       "codebase-memory": {
         "type": "local",
-        "command": [
-          "codebase-memory-mcp"
-        ]
+        "command": ["npx", "-y", "codebase-memory-mcp@0.12.1"]
       },
       "git": {
         "type": "local",
         "command": [
           "npx",
           "-y",
-          "@cyanheads/git-mcp-server"
+          "@cyanheads/git-mcp-server@2.15.3"
         ]
       }
     }

@@ -61,7 +61,7 @@
         "type": "local",
         "command": [
           "uvx",
-          "mcp-clickhouse"
+          "mcp-clickhouse==0.7.0"
         ],
         "env": {
           "CLICKHOUSE_URL": "http://clickhouse:8123"
@@ -69,9 +69,7 @@
       },
       "codebase-memory": {
         "type": "local",
-        "command": [
-          "codebase-memory-mcp"
-        ]
+        "command": ["npx", "-y", "codebase-memory-mcp@0.12.1"]
       }
     }
   }

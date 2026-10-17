@@ -32,9 +32,23 @@
 1. **PostgreSQL MCP Server**:
    - **Package / Repo**: `@modelcontextprotocol/server-postgres` (npm verified v0.6.2)
    - **Transport**: `stdio`
-   - **Command**: `npx -y @modelcontextprotocol/server-postgres`
+   - **Command**: `npx -y @modelcontextprotocol/server-postgres@0.6.2`
    - **Configuration / Environment Variables**:
-     - `POSTGRES_CONNECTION_STRING`: Connection URI with read-only/explain credentials.
+     - `POSTGRES_READONLY_URL`: Connection URI for a **true read-only role**.
+       The `postgres_*` MCP allow in `opencode.json` bypasses the `psql*`
+       shell deny, so a deny entry alone is NOT sufficient — the database
+       itself must enforce read-only via GRANTs (creating that role is a DB
+       change, out of scope for agent runs; provision it before enabling
+       this role against production data):
+       ```sql
+       CREATE ROLE paperclip_reader WITH LOGIN PASSWORD '<secret>';
+       GRANT CONNECT ON DATABASE paperclip TO paperclip_reader;
+       GRANT USAGE ON SCHEMA public TO paperclip_reader;
+       GRANT SELECT ON ALL TABLES IN SCHEMA public TO paperclip_reader;
+       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO paperclip_reader;
+       -- No INSERT/UPDATE/DELETE/DDL grants: writes fail at the DB layer
+       -- even if an MCP tool path bypasses the shell deny above.
+       ```
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`

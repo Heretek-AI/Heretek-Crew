@@ -123,6 +123,43 @@ RUN_ARGS=(run --dir=/work --model anthropic/claude-sonnet-4-5 --variant=low prom
 assert_args "merge: mixed flag forms + dir strip" \
     "run" "--model" "anthropic/claude-sonnet-4-5#low" "--auto" "prompt"
 
+# 8a. Short -m with --variant (variant after model).
+RUN_ARGS=(run -m mymodel --variant high prompt)
+assert_args "merge: -m <model> + --variant" \
+    "run" "-m" "mymodel#high" "--auto" "prompt"
+
+# 8b. Order independence with short -m: --variant before -m.
+RUN_ARGS=(run --variant high -m mymodel prompt)
+assert_args "merge: --variant before -m" \
+    "run" "-m" "mymodel#high" "--auto" "prompt"
+
+# 8c. Equals forms with short -m: -m=value keeps its own prefix.
+RUN_ARGS=(run -m=mymodel --variant=high prompt)
+assert_args "merge: -m=<model> + --variant= keeps -m= prefix" \
+    "run" "-m=mymodel#high" "--auto" "prompt"
+
+# 8d. Model already carrying a variant suffix is not doubled via -m.
+RUN_ARGS=(run -m provider/model#custom --variant high prompt)
+assert_args "merge: -m existing #variant not doubled" \
+    "run" "-m" "provider/model#custom" "--auto" "prompt"
+
+# 8e. Empty --variant= carries no value: dropped, model left untouched.
+RUN_ARGS=(run --model mymodel --variant= prompt)
+assert_args "merge: empty --variant= dropped, model untouched" \
+    "run" "--model" "mymodel" "--auto" "prompt"
+
+# 8f. Duplicate --model: the LAST occurrence is the effective one and takes
+# the merge; the earlier flag passes through for the real binary to judge.
+RUN_ARGS=(run --model aaa --model bbb --variant high prompt)
+assert_args "merge: duplicate --model merges into last" \
+    "run" "--model" "aaa" "--model" "bbb#high" "--auto" "prompt"
+
+# 8g. Mid-argv --dir with no value (next token is a flag): dropped on its
+# own, the following flag must survive.
+RUN_ARGS=(run --model mymodel --dir --format json prompt)
+assert_args "strip: mid-argv valueless --dir does not swallow next flag" \
+    "run" "--model" "mymodel" "--auto" "--format" "json" "prompt"
+
 # 9. --auto already present: never duplicated.
 RUN_ARGS=(run --format json --model m --auto prompt)
 assert_args "auto: not duplicated when present" \
@@ -229,6 +266,47 @@ if [[ "${code}" -ne 0 ]] && grep -q "not found" "${SANDBOX}/err"; then
 else
     report FAIL "fail-closed: missing real binary exited ${code}"
 fi
+
+# 20. OPENCODE_GO_API_KEY fallback (shim:56-58) + no-clobber guarantee.
+# A second mock records the OPENCODE_API_KEY visible to the real binary
+# (the argv mock above cannot observe environment).
+cat > "${SANDBOX}/opencode-bin-env" <<'MOCKENV'
+#!/usr/bin/env bash
+printf 'OPENCODE_API_KEY=%s\n' "${OPENCODE_API_KEY:-UNSET}" > "${MOCK_ARGS_FILE}"
+printf '%s\n' "$@" >> "${MOCK_ARGS_FILE}"
+exit 0
+MOCKENV
+chmod +x "${SANDBOX}/opencode-bin-env"
+
+# check_go_fallback <name> <expected OPENCODE_API_KEY> <env assignments...>:
+# runs the shim with a controlled environment and asserts what the real
+# binary would see. Extra args are `env` assignments (VAR=val or -u VAR).
+check_go_fallback() {
+    local name="$1"
+    local expected="$2"
+    shift 2
+    rm -f "${MOCK_ARGS_FILE}"
+    if env "$@" OPENCODE_REAL_BIN="${SANDBOX}/opencode-bin-env" "${SHIM}" run hi > /dev/null 2>&1; then
+        local actual
+        actual="$(head -n 1 "${MOCK_ARGS_FILE}")"
+        if [[ "${actual}" == "OPENCODE_API_KEY=${expected}" ]]; then
+            report PASS "${name}"
+        else
+            report FAIL "${name} (expected OPENCODE_API_KEY=${expected}, got ${actual})"
+        fi
+    else
+        report FAIL "${name} (shim exited non-zero)"
+    fi
+}
+
+check_go_fallback "go-key: fallback exports OPENCODE_API_KEY" \
+    "go-key-123" -u OPENCODE_API_KEY OPENCODE_GO_API_KEY=go-key-123
+check_go_fallback "go-key: pre-existing OPENCODE_API_KEY not clobbered" \
+    "orig-keep" OPENCODE_API_KEY=orig-keep OPENCODE_GO_API_KEY=go-key-123
+check_go_fallback "go-key: neither set leaves key unset" \
+    "UNSET" -u OPENCODE_API_KEY -u OPENCODE_GO_API_KEY
+check_go_fallback "go-key: empty GO key does not clobber to empty" \
+    "UNSET" -u OPENCODE_API_KEY OPENCODE_GO_API_KEY=
 
 printf '\n%d passed, %d failed\n' "${PASS}" "${FAIL}"
 [[ "${FAIL}" -eq 0 ]]

@@ -66,7 +66,7 @@
         "type": "local",
         "command": [
           "uvx",
-          "prometheus-mcp-server"
+          "prometheus-mcp-server==1.6.2"
         ],
         "env": {
           "PROMETHEUS_URL": "http://prometheus:9090"
@@ -77,7 +77,7 @@
         "command": [
           "npx",
           "-y",
-          "@cyanheads/git-mcp-server"
+          "@cyanheads/git-mcp-server@2.15.3"
         ]
       }
     }

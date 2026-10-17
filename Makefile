@@ -37,6 +37,11 @@ help: ## Show this help (lists all documented targets).
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
 build: ## Build the Paperclip + OpenCode v2 Docker image locally.
+	# Build order matters (P3-5): the wave1 layer builds FROM
+	# ${PAPERCLIP_BASE_IMAGE:-paperclip:official-local}, so build the official
+	# base FIRST (docker build -t paperclip:official-local /tmp/paperclip)
+	# or `docker compose build` below reuses a STALE base without warning.
+	# See docker/Dockerfile (two-step build) and docker-compose.yml header.
 	$(COMPOSE) build
 
 up: ## Start the stack in background (postgres + paperclip, private on 127.0.0.1:3100).

@@ -12,9 +12,12 @@
 #      dump instead of silently succeeding.
 #   3. Streams `pg_dump` out of the container through gzip into
 #      backups/backup-YYYYMMDD-HHMMSS.sql.gz (never `latest`, never unversioned
-#      overwrite — every backup is timestamped).
+#      overwrite — every backup is timestamped; a same-second rerun gets a
+#      -$RANDOM suffix instead of overwriting, and a second collision aborts
+#      fail-closed rather than clobbering).
 #   4. Verifies the dump file is non-empty, then enforces retention: keeps the
-#      newest $BACKUP_RETENTION_COUNT dumps, deletes older ones.
+#      newest $BACKUP_RETENTION_COUNT dumps, deletes older ones (NUL-delimited
+#      mtime sort — safe against whitespace/newlines in filenames).
 #
 # Environment (all optional):
 #   POSTGRES_USER ............ default: paperclip (matches docker-compose.yml)
@@ -69,6 +72,16 @@ fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUTFILE="${BACKUP_DIR}/backup-${STAMP}.sql.gz"
+# Same-second rerun guard (P2-2): never silently overwrite. First collision
+# gets a -$RANDOM suffix (still timestamped, still sortable); a second
+# collision aborts fail-closed instead of clobbering an existing dump.
+if [[ -e "${OUTFILE}" ]]; then
+  OUTFILE="${BACKUP_DIR}/backup-${STAMP}-${RANDOM}.sql.gz"
+fi
+if [[ -e "${OUTFILE}" ]]; then
+  echo "error: refusing to overwrite existing dump ${OUTFILE} (fail-closed)" >&2
+  exit 1
+fi
 echo "[backup] dumping ${POSTGRES_USER}/${POSTGRES_DB} -> ${OUTFILE} ..."
 
 docker compose exec -T postgres pg_dump -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
@@ -83,11 +96,18 @@ fi
 echo "[backup] wrote $(du -h "${OUTFILE}" | cut -f1) to ${OUTFILE}"
 
 if [[ "${BACKUP_RETENTION_COUNT}" =~ ^[0-9]+$ ]] && [[ "${BACKUP_RETENTION_COUNT}" -gt 0 ]]; then
-  # shellcheck disable=SC2012
-  mapfile -t OLD < <(ls -1t "${BACKUP_DIR}"/backup-*.sql.gz 2>/dev/null | tail -n +"$((BACKUP_RETENTION_COUNT + 1))" || true)
-  if [[ "${#OLD[@]}" -gt 0 ]]; then
-    echo "[backup] pruning ${#OLD[@]} dump(s) beyond retention=${BACKUP_RETENTION_COUNT}..."
-    rm -f -- "${OLD[@]}"
+  # NUL-delimited mtime sort (P2-2): `ls -1t | tail` breaks on whitespace or
+  # newlines in filenames. `find -printf '%T@ %p\0' | sort -z -n` yields
+  # oldest-first, NUL-separated; the timestamp prefix contains no spaces, so
+  # the first space always delimits it from the path.
+  mapfile -d '' SORTED < <(find "${BACKUP_DIR}" -maxdepth 1 -name 'backup-*.sql.gz' -printf '%T@ %p\0' | sort -z -n)
+  if [[ "${#SORTED[@]}" -gt "${BACKUP_RETENTION_COUNT}" ]]; then
+    PRUNE_COUNT=$(("${#SORTED[@]}" - BACKUP_RETENTION_COUNT))
+    echo "[backup] pruning ${PRUNE_COUNT} dump(s) beyond retention=${BACKUP_RETENTION_COUNT}..."
+    for (( k = 0; k < PRUNE_COUNT; k++ )); do
+      entry="${SORTED[k]}"
+      rm -f -- "${entry#* }"
+    done
   fi
 else
   echo "[backup] retention disabled (BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT}); keeping all dumps"

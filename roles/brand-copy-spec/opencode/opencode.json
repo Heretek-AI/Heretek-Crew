@@ -62,7 +62,7 @@
         "command": [
           "npx",
           "-y",
-          "@cyanheads/git-mcp-server"
+          "@cyanheads/git-mcp-server@2.15.3"
         ]
       },
       "filesystem": {
@@ -70,7 +70,7 @@
         "command": [
           "npx",
           "-y",
-          "@modelcontextprotocol/server-filesystem",
+          "@modelcontextprotocol/server-filesystem@1.0.0",
           "/paperclip/workspaces"
         ]
       }

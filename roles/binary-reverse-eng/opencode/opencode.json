@@ -98,7 +98,7 @@
         "type": "local",
         "command": [
           "uvx",
-          "r2mcp"
+          "r2mcp==0.2.5"
         ]
       },
       "filesystem": {
@@ -106,7 +106,7 @@
         "command": [
           "npx",
           "-y",
-          "@modelcontextprotocol/server-filesystem",
+          "@modelcontextprotocol/server-filesystem@1.0.0",
           "/paperclip/workspaces"
         ]
       }

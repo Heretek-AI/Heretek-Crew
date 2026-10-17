@@ -76,7 +76,7 @@
         "type": "local",
         "command": [
           "uvx",
-          "prometheus-mcp-server"
+          "prometheus-mcp-server==1.6.2"
         ],
         "env": {
           "PROMETHEUS_URL": "http://prometheus:9090"
@@ -84,9 +84,7 @@
       },
       "codebase-memory": {
         "type": "local",
-        "command": [
-          "codebase-memory-mcp"
-        ]
+        "command": ["npx", "-y", "codebase-memory-mcp@0.12.1"]
       }
     }
   }

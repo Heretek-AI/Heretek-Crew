@@ -12,13 +12,29 @@
 # Commands:
 #   create   Create an isolated worktree at workspaces/tickets/<ticket-id> on branch ticket-<ticket-id>
 #   rebase   Rebase active ticket branch against base-branch (default: main)
-#   archive  Save diff and commit log to .worktrees/archive/<ticket-id>-<timestamp>, remove worktree, delete branch
+#   archive  Save diff and commit log to .worktrees/archive/<ticket-id>-<timestamp>,
+#            then remove a CLEAN worktree (never --force); the branch is RETAINED
+#            for explicit post-merge delete (fail-closed: unmerged work is never
+#            destroyed by this command)
 #   list     List all active Git worktrees
 #
 set -euo pipefail
 
+command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 127; }
+
 WORKTREE_ROOT="workspaces/tickets"
 ARCHIVE_ROOT=".worktrees/archive"
+
+# Fail-closed ticket-id allowlist: blocks path traversal (../evil),
+# absolute paths (/tmp/wt-abs), and ref-hostile names before any
+# worktree path or branch name is derived from the id.
+require_ticket_id() {
+  local ticket_id="$1"
+  if [[ ! "${ticket_id}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$ ]]; then
+    echo "error: invalid ticket-id '${ticket_id}' (allowlist: ^[A-Za-z0-9][A-Za-z0-9._-]{1,63}\$)" >&2
+    exit 2
+  fi
+}
 
 show_help() {
   sed -n '3,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
@@ -26,6 +42,7 @@ show_help() {
 
 cmd_create() {
   local ticket_id="$1"
+  require_ticket_id "${ticket_id}"
   local base_branch="${2:-main}"
   local target_dir="${WORKTREE_ROOT}/${ticket_id}"
   local branch_name="ticket-${ticket_id}"
@@ -49,6 +66,7 @@ cmd_create() {
 
 cmd_rebase() {
   local ticket_id="$1"
+  require_ticket_id "${ticket_id}"
   local base_branch="${2:-main}"
   local target_dir="${WORKTREE_ROOT}/${ticket_id}"
 
@@ -64,6 +82,7 @@ cmd_rebase() {
 
 cmd_archive() {
   local ticket_id="$1"
+  require_ticket_id "${ticket_id}"
   local base_branch="${2:-main}"
   local target_dir="${WORKTREE_ROOT}/${ticket_id}"
   local branch_name="ticket-${ticket_id}"
@@ -79,10 +98,12 @@ cmd_archive() {
   mkdir -p "${archive_dir}"
   echo "[worktree] Archiving ${target_dir} to ${archive_dir}..."
 
-  # Save diff against base branch, git status, and commit history
-  git -C "${target_dir}" diff "${base_branch}" > "${archive_dir}/patch.diff" || true
-  git -C "${target_dir}" status --short > "${archive_dir}/status.log" || true
-  git -C "${target_dir}" log -n 20 --oneline > "${archive_dir}/commits.log" || true
+  # Save diff against base branch, git status, and commit history.
+  # Fail-closed: failures here abort the archive (never masked) so a
+  # partial archive is never mistaken for a complete one.
+  git -C "${target_dir}" diff "${base_branch}" > "${archive_dir}/patch.diff"
+  git -C "${target_dir}" status --short > "${archive_dir}/status.log"
+  git -C "${target_dir}" log -n 20 --oneline > "${archive_dir}/commits.log"
 
   # Write manifest
   cat <<EOF > "${archive_dir}/manifest.json"
@@ -96,11 +117,14 @@ cmd_archive() {
 EOF
 
   echo "[worktree] Detaching and removing worktree ${target_dir}..."
-  git worktree remove --force "${target_dir}"
+  # Fail-closed removal: never --force here. A dirty or locked worktree
+  # aborts instead of destroying uncommitted work.
+  git worktree remove "${target_dir}"
 
-  if git show-ref --verify --quiet "refs/heads/${branch_name}"; then
-    git branch -D "${branch_name}" || true
-  fi
+  # The branch is deliberately RETAINED: only delete it explicitly after
+  # the work is merged (git branch -d). Archive must never destroy the
+  # only ref to unmerged commits.
+  echo "note: retaining branch ${branch_name}; delete explicitly after merge (git branch -d)" >&2
 
   echo "[worktree] Successfully archived ${ticket_id} to ${archive_dir}"
 }

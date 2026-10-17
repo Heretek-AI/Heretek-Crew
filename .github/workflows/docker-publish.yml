@@ -76,8 +76,8 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
             heretek.paperclip.base=${{ inputs.paperclip_base || 'ghcr.io/paperclipai/paperclip:sha-73659c6' }}
-            heretek.opencode.cli=2.0.31
-            heretek.opencode.client=2.0.31
+            heretek.opencode.cli=2.0.32
+            heretek.opencode.client=2.0.32
             heretek.opencode.harness=1.0.7
 
       - name: Pre-publish Image Verification (Native amd64)
@@ -91,13 +91,14 @@ jobs:
             -t heretek-crew:verify .
 
           echo "Running verification assertions against built image..."
-          # 1. Verify compatibility shim executes and passes --help
-          docker run --rm heretek-crew:verify /usr/local/bin/opencode --version || \
-            docker run --rm heretek-crew:verify /usr/local/bin/opencode --help >/dev/null
+          # 1. Verify compatibility shim executes and reports a version.
+          # Fail-closed: --version is REQUIRED (a --help fallback would mask
+          # a broken shim that execs nothing — see P1-9).
+          docker run --rm heretek-crew:verify /usr/local/bin/opencode --version
           # 2. Verify binary opencode-bin is present and functional
           docker run --rm heretek-crew:verify /usr/local/bin/opencode-bin --version
-          # 3. Verify @heretek-ai/opencode-harness is installed globally
-          docker run --rm heretek-crew:verify npm ls -g --depth=0 @heretek-ai/opencode-harness
+          # 3. Verify @heretek-ai/opencode-harness + opencode-mem are installed globally
+          docker run --rm heretek-crew:verify npm ls -g --depth=0 @heretek-ai/opencode-harness opencode-mem
           # 4. Verify system dependencies
           docker run --rm heretek-crew:verify tini --version
           docker run --rm heretek-crew:verify rg --version

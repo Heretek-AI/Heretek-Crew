@@ -12,7 +12,7 @@
 #
 # Pinned images (never `latest`): postgres:17-alpine, caddy:2.11.7-alpine,
 # tailscale/tailscale:v1.104.1. The paperclip image pins node:24-trixie-slim
-# (via the official base) and @opencode/cli + @opencode/client 2.0.31
+# (via the official base) and @opencode/cli + @opencode/client 2.0.32
 # (see docker/Dockerfile).
 
 name: heretek-crew
@@ -38,6 +38,25 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - heretek
+    # Resource caps (P1-9): bound the database alongside the fleet.
+    cpus: "1.0"
+    mem_limit: 1g
+    # Hardening (P2-3): drop all capabilities except the minimal set the
+    # official postgres entrypoint needs to chown the data volume and gosu
+    # down to the postgres user (CHOWN, DAC_OVERRIDE, SETGID, SETUID).
+    # read_only is NOT set: the server writes /var/lib/postgresql/data (named
+    # volume), /var/run/postgresql and /tmp at runtime — a read-only root
+    # would need live-boot verification (tracked). no-new-privileges blocks
+    # privilege gain only; the entrypoint's root-to-postgres drop still works.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
 
   paperclip:
     build:
@@ -56,6 +75,11 @@ services:
       - "127.0.0.1:3100:3100"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-paperclip}
+      # Defense-in-depth: stop agent runtimes from loading repository
+      # workspace project configs (prevents workspace git pollution).
+      # Mirrored per-agent in the seed payloads' adapterConfig.env and
+      # asserted on the rendered config by scripts/smoke-test.sh §2.
+      OPENCODE_DISABLE_PROJECT_CONFIG: "true"
       PORT: "3100"
       SERVE_UI: "true"
       PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
@@ -93,6 +117,28 @@ services:
     mem_limit: 4g
     pids_limit: 2048
     stop_grace_period: 90s
+    # Healthcheck (P1-9): the served UI root must answer. Reports unhealthy
+    # only (dependents use start-order depends_on, never health-gated), so a
+    # slow first boot degrades to a flag, never a restart loop.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:$${PORT:-3100}/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    # Capability note (P1-9, P2-3): NO cap_drop here — the inherited entrypoint
+    # repairs /paperclip ownership as root before `exec gosu node`
+    # (see docker/Dockerfile runtime-user note); dropping caps would break
+    # first boot on fresh named volumes. Least-privilege is enforced above
+    # it: loopback-only ports, read-only /roles mount, scoped env.
+    # read_only is likewise NOT set (P2-3): the server writes
+    # ./workspaces:/paperclip/workspaces and paperclip-data:/paperclip by
+    # design (agent checkouts, sqlite/state), plus /tmp — a read-only root
+    # needs live-boot verification before it can be claimed (tracked).
+    # no-new-privileges IS safe: it blocks privilege gain, not the
+    # entrypoint's root-to-node drop, and agent children never gain privs.
+    security_opt:
+      - no-new-privileges:true
 
   caddy:
     image: caddy:2.11.7-alpine
@@ -106,6 +152,11 @@ services:
     # public hostname when using `--profile proxy` to get automatic TLS;
     # leaving it unset under the proxy profile serves localhost only.
     command: ["reverse-proxy", "--from", "${PROXY_DOMAIN:-localhost}", "--to", "paperclip:3100"]
+    # EXPOSURE NOTE (P1-6): unlike every other service in this stack
+    # (loopback-bound or internal-only), the proxy profile binds 80/443 on
+    # ALL interfaces. Enable --profile proxy only with
+    # PAPERCLIP_DEPLOYMENT_EXPOSURE=private (default above) plus real
+    # authentication, and never expose the loopback-bound :3100 directly.
     ports:
       - "80:80"
       - "443:443"
@@ -113,6 +164,27 @@ services:
       - caddy-data:/data
     networks:
       - heretek
+    # Hardening (P1-9): drop all capabilities except the one needed to bind
+    # the privileged 80/443 ports; bound the proxy's footprint.
+    # no-new-privileges blocks setuid gain; caddy never needs it (P2-3).
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    cpus: "0.5"
+    mem_limit: 512m
+    # Healthcheck (P1-9): the :80 listener answers with some HTTP response
+    # (even a vhost-mismatch 404 proves the server is alive; `reverse-proxy`
+    # disables the :2019 admin endpoint, so it must NOT be probed).
+    # Proxy-profile only, like the service.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -S -O /dev/null http://127.0.0.1:80/ 2>&1 | grep -q 'HTTP/' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   tailscale:
     image: tailscale/tailscale:v1.104.1
@@ -132,8 +204,27 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+    # Hardening (P1-9): drop everything except the two mesh capabilities
+    # above (required for /dev/net/tun; see P2-5). Bound the sidecar.
+    # Stays profile-gated (tailscale profile only — never in the default
+    # stack) and no-new-privileges blocks setuid gain without affecting
+    # tun setup, which uses capabilities, not new privileges (P2-3).
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "0.5"
+    mem_limit: 256m
     networks:
       - heretek
+    # Healthcheck (P1-9): tailscaled liveness via its control socket
+    # (login state is out of scope — an unauthed key must not flap health).
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /var/run/tailscale/tailscaled.sock || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   pgdata:

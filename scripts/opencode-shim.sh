@@ -4,7 +4,7 @@
 #
 # Paperclip's built-in `opencode-local` adapter was written against the
 # OpenCode v1 CLI and unconditionally appends two flags that OpenCode v2
-# (`@opencode/cli@2.0.31`) rejects with
+# (`@opencode/cli@2.0.32`) rejects with
 #   "ERROR: Unrecognized flag: --dir in command opencode run" (exit 1):
 #     --dir <path> / --dir=<path>      (v2 uses the process working directory,
 #                                       which Paperclip already sets when it
@@ -24,11 +24,12 @@
 #      A `--dir` whose following token looks like another flag (or is absent)
 #      is dropped on its own; the following flag is never swallowed.
 #   2. Capture `--variant <v>` / `--variant=<v>` (space and equals forms) and
-#      merge it into `--model <m>` / `--model=<m>` as `<m>#<v>`, regardless of
-#      whether --model appears before or after --variant. A model that already
-#      carries a `#variant` suffix is left untouched. A --variant with no
-#      --model cannot be expressed in v2 and is dropped (passing it through
-#      would make the real binary exit 1).
+#      merge it into `--model <m>` / `--model=<m>` (or the short `-m <m>` /
+#      `-m=<m>` aliases) as `<m>#<v>`, regardless of whether --model appears
+#      before or after --variant. A model that already carries a `#variant`
+#      suffix is left untouched. A --variant with no --model cannot be
+#      expressed in v2 and is dropped (passing it through would make the
+#      real binary exit 1).
 #   3. Ensure exactly one `--auto` (an explicit `--auto=<bool>` is respected
 #      and never duplicated). It is inserted immediately after the --model
 #      value when a model is present — preserving Paperclip's canonical order
@@ -111,7 +112,8 @@ args=("${@:2}") # everything after `run`
 out=()          # rewritten args (excluding the leading `run`)
 model_value=""
 model_index=-1  # index into out[] of the model value (or --model=value token)
-model_is_eq=0    # 1 when the model was given as --model=value
+model_is_eq=0    # 1 when the model was given as --model=value (or -m=value)
+model_eq_prefix="--model=" # flag prefix to reuse when rewriting an = form
 variant=""
 have_auto=0
 
@@ -160,7 +162,7 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
             variant="${arg#--variant=}"
             i=$((i + 1))
             ;;
-        --model)
+        --model|-m)
             if [[ -n "${next}" && "${next}" != -* ]]; then
                 model_value="${next}"
                 model_is_eq=0
@@ -168,14 +170,15 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
                 model_index=$((${#out[@]} - 1))
                 i=$((i + 2))
             else
-                # Broken invocation (`--model` with no value): pass through
-                # untouched and let the real binary report the error.
+                # Broken invocation (`--model`/`-m` with no value): pass
+                # through untouched and let the real binary report the error.
                 out+=("${arg}")
                 i=$((i + 1))
             fi
             ;;
-        --model=*)
-            model_value="${arg#--model=}"
+        --model=*|-m=*)
+            model_value="${arg#*=}"
+            model_eq_prefix="${arg%%=*}"
             model_is_eq=1
             out+=("${arg}")
             model_index=$((${#out[@]} - 1))
@@ -199,7 +202,7 @@ if [[ -n "${variant}" && -n "${model_value}" && "${model_index}" -ge 0 ]]; then
     if [[ "${model_value}" != *#* ]]; then
         merged="${model_value}#${variant}"
         if [[ "${model_is_eq}" -eq 1 ]]; then
-            out["${model_index}"]="--model=${merged}"
+            out["${model_index}"]="${model_eq_prefix}=${merged}"
         else
             out["${model_index}"]="${merged}"
         fi

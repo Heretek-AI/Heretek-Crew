@@ -3,6 +3,11 @@
 # seed-company.sh — idempotently seed "Acme Autonomous Corp" and its 6-agent
 # fleet (Director, PM, Programmer, Tester, QA, Designer) into Paperclip.
 #
+# Scope note (P3-4): this seeds ONLY the 6 legacy prototype roles. The 50
+# fleet roles are seeded by scripts/seed-50-fleet.sh. Both sets coexist on
+# disk under roles/ (56 dirs); scripts/smoke-test.sh discovers them
+# dynamically and asserts each seed's own payload count (7 vs 51 documents).
+#
 # Usage:
 #   ./scripts/seed-company.sh [--dry-run] [--help]
 #
@@ -41,7 +46,9 @@
 #     budgetMonthlyCents (integer CENTS), reportsTo (agent UUID)}.
 #   * opencode_local adapterConfig keys (packages/adapters/opencode-local/src/
 #     index.ts): {model (required, provider/model), env (map, optional),
-#     dangerouslySkipPermissions (bool, default true)}.
+#     dangerouslySkipPermissions (bool, default true)}. env carries
+#     XDG_CONFIG_HOME=/roles/<role> plus OPENCODE_DISABLE_PROJECT_CONFIG=true
+#     (defense-in-depth with docker-compose.yml paperclip environment).
 #   * Per-role isolation: adapterConfig.env.XDG_CONFIG_HOME=/roles/<role> is
 #     picked up by prepareOpenCodeRuntimeConfig, which copies
 #     $XDG_CONFIG_HOME/opencode into the runtime temp dir (NOTES.md §4).
@@ -154,10 +161,29 @@ role_model() {
   esac
 }
 
+# Decimal-safe USD→cents conversion (fail-closed): validates the input
+# shape (non-negative, at most 2 decimals) via Decimal and rejects anything
+# else with a descriptive error instead of a shell arithmetic syntax error.
+budget_usd_to_cents() {
+  BUDGET_USD="$1" python3 -c '
+import os, re, sys
+from decimal import Decimal, InvalidOperation
+usd = os.environ.get("BUDGET_USD", "")
+if not re.fullmatch(r"[0-9]+(\.[0-9]{1,2})?", usd or ""):
+    print("error: budget USD must be a non-negative number with at most 2 decimals, got %r" % usd, file=sys.stderr)
+    sys.exit(1)
+try:
+    print(int(Decimal(usd) * 100))
+except InvalidOperation:
+    print("error: budget USD is not a valid decimal: %r" % usd, file=sys.stderr)
+    sys.exit(1)
+'
+}
+
 role_budget_cents() {
   case "$1" in
-    director) printf '%s' "$((BUDGET_DIRECTOR_USD * 100))" ;;
-    *) printf '%s' "$((BUDGET_DEFAULT_USD * 100))" ;;
+    director) budget_usd_to_cents "${BUDGET_DIRECTOR_USD}" ;;
+    *) budget_usd_to_cents "${BUDGET_DEFAULT_USD}" ;;
   esac
 }
 
@@ -174,16 +200,25 @@ build_agent_payload() {
   local role="$1" reports_to="$2"
   local timer_sec
   timer_sec="$(role_timer_sec "${role}")"
+  # Resolve the budget BEFORE invoking python (P3-2): a malformed
+  # BUDGET_*_USD must abort here with budget_usd_to_cents' descriptive
+  # error, not fall through into a Python ValueError traceback.
+  local budget_cents
+  budget_cents="$(role_budget_cents "${role}")" || return 1
   local heartbeat_enabled="false"
   if [ "${timer_sec}" != "0" ]; then
     heartbeat_enabled="true"
   fi
+  # Fail-closed permissions: dangerouslySkipPermissions MUST stay False.
+  # NOTE: even the per-role opencode.json allow-lists are only hints once the
+  # CLI runs with --auto (see scripts/opencode-shim.sh) — treat them as
+  # defense-in-depth, not as a sandbox boundary. Never set this to True.
   ROLE_DIR="$1" \
   ROLE_NAME="$(role_display_name "${role}")" \
   ROLE_ENUM="$(role_paperclip_role "${role}")" \
   ROLE_TITLE="$(role_title "${role}")" \
   ROLE_MODEL="$(role_model "${role}")" \
-  ROLE_BUDGET_CENTS="$(role_budget_cents "${role}")" \
+  ROLE_BUDGET_CENTS="${budget_cents}" \
   ROLE_TIMER_SEC="${timer_sec}" \
   ROLE_HEARTBEAT_ENABLED="${heartbeat_enabled}" \
   ROLE_REPORTS_TO="${reports_to}" \
@@ -197,8 +232,11 @@ payload = {
     "adapterType": "opencode_local",
     "adapterConfig": {
         "model": os.environ["ROLE_MODEL"],
-        "env": {"XDG_CONFIG_HOME": "/roles/" + os.environ["ROLE_DIR"]},
-        "dangerouslySkipPermissions": True,
+        "env": {
+            "XDG_CONFIG_HOME": "/roles/" + os.environ["ROLE_DIR"],
+            "OPENCODE_DISABLE_PROJECT_CONFIG": "true",
+        },
+        "dangerouslySkipPermissions": False,
     },
     "runtimeConfig": {
         "heartbeat": {
@@ -352,11 +390,14 @@ for role in "${ROLE_LIST[@]}"; do
   want_budget="$(role_budget_cents "${role}")"
   if [ "${current_reports}" != "${want_reports}" ] || [ "${current_budget}" != "${want_budget}" ]; then
     log "updating '${name}': reportsTo=${want_reports:-none} budgetMonthlyCents=${want_budget}"
+    # Explicit reportsTo in every PATCH (null clears a stray reportsTo, e.g.
+    # on the Director who must report to none / the human board).
     PATCH_REPORTS_TO="${want_reports}" PATCH_BUDGET="${want_budget}" python3 -c '
 import json, os
-payload = {"budgetMonthlyCents": int(os.environ["PATCH_BUDGET"])}
-if os.environ["PATCH_REPORTS_TO"]:
-    payload["reportsTo"] = os.environ["PATCH_REPORTS_TO"]
+payload = {
+    "budgetMonthlyCents": int(os.environ["PATCH_BUDGET"]),
+    "reportsTo": os.environ["PATCH_REPORTS_TO"] or None,
+}
 print(json.dumps(payload))
 ' > "${TMPDIR_WORK}/patch-${role}.json"
     api PATCH "/api/agents/${agent_id}" "${TMPDIR_WORK}/patch-${role}.json" > /dev/null

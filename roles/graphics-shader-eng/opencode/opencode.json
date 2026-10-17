@@ -74,16 +74,14 @@
     "servers": {
       "codebase-memory": {
         "type": "local",
-        "command": [
-          "codebase-memory-mcp"
-        ]
+        "command": ["npx", "-y", "codebase-memory-mcp@0.12.1"]
       },
       "filesystem": {
         "type": "local",
         "command": [
           "npx",
           "-y",
-          "@modelcontextprotocol/server-filesystem",
+          "@modelcontextprotocol/server-filesystem@1.0.0",
           "/paperclip/workspaces"
         ]
       }

@@ -57,7 +57,7 @@
         "command": [
           "npx",
           "-y",
-          "@modelcontextprotocol/server-github"
+          "@modelcontextprotocol/server-github@2025.4.8"
         ],
         "env": {
           "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
@@ -68,7 +68,7 @@
         "command": [
           "npx",
           "-y",
-          "@cyanheads/git-mcp-server"
+          "@cyanheads/git-mcp-server@2.15.3"
         ]
       }
     }

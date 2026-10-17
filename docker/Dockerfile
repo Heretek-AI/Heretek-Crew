@@ -17,8 +17,11 @@
 # Pinned versions (never `latest`):
 #   node base ........... node:24-trixie-slim (inherited from official base)
 #   postgres ............ postgres:17-alpine (see docker-compose.yml)
-#   @opencode/cli ....... 2.0.31
-#   @opencode/client .... 2.0.31
+#   @opencode/cli ....... 2.0.32
+#   @opencode/client .... 2.0.32
+#   @heretek-ai/opencode-harness .. 1.0.7
+#   opencode-mem ........ 2.31.3 (memory plugin referenced by fleet roles;
+#                         provides persistent Turso/libSQL-backed memory)
 #   caddy ............... 2.11.7-alpine (see docker-compose.yml)
 #   tailscale ........... v1.104.1 (see docker-compose.yml)
 
@@ -28,9 +31,10 @@ FROM ${PAPERCLIP_BASE_IMAGE}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Promote pins to ENV so `docker inspect` records exactly what is installed.
-ENV OPENCODE_CLI_VERSION=2.0.31 \
-    OPENCODE_CLIENT_VERSION=2.0.31 \
-    OPENCODE_HARNESS_VERSION=1.0.7
+ENV OPENCODE_CLI_VERSION=2.0.32 \
+    OPENCODE_CLIENT_VERSION=2.0.32 \
+    OPENCODE_HARNESS_VERSION=1.0.7 \
+    OPENCODE_MEM_VERSION=2.31.3
 
 # Everything in this layer needs root; the runtime user is dropped to `node`
 # by the inherited official entrypoint (see USER note below).
@@ -51,8 +55,9 @@ RUN set -eux; \
     npm install --global --omit=dev --force \
         "@opencode/cli@${OPENCODE_CLI_VERSION}" \
         "@opencode/client@${OPENCODE_CLIENT_VERSION}" \
-        "@heretek-ai/opencode-harness@${OPENCODE_HARNESS_VERSION}"; \
-    npm ls --global --depth=0 "@opencode/cli" "@opencode/client" "@heretek-ai/opencode-harness"; \
+        "@heretek-ai/opencode-harness@${OPENCODE_HARNESS_VERSION}" \
+        "opencode-mem@${OPENCODE_MEM_VERSION}"; \
+    npm ls --global --depth=0 "@opencode/cli" "@opencode/client" "@heretek-ai/opencode-harness" "opencode-mem"; \
     test -x /usr/local/bin/opencode || { echo "ERROR: /usr/local/bin/opencode missing after npm install" >&2; exit 1; }; \
     case "$(readlink /usr/local/bin/opencode)" in \
         *@opencode/cli*) ;; \
@@ -95,5 +100,5 @@ CMD ["node", "--import", "./server/node_modules/tsx/dist/loader.mjs", "server/di
 LABEL org.opencontainers.image.title="heretek-crew/paperclip" \
       org.opencontainers.image.description="Paperclip orchestrating OpenCode v2 agents via CLI compatibility shim" \
       org.opencontainers.image.version="wave1" \
-      heretek.opencode-cli="2.0.31" \
-      heretek.opencode-client="2.0.31"
+      heretek.opencode-cli="2.0.32" \
+      heretek.opencode-client="2.0.32"

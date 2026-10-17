@@ -20,11 +20,16 @@
 #                       commands (no `:latest`), plus a non-empty
 #                       AGENTS.md and .opencode/agents/<role>.md per
 #                       role — legacy 6 prototype roles still validated
-#                       when present
+#                       when present; plus 3b. static denied-tool probe
+#                       (programmer has no allow-all + terminal shell deny,
+#                       qa/tester bash narrowed to named test commands +
+#                       terminal bash deny, dba/k8s MCP-boundary shell
+#                       denies intact, seeds set dangerouslySkipPermissions
+#                       False, socket proxy denies POST/BUILD/EXEC)
 #                    4. seed dry-runs emit company + agent payloads:
 #                       seed-company.sh (company + 6 agents) and
 #                       seed-50-fleet.sh (1 company + 50 agents =
-#                       51 payloads, budget WARNING preserved)
+#                       51 payloads, fleet total == cap with no WARNING)
 #                    5. shim translation: --dir stripped, --variant merged into
 #                       --model#variant, exactly one --auto, --session and
 #                       non-run subcommands pass through, `--` terminator kept
@@ -46,6 +51,12 @@
 # Live-mode requirements: `make up` healthy, PAPERCLIP_TOKEN set, and (for the
 # workspace-file check) ./workspaces visible on the host. Timeouts:
 #   HEALTH_TIMEOUT_SEC (default 30 here), RUN_TIMEOUT_SEC (default 600).
+#
+# NOTE (P1-7): harness_* MCP tool registration cannot be verified statically —
+# the harness tarball ships implementation files without a tool() manifest, so
+# no static gate can prove the runtime registers those tools. Registration is
+# asserted only by a live agent run invoking a harness tool (tracked; needs
+# `make up` + seeded fleet).
 #
 # Exit code: 0 when nothing FAILs (SKIPs are informational), 1 otherwise.
 # Fail-closed: every check reports PASS/FAIL/SKIP explicitly; unknown states
@@ -152,6 +163,16 @@ else
   else
     bad "docker compose prebuilt override config FAILED: $(head -c 300 "${TMP}/compose-prebuilt.err")"
   fi
+
+  # P1-4 defense-in-depth: paperclip must render
+  # OPENCODE_DISABLE_PROJECT_CONFIG=true (explicit env beats upstream
+  # defaults; OS env overrides .env here, so this holds either way).
+  if POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ \
+    docker compose config 2>/dev/null | grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG: .true'; then
+    ok "paperclip renders OPENCODE_DISABLE_PROJECT_CONFIG=true (project-config defense-in-depth)"
+  else
+    bad "paperclip rendered config lacks OPENCODE_DISABLE_PROJECT_CONFIG=true"
+  fi
 fi
 
 # --- 3. role configs valid + pins -------------------------------------------
@@ -159,8 +180,9 @@ fi
 # fleet plus the legacy 6 prototype roles when present — never a hardcoded
 # list), then per role asserts: valid v2 opencode.json (provider/model,
 # non-empty permissions with a fail-closed deny tail, non-empty rules
-# where present), pinned MCP commands (no :latest in either the legacy
-# flat `mcp: {<name>: {command}}` shape or the fleet `mcp.servers` shape),
+# where present), exact-pinned MCP commands (npx pkg@x.y.z / uvx pkg==x.y.z
+# in either the legacy flat `mcp: {<name>: {command}}` shape or the fleet
+# `mcp.servers` shape; sole tracked exception @morluto/rea-mcp),
 # and non-empty AGENTS.md + .opencode/agents/<role>.md charters.
 section "3. role opencode.json validity + version pins"
 ROLE_COUNT=0
@@ -181,14 +203,8 @@ assert isinstance(doc.get("model"), str) and "/" in doc["model"], "model must be
 assert isinstance(doc.get("permissions"), list) and doc["permissions"], "permissions must be non-empty"
 for p in doc["permissions"]:
     assert p.get("effect") in ("allow", "deny", "ask"), "permission effect must be allow/deny/ask"
-allow_all = (
-    len(doc["permissions"]) == 1
-    and doc["permissions"][0].get("action") == "*"
-    and doc["permissions"][0].get("resource") == "*"
-    and doc["permissions"][0].get("effect") == "allow"
-)
-assert doc["permissions"][-1].get("effect") == "deny" or allow_all, \
-    "permissions must end with a fail-closed deny (bare allow-all only for documented container-sandboxed roles)"
+assert doc["permissions"][-1].get("effect") == "deny", \
+    "permissions must end with a fail-closed deny tail (shell * deny / bash * deny by dialect); bare allow-all is forbidden"
 rules = doc.get("rules")
 if rules is not None:
     assert isinstance(rules, list) and rules, "rules, when present, must be non-empty"
@@ -212,13 +228,9 @@ def iter_commands(node):
             yield from iter_commands(child)
 for cmd in iter_commands(doc.get("mcp") or {}):
     assert "latest" not in cmd, "MCP command must not use latest: %s" % cmd
-print("role %s model=%s perms=%d%s" % (role, doc["model"], len(doc["permissions"]), " ALLOW-ALL" if allow_all else ""))
+print("role %s model=%s perms=%d" % (role, doc["model"], len(doc["permissions"])))
 ' >"${TMP}/role.out" 2>"${TMP}/role.err"; then
-    if grep -q ' ALLOW-ALL' "${TMP}/role.out"; then
-      ok "${f} valid (documented allow-all container-sandboxed role; see README security model)"
-    else
-      ok "${f} valid (model + perms + deny tail + pinned MCP)"
-    fi
+    ok "${f} valid (model + perms + deny tail + pinned MCP)"
   else
     bad "${f} INVALID: $(head -c 200 "${TMP}/role.err")"
   fi
@@ -244,6 +256,55 @@ if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)' \
 else
   ok "no :latest pins in any roles/*/opencode/opencode.json"
 fi
+# P1-7: every npx/uvx MCP command must carry an exact pin (npx pkg@x.y.z,
+# uvx pkg==x.y.z). Sole tracked exception: npx -y @morluto/rea-mcp, which
+# is not published on npm (registry 404) — any OTHER unpinned package, or
+# any drift in the exception itself, FAILs closed.
+if ROLE_PIN_TMP="${TMP}" python3 -c '
+import glob, json, os, sys
+
+EXCEPTIONS = {"npx -y @morluto/rea-mcp"}
+violations = []
+seen_exception = set()
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    doc = json.load(open(f))
+    stack = [doc.get("mcp") or {}]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if "command" in node:
+                argv = node["command"]
+                argv = list(argv) if isinstance(argv, list) else [str(argv)]
+                if argv[:1] == ["npx"]:
+                    try:
+                        pkg = argv[argv.index("-y") + 1]
+                    except (ValueError, IndexError):
+                        violations.append("%s: malformed npx argv %r" % (role, argv))
+                        continue
+                    if "npx -y %s" % pkg in EXCEPTIONS:
+                        seen_exception.add(pkg)
+                        continue
+                    if "@" not in pkg.rsplit("/", 1)[-1]:
+                        violations.append("%s: unpinned npx package %r" % (role, pkg))
+                elif argv[:1] == ["uvx"]:
+                    pkg = argv[1] if len(argv) > 1 else ""
+                    if "==" not in pkg:
+                        violations.append("%s: unpinned uvx package %r" % (role, pkg))
+            else:
+                stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+        elif isinstance(node, list):
+            stack.extend(v for v in node if isinstance(v, (dict, list)))
+if set(seen_exception) != {"@morluto/rea-mcp"}:
+    violations.append("tracked rea-mcp exception drifted (seen=%r)" % sorted(seen_exception))
+if violations:
+    sys.exit("\n".join(violations))
+print("all npx (pkg@ver) + uvx (pkg==ver) pinned; sole exception @morluto/rea-mcp tracked")
+' >"${TMP}/pins.out" 2>"${TMP}/pins.err"; then
+  ok "MCP supply chain pinned ($(cat "${TMP}/pins.out"))"
+else
+  bad "unpinned MCP package(s): $(head -c 400 "${TMP}/pins.err")"
+fi
 if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)|npm install[^@]*opencode[^@]*$' \
     docker-compose.yml docker-compose.prebuilt.yml docker-compose.override.yml.example docker/Dockerfile .env.example Makefile 2>/dev/null | grep -v '^.*#.*latest' | grep -q .; then
   bad "found ':latest' style pin in ops files (must pin exact versions)"
@@ -255,15 +316,15 @@ if grep -q 'ghcr\.io/heretek-ai/heretek-crew:v1\.0\.0' docker-compose.prebuilt.y
 else
   bad "pin MISSING: ghcr.io/heretek-ai/heretek-crew:v1.0.0 in docker-compose.prebuilt.yml"
 fi
-for pin in 'postgres:17-alpine' 'node:24-trixie-slim' '@opencode/cli@2.0.31' '127.0.0.1:3100'; do
+for pin in 'postgres:17-alpine' 'node:24-trixie-slim' '@opencode/cli@2.0.32' '127.0.0.1:3100'; do
   case "${pin}" in
     127.0.0.1:3100)
       if grep -q '127\.0\.0\.1:3100' docker-compose.yml; then ok "pin present: ${pin}"; else bad "pin MISSING: ${pin}"; fi ;;
-    @opencode/cli@2.0.31)
-      # Dockerfile pins via ENV (OPENCODE_CLI_VERSION=2.0.31) consumed by the
+    @opencode/cli@2.0.32)
+      # Dockerfile pins via ENV (OPENCODE_CLI_VERSION=2.0.32) consumed by the
       # npm install line — accept that indirection as a valid pin.
-      if grep -q '@opencode/cli@2.0.31' docker/Dockerfile \
-        || grep -q 'OPENCODE_CLI_VERSION=2.0.31' docker/Dockerfile; then
+      if grep -q '@opencode/cli@2.0.32' docker/Dockerfile \
+        || grep -q 'OPENCODE_CLI_VERSION=2.0.32' docker/Dockerfile; then
         ok "pin present: ${pin} (via OPENCODE_CLI_VERSION env)"
       else
         bad "pin MISSING: ${pin}"
@@ -278,14 +339,91 @@ else
   bad "non-root runtime note missing from docker/Dockerfile"
 fi
 
+# --- 3b. permission deny enforcement (static denied-tool simulation) -----------
+# Simulates the denied-tool probe: asserts the programmer role carries no
+# bare allow-all, ends in an explicit shell deny, seed payloads request
+# permission enforcement (skip=False), and the socket proxy denies POST.
+section "3b. permission deny enforcement (static)"
+if python3 -c '
+import json, sys
+doc = json.load(open("roles/programmer/opencode/opencode.json"))
+perms = doc.get("permissions", [])
+if any(p.get("action") == "*" and p.get("resource") == "*" and p.get("effect") == "allow" for p in perms):
+    sys.exit("programmer carries a bare allow-all")
+tails = [p for p in perms if p.get("action") == "shell" and p.get("resource") == "*" and p.get("effect") == "deny"]
+if not tails or perms[-1].get("effect") != "deny":
+    sys.exit("programmer lacks a terminal shell deny tail")
+print("programmer: enumerated allows + terminal shell deny, no allow-all")
+' >"${TMP}/deny.out" 2>"${TMP}/deny.err"; then
+  ok "programmer opencode.json denies by default ($(cat "${TMP}/deny.out"))"
+else
+  bad "programmer permission probe FAILED: $(head -c 200 "${TMP}/deny.err")"
+fi
+if grep -q '"dangerouslySkipPermissions": False' scripts/seed-company.sh \
+  && grep -q '"dangerouslySkipPermissions": False' scripts/seed-50-fleet.sh \
+  && ! grep -q '"dangerouslySkipPermissions": True' scripts/seed-company.sh \
+  && ! grep -q '"dangerouslySkipPermissions": True' scripts/seed-50-fleet.sh; then
+  ok "seed scripts enforce permissions (dangerouslySkipPermissions False, no True remains)"
+else
+  bad "seed scripts still request dangerouslySkipPermissions True"
+fi
+if grep -q 'POST: "0"' docker-compose.sidecars.yml \
+  && grep -q 'BUILD: "0"' docker-compose.sidecars.yml \
+  && grep -q 'EXEC: "0"' docker-compose.sidecars.yml; then
+  ok "docker-socket-proxy denies POST/BUILD/EXEC (read-only proxy)"
+else
+  bad "docker-socket-proxy still permits POST/BUILD/EXEC (host-escape primitive)"
+fi
+# P1-5: qa/tester bash narrowed to named test commands + terminal bash deny.
+# Any `bash * allow` here re-opens curl/redirection exfil (see AUDIT P1-5).
+for _role in qa tester; do
+  if _ROLE="${_role}" python3 -c '
+import json, os, sys
+role = os.environ["_ROLE"]
+doc = json.load(open("roles/%s/opencode/opencode.json" % role))
+perms = doc.get("permissions", [])
+if any(p.get("action") == "bash" and p.get("resource") == "*" and p.get("effect") == "allow" for p in perms):
+    sys.exit("%s still carries bash * allow" % role)
+last = perms[-1]
+if not (last.get("action") == "bash" and last.get("resource") == "*" and last.get("effect") == "deny"):
+    sys.exit("%s lacks a terminal bash * deny tail" % role)
+named = [p["resource"] for p in perms if p.get("action") == "bash" and p.get("effect") == "allow"]
+if not named:
+    sys.exit("%s has no named bash allows left" % role)
+print("%s: bash narrowed to %s + terminal deny" % (role, ", ".join(named)))
+' >"${TMP}/narrow.out" 2>"${TMP}/narrow.err"; then
+    ok "$(cat "${TMP}/narrow.out")"
+  else
+    bad "$(head -c 200 "${TMP}/narrow.err")"
+  fi
+done
+# P1-5: MCP-boundary shell denies must not regress (MCP namespaces bypass
+# these shell denies, so the denies are the inner layer — see AGENTS.md §4).
+if python3 -c '
+import json, sys
+dba = json.load(open("roles/dba-specialist/opencode/opencode.json"))["permissions"]
+if not any(p.get("action") == "shell" and "psql" in str(p.get("resource")) and p.get("effect") == "deny" for p in dba):
+    sys.exit("dba-specialist lost its psql shell deny")
+k8s = json.load(open("roles/k8s-orchestrator/opencode/opencode.json"))["permissions"]
+for verb in ("kubectl apply*", "kubectl delete*"):
+    if not any(p.get("action") == "shell" and p.get("resource") == verb and p.get("effect") == "deny" for p in k8s):
+        sys.exit("k8s-orchestrator lost its %s shell deny" % verb)
+print("dba psql deny + k8s kubectl apply/delete denies present")
+' >"${TMP}/mcpbound.out" 2>"${TMP}/mcpbound.err"; then
+  ok "MCP-boundary shell denies intact ($(cat "${TMP}/mcpbound.out"))"
+else
+  bad "MCP-boundary shell deny REGRESSED: $(head -c 200 "${TMP}/mcpbound.err")"
+fi
+
 # --- 4. seed dry-runs ---------------------------------------------------------
 section "4. seed dry-runs (seed-company.sh + seed-50-fleet.sh)"
 if ./scripts/seed-company.sh --dry-run >"${TMP}/seed.out" 2>"${TMP}/seed.err"; then
   if grep -q 'Acme Autonomous Corp' "${TMP}/seed.out" \
     && grep -q 'opencode_local' "${TMP}/seed.out" \
     && grep -q 'XDG_CONFIG_HOME' "${TMP}/seed.out" \
+    && grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG' "${TMP}/seed.out" \
     && grep -q 'dangerouslySkipPermissions' "${TMP}/seed.out"; then
-    ok "seed dry-run emits company + 6 agent payloads (opencode_local, XDG_CONFIG_HOME, skipPermissions)"
+    ok "seed dry-run emits company + 6 agent payloads (opencode_local, XDG_CONFIG_HOME, OPENCODE_DISABLE_PROJECT_CONFIG, skipPermissions)"
   else
     bad "seed dry-run output missing expected payload keys"
   fi
@@ -295,16 +433,20 @@ fi
 if [[ -f scripts/seed-50-fleet.sh ]]; then
   if ./scripts/seed-50-fleet.sh --dry-run >"${TMP}/seed50.out" 2>"${TMP}/seed50.err"; then
     SEED50_NAMES="$(grep -c '"name"' "${TMP}/seed50.out" || true)"
+    SEED50_TOTAL="$(grep -oE 'total fleet budget: [0-9]+ cents' "${TMP}/seed50.out" | grep -oE '[0-9]+' || true)"
+    SEED50_CAP="$(grep -oE '\(cap [0-9]+ cents\)' "${TMP}/seed50.out" | grep -oE '[0-9]+' || true)"
     if [[ "${SEED50_NAMES}" -eq 51 ]] \
       && grep -q 'Heretek Autonomous Fleet' "${TMP}/seed50.out" \
       && grep -q 'opencode_local' "${TMP}/seed50.out" \
       && grep -q 'XDG_CONFIG_HOME' "${TMP}/seed50.out" \
+      && grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG' "${TMP}/seed50.out" \
       && grep -q 'dangerouslySkipPermissions' "${TMP}/seed50.out" \
       && grep -q 'total fleet budget' "${TMP}/seed50.out" \
-      && grep -q 'WARNING' "${TMP}/seed50.err"; then
-      ok "seed-50 dry-run emits 51 payloads (1 company + 50 agents: opencode_local, XDG_CONFIG_HOME, skipPermissions, budget total + WARNING)"
+      && [[ -n "${SEED50_TOTAL}" && "${SEED50_TOTAL}" == "${SEED50_CAP}" ]] \
+      && ! grep -q 'WARNING' "${TMP}/seed50.err"; then
+      ok "seed-50 dry-run emits 51 payloads (1 company + 50 agents: opencode_local, XDG_CONFIG_HOME, OPENCODE_DISABLE_PROJECT_CONFIG, skipPermissions, budget total ${SEED50_TOTAL} == cap, no WARNING)"
     else
-      bad "seed-50 dry-run output unexpected (name keys=${SEED50_NAMES}, want 51 with fleet payload keys + budget WARNING)"
+      bad "seed-50 dry-run output unexpected (name keys=${SEED50_NAMES}, want 51 with fleet payload keys + total==cap and no WARNING)"
     fi
   else
     bad "seed-50 dry-run exited nonzero: $(head -c 300 "${TMP}/seed50.err")"

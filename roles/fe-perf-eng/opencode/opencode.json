@@ -80,7 +80,7 @@
         "command": [
           "npx",
           "-y",
-          "@executeautomation/playwright-mcp-server"
+          "@executeautomation/playwright-mcp-server@1.0.12"
         ]
       }
     }

@@ -76,14 +76,12 @@
         "type": "local",
         "command": [
           "uvx",
-          "mcp-server-duckdb"
+          "mcp-server-duckdb==1.1.0"
         ]
       },
       "codebase-memory": {
         "type": "local",
-        "command": [
-          "codebase-memory-mcp"
-        ]
+        "command": ["npx", "-y", "codebase-memory-mcp@0.12.1"]
       }
     }
   }

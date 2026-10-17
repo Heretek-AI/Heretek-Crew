@@ -91,7 +91,7 @@
         "type": "local",
         "command": [
           "uvx",
-          "mcp-server-kubernetes"
+          "mcp-server-kubernetes==0.1.6"
         ],
         "env": {
           "KUBECONFIG": "/paperclip/secrets/kubeconfig-readonly"
@@ -101,7 +101,7 @@
         "type": "local",
         "command": [
           "uvx",
-          "docker-mcp"
+          "docker-mcp==0.2.0"
         ]
       }
     }

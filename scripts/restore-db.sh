@@ -11,10 +11,14 @@
 #   2. Requires the file to exist and end in .sql.gz or .sql.
 #   3. Asks for explicit typed confirmation unless --yes / RESTORE_YES=1
 #      (restores are DESTRUCTIVE: the dump was taken with --clean, so existing
-#      objects are dropped and recreated).
+#      objects are dropped and recreated). Without a TTY and without --yes,
+#      it refuses immediately instead of aborting mid-read.
 #   4. Waits for postgres to become healthy (pg_isready, up to timeout).
-#   5. Streams gunzip -> psql with ON_ERROR_STOP=1 (fail-closed: aborts the
+#   5. Terminates remaining backends on the target database (the restore
+#      needs an AccessExclusiveLock; idle sessions would block it).
+#   6. Streams gunzip -> psql with ON_ERROR_STOP=1 (fail-closed: aborts the
 #      restore on the first SQL error instead of partially applying it).
+#   7. Verifies post-restore (pg_isready + asserted non-zero table count).
 #
 # Environment (all optional):
 #   FILE ..................... path to the dump (or pass --file)
@@ -81,6 +85,10 @@ case "${FILE}" in
 esac
 
 if [[ "${ASSUME_YES}" != "1" ]]; then
+  if [[ ! -t 0 ]]; then
+    echo "error: no TTY for confirmation (closed stdin cannot answer the typed prompt; re-run with --yes/RESTORE_YES=1)" >&2
+    exit 1
+  fi
   echo "WARNING: this will DROP and recreate database objects in ${POSTGRES_DB} from:"
   echo "  ${FILE}"
   echo "Type the database name ('${POSTGRES_DB}') to confirm, or Ctrl-C to abort."
@@ -105,6 +113,10 @@ while true; do
 done
 
 echo "[restore] restoring ${FILE} into ${POSTGRES_DB} (ON_ERROR_STOP=1)..."
+echo "[restore] terminating remaining backend connections to ${POSTGRES_DB}..."
+docker compose exec -T postgres psql -U "${POSTGRES_USER}" -d postgres \
+  -v ON_ERROR_STOP=1 -q \
+  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${POSTGRES_DB}' AND pid <> pg_backend_pid();"
 case "${FILE}" in
   *.gz) gunzip -c -- "${FILE}" ;;
   *) cat -- "${FILE}" ;;
@@ -113,5 +125,9 @@ esac | docker compose exec -T postgres psql -U "${POSTGRES_USER}" -d "${POSTGRES
 
 echo "[restore] verifying (pg_isready + table count)..."
 docker compose exec -T postgres pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null
-TABLES="$(docker compose exec -T postgres psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';")"
+TABLES="$(docker compose exec -T postgres psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" | tr -d '[:space:]')"
 echo "[restore] done: public schema holds ${TABLES} table(s)"
+if [[ ! "${TABLES}" =~ ^[0-9]+$ ]] || [[ "${TABLES}" -eq 0 ]]; then
+  echo "error: restore verification failed (expected a non-zero table count, got '${TABLES}')" >&2
+  exit 1
+fi

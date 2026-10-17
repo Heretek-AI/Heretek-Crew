@@ -92,7 +92,7 @@
         "command": [
           "npx",
           "-y",
-          "aws-mcp"
+          "aws-mcp@1.0.2"
         ],
         "env": {
           "AWS_REGION": "${AWS_REGION:-us-east-1}"
@@ -100,9 +100,7 @@
       },
       "codebase-memory": {
         "type": "local",
-        "command": [
-          "codebase-memory-mcp"
-        ]
+        "command": ["npx", "-y", "codebase-memory-mcp@0.12.1"]
       }
     }
   }

@@ -10,6 +10,10 @@ services:
     image: redis:7.4.1-alpine
     profiles: ["web-research"]
     restart: unless-stopped
+    # AUTH NOTE (P1-6): no Redis password set (no requirepass) — reachable
+    # unauthenticated from any heretek-networked container. Same posture as
+    # firecrawl-redis below. Mitigation: keep untrusted workloads off this
+    # network; adding requirepass + client secrets is a tracked item.
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     expose:
       - "6379"
@@ -24,7 +28,9 @@ services:
     mem_limit: 256m
 
   searxng:
-    image: searxng/searxng:2024.10.16-ac56c663b
+    # Pinned by digest 2026-10-17 (skopeo inspect; tag 2025.12.19-8bf600cc6 = newest Hub tag).
+    # Old tag 2024.10.16-ac56c663b was pruned upstream (Hub 404).
+    image: searxng/searxng@sha256:13de9d465bd2d9da6a6718f2a57d96e6e5fa3b8aba3c0bec077a5b7e5f24e4e9
     profiles: ["web-research"]
     restart: unless-stopped
     depends_on:
@@ -36,7 +42,7 @@ services:
     environment:
       SEARXNG_BASE_URL: "http://searxng:8080/"
       SEARXNG_REDIS_URL: "redis://searxng-redis:6379/0"
-      SEARXNG_SECRET: "${SEARXNG_SECRET:-dev_searxng_secret_key_heretek_crew_2026}"
+      SEARXNG_SECRET: "${SEARXNG_SECRET:?SEARXNG_SECRET must be set in .env}"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
       interval: 10s
@@ -68,8 +74,16 @@ services:
 
   firecrawl-rabbitmq:
     image: rabbitmq:3.13.7-management-alpine
+    # VERSION PLAN (P1-9): RabbitMQ 4.x is current since 2024; 3.13 is
+    # EOL-adjacent. 4.x migration (quorum-queue defaults, config changes)
+    # is scheduled, NOT done here — no breaking bump without a migration
+    # test (see REMEDIATION_LOG.md Stage 2 P1-9).
     profiles: ["web-research"]
     restart: unless-stopped
+    # AUTH NOTE (P1-6): default guest credentials on a closed management
+    # port (expose-only, no host ports). Reachable from any
+    # heretek-networked container — same lateral-movement posture as the
+    # Redis/Qdrant notes. RabbitMQ 4.x migration is tracked (see P1-9).
     command: rabbitmq-server
     expose:
       - "5672"
@@ -93,7 +107,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
-      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:-firecrawl_secret_nuq_2026}
+      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:?FIRECRAWL_DB_PASSWORD must be set in .env}
       POSTGRES_DB: postgres
     expose:
       - "5432"
@@ -170,7 +184,7 @@ services:
       PLAYWRIGHT_MICROSERVICE_URL: "http://firecrawl-playwright:3000/scrape"
       NUQ_RABBITMQ_URL: "amqp://firecrawl-rabbitmq:5672"
       POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
-      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:-firecrawl_secret_nuq_2026}
+      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:?FIRECRAWL_DB_PASSWORD must be set in .env}
       POSTGRES_DB: postgres
       POSTGRES_HOST: "firecrawl-nuq-postgres"
       POSTGRES_PORT: "5432"
@@ -226,7 +240,7 @@ services:
       CONCURRENT: "5"
       QUEUED: "10"
       TIMEOUT: "60000"
-      TOKEN: "${BROWSERLESS_TOKEN:-heretek-stealth-token}"
+      TOKEN: "${BROWSERLESS_TOKEN:?BROWSERLESS_TOKEN must be set in .env}"
       ENABLE_DEBUGGER: "true"
       DEFAULT_STEALTH: "true"
       DEFAULT_HEADLESS: "new"
@@ -244,9 +258,13 @@ services:
 
   mitmproxy:
     image: mitmproxy/mitmproxy:11.0.2
-    profiles: ["devsec", "qa-testing"]
+    # TEST-ONLY SCOPE (P1-6): intercept proxy confined to the qa-testing
+    # profile — never enable alongside untrusted workloads. block_global
+    # defaults to true so non-loopback/global traffic is refused unless a
+    # test explicitly opts out at runtime.
+    profiles: ["qa-testing"]
     restart: unless-stopped
-    command: ["mitmweb", "--web-host", "0.0.0.0", "--web-port", "8081", "--set", "block_global=false"]
+    command: ["mitmweb", "--web-host", "0.0.0.0", "--web-port", "8081", "--set", "block_global=true"]
     expose:
       - "8080"
       - "8081"
@@ -266,6 +284,9 @@ services:
 
   # ============================================================================
   # CATEGORY C: DEFENSIVE BINARY ANALYSIS & REVERSE ENGINEERING
+  # PROFILE GATING (P1-6): enable --profile devsec only for trusted
+  # analysis work (samples mount read-only). Never co-schedule with
+  # untrusted workloads on the same heretek network.
   # ============================================================================
   ghidra:
     image: blacktop/ghidra:11.2
@@ -274,7 +295,10 @@ services:
     expose:
       - "1337"
     environment:
-      MAXMEM: "4G"
+      # Capped below the 4g container limit (P1-9): JVM heap + off-heap
+      # overhead must fit inside mem_limit — 4G heap against a 4g limit
+      # risks OOM-kill.
+      MAXMEM: "3G"
     volumes:
       - ./workspaces/binaries:/samples:ro
       - ghidra-projects:/ghidra/projects
@@ -292,7 +316,12 @@ services:
     mem_limit: 4g
 
   radare2:
-    image: radare/radare2:6.0.0
+    # Pinned by digest 2026-10-17 (skopeo inspect; tag 6.2.4 verified live on Hub).
+    # Old tag 6.0.0 never existed upstream (Hub 404).
+    # BIND NOTE (P1-6): the HTTP server listens on 0.0.0.0 INSIDE the
+    # container but the service is expose-only (no host ports published),
+    # so it is reachable only from heretek-networked containers.
+    image: radare/radare2@sha256:88b7ff67710e12f430b269abc7714490e3a0c37e391521523148cbd6f9d2ae37
     profiles: ["devsec"]
     restart: unless-stopped
     expose:
@@ -315,7 +344,9 @@ services:
   # CATEGORY D: FAST CODEBASE SEARCH & AST ANALYSIS
   # ============================================================================
   hound:
-    image: ghcr.io/hound-search/hound:v0.6.0
+    # Pinned by digest 2026-10-17 (skopeo inspect; tag 0.6.0 verified live on GHCR).
+    # Upstream publishes 0.6.0 without the 'v' prefix (v0.6.0 was GHCR 404).
+    image: ghcr.io/hound-search/hound@sha256:5b7fd0982ce12ebf41cfdbb8ab7aac081679667e778a8641bcd3026c98fc470e
     profiles: ["devsec", "web-research"]
     restart: unless-stopped
     expose:
@@ -337,6 +368,9 @@ services:
 
   semgrep:
     image: semgrep/semgrep:1.97.0
+    # VERSION PLAN (P1-9): ~1yr behind upstream; security-scanner drift
+    # matters. Bump is scheduled with rule-parity verification, NOT done
+    # here — no breaking bump without testing (see REMEDIATION_LOG.md).
     profiles: ["devsec", "qa-testing"]
     restart: unless-stopped
     volumes:
@@ -360,16 +394,24 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      # Read-only proxy (fail-closed): POST/BUILD/EXEC/AUTH disabled so a
+      # compromised CI runner cannot create privileged containers, build
+      # images, exec into containers, or use auth endpoints to escape.
+      # Verify CI still functions with GET-only access; run image pulls on
+      # the host Docker directly if 'act' needs them (see P0-5).
       CONTAINERS: "1"
       IMAGES: "1"
       INFO: "1"
       VERSION: "1"
-      POST: "1"
+      POST: "0"
+      BUILD: "0"
+      EXEC: "0"
       VOLUMES: "0"
       NETWORKS: "0"
       NODES: "0"
       SWARM: "0"
       SYSTEM: "0"
+      AUTH: "0"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2375/version || exit 1"]
       interval: 10s
@@ -381,7 +423,12 @@ services:
     mem_limit: 128m
 
   piston:
-    image: ghcr.io/engineer-man/piston:v2.0.0
+    # Pinned by digest of upstream 'latest' 2026-10-17 (skopeo inspect → sha256:2f66b745...).
+    # Upstream publishes ONLY the 'latest' tag (v2.0.0 was GHCR 404); per zero-:latest
+    # policy the mutable tag is NOT used — the digest above is exact and immutable.
+    # DECISION NEEDED (product): vendor/self-build piston to ghcr.io/heretek-ai/piston:<semver>
+    # to remove dependence on a floating upstream tag (see AUDIT_REPORT_FINDINGS.md P0-1e).
+    image: ghcr.io/engineer-man/piston@sha256:2f66b7456189c4d713aa986d98eccd0b6ee16d26c7ec5f21b30e942756fd127a
     profiles: ["qa-testing", "devsec"]
     restart: unless-stopped
     expose:
@@ -405,6 +452,11 @@ services:
     image: qdrant/qdrant:v1.12.5
     profiles: ["ai-gateway"]
     restart: unless-stopped
+    # AUTH NOTE (P1-6): qdrant serves unauthenticated on the heretek
+    # network (no API key set — upstream gates keys behind paid tiers).
+    # Any compromised heretek-networked container can read/write collections.
+    # Mitigation: never attach untrusted workloads to this network; API-key
+    # or network-policy enforcement is a tracked hardening item.
     expose:
       - "6333"
       - "6334"
@@ -435,7 +487,7 @@ services:
     ports:
       - "127.0.0.1:7474:7474"
     environment:
-      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:-heretek_knowledge_graph_secret_2026}"
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set in .env}"
       NEO4J_PLUGINS: '["apoc"]'
       server_memory_heap_initial__size: "512m"
       server_memory_heap_max__size: "1536m"
@@ -458,7 +510,9 @@ services:
   # CATEGORY G: LLM GATEWAYS & CACHING
   # ============================================================================
   litellm:
-    image: ghcr.io/berriai/litellm:v1.54.0
+    # Pinned by digest 2026-10-17 (skopeo inspect; tag main-v1.54.0 verified live on GHCR).
+    # Upstream publishes main-vX.Y.Z, not vX.Y.Z (v1.54.0 was GHCR 404).
+    image: ghcr.io/berriai/litellm@sha256:eb14f07d08318e638459eecc811fc3b30282f6b2397df3a98150a7d6ffd3f6d5
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -466,8 +520,8 @@ services:
     ports:
       - "127.0.0.1:4000:4000"
     environment:
-      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:-sk-heretek-proxy-master-key}"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:-paperclip}@postgres:5432/${POSTGRES_DB:-paperclip}"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env}"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-paperclip}"
       STORE_MODEL_IN_DB: "True"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health/readiness || exit 1"]
@@ -505,7 +559,15 @@ services:
     mem_limit: 256m
 
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    # Migrated to quay.io 2026-10-17: Docker Hub minio/minio is withdrawn
+    # (Hub API returns {"message":"object not found"} for repo and all tags).
+    # NOTE: quay.io auth-gates anonymous manifest inspection (401 even for the
+    # public repo page/registry token flow), so no digest could be resolved
+    # without quay credentials — exact RELEASE tag pin retained, digest PENDING
+    # until authed pulls are available (quay.io auth-gates anonymous manifest
+    # inspection; see REMEDIATION_LOG.md P0-1f). Not a stub: the tag pin is
+    # exact and the image pulls wherever quay credentials exist.
+    image: quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
     profiles: ["qa-testing", "core"]
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
@@ -515,8 +577,8 @@ services:
     ports:
       - "127.0.0.1:9001:9001"
     environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-heretekadmin}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-heretekminiopassword2026}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set in .env}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set in .env}"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -550,6 +612,9 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:1.63.0
+    # VERSION PLAN (P1-9): upstream v1 is deprecated in favor of
+    # jaegertracing/jaeger:2.x. v2 migration is scheduled medium-term, NOT
+    # done here — no breaking bump without testing (see REMEDIATION_LOG.md).
     profiles: ["observability"]
     restart: unless-stopped
     expose:
@@ -575,6 +640,9 @@ services:
   # ============================================================================
   docker-android:
     image: budtmo/docker-android:emulator_14.0_v3.8.0-p1
+    # PROFILE GATING (P1-6): privileged + /dev/kvm. Enable --profile mobile
+    # only on dedicated test hosts, never alongside untrusted workloads or
+    # with the devsec profile on shared infrastructure.
     profiles: ["mobile"]
     restart: unless-stopped
     privileged: true
@@ -606,14 +674,21 @@ services:
   # CATEGORY J: CONTAINERIZED LOCAL CI/CD RUNNER (ACT)
   # ============================================================================
   local-ci-runner:
+    # NOTE: requires the socket proxy at runtime: run with
+    #   docker compose -f docker-compose.yml -f docker-compose.sidecars.yml --profile core --profile ci up
+    # (proxy lives in the "core" profile; "ci" alone never schedules it).
     image: ghcr.io/catthehacker/ubuntu:act-22.04
-    profiles: ["ci", "qa-testing"]
+    profiles: ["ci", "qa-testing", "core"]
     restart: "no"
+    depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
+    command: ["sleep", "infinity"]
     environment:
       DOCKER_HOST: "tcp://docker-socket-proxy:2375"
     volumes:
       - ./.github/workflows:/workflows:ro
-      - ./workspaces:/workspaces
+      - ./workspaces:/paperclip/workspaces
     networks:
       - heretek
     cpus: "2.0"
