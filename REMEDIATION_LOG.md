@@ -1202,3 +1202,300 @@ Full report: `docs/reports/wave-d-implementation.md`.
 - Honestly unclaimed: P0-1 load-broken, 3.1 + scrub live-unverified, prefix semantics assumed, fronting/digests tracked-not-built. Residuals needing live stack/registry/auth listed in the stage report §4.
 - Mid-work scare: a `git stash`/`pop` baseline probe echoed a transient AGENTS.md revert in the file watcher — verified immediately (stash list empty, all 4 Wave D markers present, pop restored everything). No edits lost.
 - No commits, no merges, no subagents used.
+
+---
+
+# Wave E Stage 1 Remediation Log — P0 Critical (P0-1, P0-2, P0-3, P0-4)
+
+**Worktree:** `/tmp/opencode/heretek-wave-e` (branch `wave-e-audit-remediation`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` P0-1…P0-4 (lines 12-53) + remediation order lines 186-192
+**Status:** all 4 P0 verified closed (3 pre-existing closures re-proven + 1 residual honestly labeled this stage). Changes left UNCOMMITTED for QA/Drift-Guard. No proof contradicted the audit; no product decision blocked progress.
+
+## P0-1: harness 1.0.7 DIES on load → verified, not invented (no repo patch)
+
+- `docker/Dockerfile:33-53` already documents the empty-string `rootDir` root cause + `pick()` diff + bump plan + live-visibility gate reference — read in full, accurate, no correction needed.
+- `scripts/smoke-test.sh` §10b (`:1725-1745`) asserts a real agent turn invoking `file_hash_read` must succeed under `HARNESS_LIVE_GATE=1` (FAILs on the `rootDir must be` Die / `not available`), never just `npm ls` — verified present.
+- `OPENCODE_HARNESS_VERSION` exact `1.0.7` (ENV + install + comment) — verified, no float.
+- Live registry proof this stage: `npm view @heretek-ai/opencode-harness versions` → `[ '0.0.0-stage', '1.0.0', '1.0.2', '1.0.3', '1.0.4', '1.0.7' ]` — **no fixed successor published; upstream bump BLOCKED (nothing to bump to)**. Pin stays exact; Domain 4 stays labeled load-broken.
+- Files changed: none (docs already correct).
+
+## P0-2: Claim 3.3 read-only bypass → verified closed on disk + generator + gate
+
+- 6/6 read-only roles (`exec-director`, `product-director`, `threat-modeler`, `compliance-auditor`, `tech-docs-lead`, `ux-research-analyst`): 10 read-only harness allows each, 4/4 mutating denies each placed AFTER the `harness_*` deny tail, zero allows for the 4 (python JSON parse + grep showing only `"effect": "deny"`).
+- Generator encodes the split (`HARNESS_MUTATING_TOOLS`, 16-role `READONLY_HARNESS_STRIPPED` superset, `strip_mutating_harness_tools()`, `is_readonly_charter()` drift pins); scratch `--root` regen → 51 roles, 0 permission mismatches (byte-identical).
+- Smoke gate: harness-manifest (14/10 + deny tails) + read-only-set drift pin (on-disk == 16 exactly) + mutating-allow ban — green inside the 526.
+- Files changed: none (closure from prior waves re-proven).
+
+## P0-3: XDG isolates config only → verified (a) bound kept + plan tracked (b) honestly labeled (c) 51/51 denies ordered
+
+- (a) kubeconfig `:ro` bind intact (`docker-compose.yml:170`); FD-passed-MCP-env structural plan comment verified (`:156-170`). k8s-orchestrator unbroken (compose renders).
+- (b) `AGENTS.md` §1 invariant 1 (`:20-24`) + `NOTES.md` Wave D (`:363-375`) label Claim 3.1 config-advice live-unverified + child-env scrub pending canary — no live-pass claim anywhere.
+- (c) python JSON parse: 51/51 carry all 4 secret-material `fs:read` denies above every allow (0 violations); generator `FS_READ_ENV_DENIES` + `order_fs_read_denies_first()`; smoke §3b presence + ordering gate green.
+- Files changed: none (closure from prior waves re-proven).
+
+## P0-4: piston RCE-as-a-service → residual honestly labeled (2 comment-only edits)
+
+- sabotage-qa-tester exact-host piston curl pins untouched (`:73,:78`); ghidra `:1337` / radare2 `:9090` paperclip-as-bridge residual verified present; firecrawl loopback-only + `USE_DB_AUTHENTICATION=true` plan verified present (smoke §3a green).
+- `docker-compose.sidecars.yml` piston comment +7 lines: stays on shared `heretek` net (live network move deferred pending `make up` reachability verification) + never-co-schedule devsec/qa-testing advisory — no behavioral change (image/profiles/expose/networks byte-identical).
+- `Makefile` +10-line co-scheduling note after `sidecars-up` (advisory, NOT an enforced guard — devsec+core is normal ops; existing guard text byte-identical so smoke gates stay green).
+- Compose renders exit 0 on `qa-testing+core` and `devsec+core` with dummy env; fail-closes without `.env`.
+
+## Test results (must-keep-green set + Wave E Stage 1 proofs)
+
+- python3 JSON parse: 51/51 `{shell,*,deny}` terminal tails; 51/51 fs:read deny-first; 6/6 read-only roles 4-deny/0-allow.
+- `bash scripts/smoke-test.sh --check-only` → **526 passed, 0 failed, 5 skipped**.
+- `bash scripts/test-shim.sh` → **46 passed, 0 failed**. `shellcheck scripts/*.sh` → zero warnings. `bash scripts/spec-gate.sh --check-only` → **7 passed, 0 failed**.
+- `bash scripts/seed-50-fleet.sh --dry-run` (smoke dummies) → 52 docs, total 1300000 == cap, empty stderr; absent secrets → exit 1 per var.
+- `git status --short` → only `M Makefile`, `M docker-compose.sidecars.yml`, `?? docs/reports/wave-e-stage1-implementation.md` (+ this log); no `:latest` (prose-only hits), no TODO/dummy, no secrets.
+
+## Self-audit notes (Wave E Stage 1)
+
+- Fail-closed kept: both edits are comments/notes; zero enforcement, pin, permission, or network deltas (smoke count unchanged 526 → 526).
+- Tracked, not started: piston vendor build, shared-secret proxy front, `HARNESS_LIVE_GATE=1` + canary + scrub live runs.
+- No commits, no merges, no subagents used.
+
+---
+
+# Wave E Stage 2 Remediation Log — P1 High (P1-1 through P1-8)
+
+**Worktree:** `/tmp/opencode/heretek-wave-e` (branch `wave-e-audit-remediation`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` P1-1…P1-8 (lines 56-98) + remediation order lines 186-192
+**Status:** all P1-1…P1-8 closed or verified-present, tests re-proven empirically. Changes left UNCOMMITTED for QA/Drift-Guard. No proof contradicted the audit; one doc-drift beyond the audit text found and fixed (k8s-orchestrator docker-MCP charter note stale since Wave D P1-6). No stoppage needed (no product decision blocked progress; six tracked residuals recorded, none started).
+
+## P1-1: shell prefix-patterns → verified + one sentence (AGENTS.md)
+
+- Enforcer identity + version, prefix-semantics assumption, and the four live probes (`git status; id`, `git status$(id)`, `git status||id`, `npm test -- --unknown-flag`) verified already present in `AGENTS.md` §4. **Added:** never cite `smoke-test.sh` §3/§3b as enforcement proof (JSON shapes only). `adb connect*` re-verified narrowed (android-mobile-spec exactly loopback + docker-android, no bare fleet-wide; smoke adb gate green). Docs-only — no argv-aware rewrite without a live stack.
+
+## P1-2: MCP namespace bypass → verified + charter de-staled (roles/k8s-orchestrator/AGENTS.md)
+
+- dba GRANTs (`paperclip_reader` SELECT-only SQL) + k8s read-only ClusterRole binding verified in charters with the full provisioning chain (initdb hook, compose `:?`, seed preflight). Namespace deny tails verified where the pattern is established (harness 51, git 25, docker 2, filesystem 2, kubernetes/postgres/aws). Extension to playwright/chrome-devtools/mobile/r2/redis/kafka/qdrant deliberately NOT invented (no in-tree per-tool enumeration; needs the runtime tool-name contract — tracked product decision). `DOCKER_HOST=tcp://docker-socket-proxy:2375` re-verified in both docker MCP roles. **Fixed:** k8s-orchestrator charter docker-MCP note still said "no DOCKER_HOST wired / infra-pending" while the config has carried it since Wave D P1-6 (smoke dead-MCP gate already documents the exit from the dead list) — rewritten to the active read-only-observer posture.
+
+## P1-3: socket-proxy GET-recon → tracked plan comment + prompt version fix
+
+- `tecnativa/docker-socket-proxy:0.3.0` with `POST/BUILD/EXEC/VOLUMES/NETWORKS=0` + `CONTAINERS/IMAGES/INFO/VERSION=1`, expose-only `:2375`, verified. **Added:** dedicated `heretek-ci` net / source-IP-allowlist tracked plan comment (move deferred pending `make up` verification; never publish `:2375`, never weaken writes). **Fixed:** `PROMPT_ADVERSARIAL_FLEET_AUDIT.md` `0.1.1` → `0.3.0` (Claim 8.2 + Domain 11.8); `SUPPORTING_SERVICES.md` already `0.3.0`.
+
+## P1-4: ports + firecrawl → verified + full loopback gate (scripts/smoke-test.sh)
+
+- Paperclip `127.0.0.1:3100` + 14 sidecar loopback binds verified; caddy 80/443 profile-gated with `guard-proxy` (private exposure + non-placeholder secret) + compose `:?` + in-file notes (value-comparison refusal not expressible in compose — documented never-bypass, same as Wave D P2-6). Firecrawl `USE_DB_AUTHENTICATION=false`-with-rationale + path-to-`true` + loopback-only verified. **Added:** smoke gate asserting the full 15-bind set and failing on any non-loopback publish outside caddy 80/443.
+
+## P1-5: secret hygiene → verified + GO-key advisory (scripts/opencode-shim.sh)
+
+- No committed secrets (`git ls-files`: only `secrets/.gitkeep`); `DATABASE_URL` server-side with password-file plan comment; `POSTGRES_READONLY_URL` agent-exclusive (preflight rejects superuser); seed has no `set -x`/value echo; kubeconfig FD plan + ClusterRole + fs denies cross-reffed to P0-3. **Added:** GO-key silent-fallback advisory comment (convenience, not a boundary; no-clobber pinned by test-shim §20; no opt-in gate — would break unattended runs).
+
+## P1-6: fs:read ordering → re-verified + live negative steps (scripts/smoke-test.sh)
+
+- 51/51 deny-first, 0 violations; generator untouched (no drift). **Added:** `.env` live negative probe (fs:read AND filesystem MCP, both must DENY) to the §10b live-gated SKIP text; static §3b stays the in-repo gate.
+
+## P1-7: dispatch claims → prompt correction + wording fix (PROMPT + scripts/dispatch-pipeline.sh)
+
+- Header/exit-0 verified (dry-run exits 0). **Fixed:** prompt Claims 7.1/7.2 rewritten to provisioner-tracer semantics; three dry-run `Emitted …` lines → `MANUAL assignment (no API call, nothing emitted)`. Phase-5 host-`act` text already correct (prior wave).
+
+## P1-8: Domain 8 inversion → prompt correction (PROMPT_ADVERSARIAL_FLEET_AUDIT.md)
+
+- SUPPORTING_SERVICES.md + sidecar comments verified read-only-observer. **Fixed:** prompt Claims 8.1/8.2 rewritten (8.2 carries the `0.3.0` fix). Pins verified: socket-proxy `0.3.0`, piston digest-pinned (`v2.0.0` never existed — already commented in-file).
+
+## Test results (must-keep-green set + Stage 2 proofs)
+
+- `bash scripts/smoke-test.sh --check-only` → **527 passed, 0 failed, 5 skipped** (526 baseline + 1 loopback gate).
+- `bash scripts/test-shim.sh` → **46 passed, 0 failed**. `shellcheck -S warning scripts/*.sh` → zero warnings. `bash scripts/spec-gate.sh --check-only` → **7 passed, 0 failed**.
+- python3: 51/51 shell deny-tails, 51/51 deny-first, DOCKER_HOST ×2, namespace tails as above, dead-MCP gate green.
+- `bash scripts/seed-50-fleet.sh --dry-run` → **52 docs, total 1300000 == cap 1300000, empty stderr**; non-regular kubeconfig → exit 1.
+- `docker compose config` exit 0: default, core+ci, devsec+core, web-research+core, mobile+core, proxy+tailscale. `bash scripts/dispatch-pipeline.sh --dry-run` → exit 0, corrected wording.
+- `git status --short` → only intended files (7 Stage-2 edits + Stage-1 carryover + 2 doc files); no `:latest` code pins, no secrets, no TODO.
+
+## Self-audit notes (Wave E Stage 2)
+
+- Fail-closed kept: 4/7 edits comments-only; claim fixes point at the honest implementation; the one new gate fails closed on drift. No `|| true`/TODO/dummy/empty-catch added; deny tails preserved; no floating tags; scripts keep `set -euo pipefail` + `--dry-run`/`--help`.
+- Tracked residuals (not blocking): argv-aware exec, per-namespace MCP denies for six namespaces, piston move + secret front, DATABASE_URL password-file, GO-key opt-in, Domain 11 prompt table beyond socket-proxy, all live-stack gates (`HARNESS_LIVE_GATE=1`, canary, scrub, `.env` negative).
+- No commits, no merges, no subagents used.
+
+---
+
+# Wave E Stage 3 Remediation Log — P1 Supply-Chain & Wiring (P1-9 through P1-15)
+
+**Worktree:** `/tmp/opencode/heretek-wave-e` (branch `wave-e-audit-remediation`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` lines 99-132
+**Status:** all P1-9…P1-15 closed or verified-present, tests re-proven empirically.
+Changes left UNCOMMITTED for QA/Drift-Guard. No proof contradicted the audit;
+the dirty-archive probe confirmed the reported litter class on the old path
+(staging-fail cleanup existed, remove-fail litter did not) and the fix closes it.
+No stoppage needed (no product decision blocked progress).
+
+## P1-9: seeder verified + prompt sync + live rerun SKIP → prompt, smoke §4
+
+- Verified (python JSON parse of dry-run with provisioned dummies): `ROLE_LIST`
+  = 51, 52 docs (1 company + 51), skip-false ×51, XDG ×51, heartbeats
+  49×(false,0) + exec-director (true,1800) + tpm-scrum-lead (true,3600),
+  budget 1300000¢ == cap, empty stderr.
+- **Fixed** prompt Claims 5.1 (seed-50-fleet.sh only — seed-company.sh deleted
+  Wave 3 P1-11), 5.2 (51 roles), 5.3 (1,300,000¢/$13,000), 5.4 (49 of 51).
+- **Added** smoke §4 live rerun-diff SKIP (seed twice against `make up`,
+  assert rerun creates 0 agents).
+
+## P1-10: archive litter + collision → worktree-manager.sh, prompt, smoke §5b
+
+- `cmd_archive`: same-second rerun diverts to `-<ts>-$RANDOM` (second
+  collision aborts); evidence stages to `.tmp-<ticket>-<ts>-$RANDOM` and is
+  `mv`-renamed into place only after `git worktree remove` succeeds; a
+  failed remove deletes the staged temp (no orphan archive dir).
+- Branch stays `ticket-<id>` dash; removal never `--force`; branch retained.
+- **Fixed** prompt Claims 6.1 (dash) / 6.2 (temp-stage + RANDOM, "force-removing"
+  dropped). **Added** two smoke gates (RANDOM+temp-stage; dash + no-`--force`).
+- Probes: `../evil` → exit 2; clean archive → 4-file evidence, temp gone,
+  branch retained; dirty archive → exit 1, worktree/branch/dirty-file intact,
+  zero litter; re-archive → success; all artifacts cleaned.
+
+## P1-11: Claim 3.1 code-not-in-repo → verified present (no change)
+
+- Dockerfile `PAPERCLIP_SOURCE_COMMIT` placeholder + rev-parse procedure,
+  NOTES.md Wave D procedure + canary requirement, AGENTS.md §1
+  config-advice/live-unverified label, smoke §10b canary SKIP. No invention.
+
+## P1-12: root-build + gosu + mutable base → verified + plan comment
+
+- `USER root` only (deliberate volume repair), inherited `gosu node`
+  (UID 1000, smoke §8 doc + live `id -u` gate), `/roles` 755 + `:ro`,
+  `PAPERCLIP_BASE_IMAGE` digest-pin plan in compose. **Added** explicit
+  `read_only:true` + tmpfs tracked-plan wording (comment only).
+
+## P1-13: hound/piston/minio → verified present (no bumps)
+
+- Hound digest + vendor/migrate decision; piston exact digest (latest-only
+  upstream, no `:latest` used) + self-vendoring DECISION-NEEDED + release
+  steps; minio exact RELEASE + digest-PENDING + 2026.x/localstack note.
+
+## P1-14: seven dead wirings → catalog §4.3 + mlops charter fix (docs only)
+
+- Smoke allowlist green (7 = ollama, prometheus×2, redis, kafka, clickhouse,
+  k6; docker blocks left in Wave D P1-6). No declarations added/deleted.
+- **Fixed** stale mlops docker note → active read-only-observer (mirrors k8s,
+  Stage 2 fixed only k8s). **Added** catalog §4.3 table (the "catalog §3
+  notes" the smoke comment cited did not exist).
+
+## P1-15: unpinned MCP + drift → verified clean (no change)
+
+- Zero live `@morluto/rea-mcp` (historical prose only); all npx `pkg@ver` +
+  uvx `pkg==ver` (gate green); fork-vs-canonical in smoke header (all ==
+  live latest); zero `:latest` code pins (prose hits only, gate-covered).
+
+## Test results (must-keep-green set + Stage 3 proofs)
+
+- `bash scripts/smoke-test.sh --check-only` → **529 passed, 0 failed,
+  6 skipped** (527 baseline + 2 P1-10 gates + 1 P1-9 SKIP, zero regressions).
+- `bash scripts/test-shim.sh` → **46 passed, 0 failed**; `shellcheck`
+  zero warnings; `bash scripts/spec-gate.sh --check-only` → **7/7**.
+- Seed dry-run → 52 docs, total == cap, empty stderr. Compose configs exit 0
+  (default, core+ci, prebuilt). Worktree probes above, artifacts cleaned.
+- Sweeps: no `:latest` code pins, no secrets, no TODO/dummy/`|| true` added.
+
+## Files changed (uncommitted, Stage 3 only)
+
+- `scripts/worktree-manager.sh` (P1-10), `scripts/smoke-test.sh` (§4 SKIP,
+  §5b gates), `PROMPT_ADVERSARIAL_FLEET_AUDIT.md` (5.x + 6.x claims),
+  `roles/mlops-serving-eng/AGENTS.md` (P1-14), `roles-catalog/ROLE_CATALOG_50.md`
+  (§4.3), `docker-compose.yml` (P1-12 comment), `docs/reports/wave-e-stage3-implementation.md`
+  (new), `REMEDIATION_LOG.md` (this entry).
+
+## Self-audit notes (Stage 3)
+
+- Fail-closed kept: archive aborts on double-collision/staging-fail/
+  remove-fail; claim fixes point at honest implementation; new gates fail on
+  drift; live probes stay SKIPs. No `|| true`/TODO/dummy added; deny tails,
+  pins, ports, networks untouched; scripts keep `set -euo pipefail` +
+  `--dry-run`/`--help`.
+- Tracked residuals (not blocking): live rerun diff, piston move + front,
+  password-file, hound/piston/minio vendoring, dead-MCP build-vs-delete,
+  Domain 11 table beyond socket-proxy, all live-stack gates.
+- No commits, no merges, no subagents used.
+
+---
+
+# Wave E Stage 4 Remediation Log — P2 Medium + P3 Low (P2-1…P2-16, P3-1…P3-10)
+
+**Worktree:** `/tmp/opencode/heretek-wave-e` (branch `wave-e-audit-remediation`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` lines 135-168 (cleared lines 171-178 not re-filed)
+**Status:** all P2/P3 closed or verified-present, tests re-proven empirically.
+Changes left UNCOMMITTED for QA/Drift-Guard. No proof contradicted the audit;
+the TDD red run confirmed 4 of the 8 new P2-1 probes failed pre-fix (8i,
+2× whitespace, dir-126) while 4 passed as behavior pins (8h/8j/8k/8l).
+No stoppage needed (network available — every digest resolved live via
+registry Docker-Content-Digest headers, nothing invented offline).
+
+## P2-1: shim variant edges → code + 8 tests (TDD red 50/4 → green 54/0)
+
+- `scripts/opencode-shim.sh`: empty `--variant=` no longer clobbers a prior
+  non-empty variant; header rule-2 documents the normalized dash-leading
+  rule (space-form = flag boundary, `=`-form = explicit value, merges);
+  `resolve_real_bin` requires `-f` + `-x` on all three paths (dir → 127);
+  whitespace-only API/GO keys count as empty both sides.
+- `scripts/test-shim.sh` 46 → 54 (§8h/8i/8j/8k/8l, §20b dir-127, §20
+  whitespace ×2). `shellcheck` clean.
+
+## P2-3/P2-5/P2-6/P2-8/P2-9: live-resolved tag@digest pins (no invention)
+
+- postgres `17.11-alpine@sha256:b0f956…` (17-alpine ≡ 17.11-alpine, zero
+  change) + Dockerfile comment; ghidra `12.1.4@sha256:b24791…` (ordered
+  major bump, wrong "one minor" comment fixed, dual :1337/pgrep probe);
+  mitmproxy `11.0.2@sha256:92ab9e…` + 12.x plan (`12.2.3` live);
+  firecrawl `2.10.19@sha256:50446c…` + plan; act
+  `act-22.04@sha256:f5f5c2…` + 24.04 plan (`act-24.04` digest recorded).
+  Mailpit (`v1.31.6`) / wiremock (`3.13.2-alpine`) stay quarterly comments.
+- Smoke: 5 digest asserts + 5 predecessor-absence asserts (image-lines
+  only — provenance comments exempt).
+
+## P2-10/P2-12/P2-14: new automated gates (all fail-closed / SKIP, never fake-pass)
+
+- P2-10 budget-matrix gate (per-service caps asserted, per-profile
+  expected totals + full 32.6 CPU pinned, drift prints recomputed values).
+- P2-12 `§8b` backup→restore round-trip (`BACKUP_ROUNDTRIP_LIVE=1`
+  opt-in, `--file`+`--yes` CLI path, scratch dir) + check-only SKIP.
+- P2-14 workflow static gate (translation + plugin-load + arm64 steps).
+- P3-8 `.gitkeep` tracked gate.
+
+## P2-2/P2-4/P2-11/P2-13/P2-16 + P3-3…P3-10: verified present, changed only to add
+
+- Valueless-`--dir` preservation, Paperclip SHA procedure, android 4/8g +
+  dual probe, prebuilt semver + no-latest + HERETEK_IMAGE constraint,
+  publish fixture/plugin-load/arm64 gates, seed fetch-once + ROLE_DIR
+  double guard, rabbitmq env creds, Caddyfile plan, DOCKER_HOST ×2,
+  sabotage piston advisory, device+inode fallback, signing `:?`,
+  `--force` rationale — all re-proven. Added only: P3-1 nuq/playwright
+  comments, P3-2 two no-op `true` healthchecks, P2-15 redis-7.4-LTS
+  decision + neo4j-OOM + gotenberg-logs notes.
+- `SUPPORTING_SERVICES.md`: mirrored pins synced, watchlist rewritten
+  with `[RESOLVED]` markers + verified-live quarterly targets.
+- `AGENTS.md`: suite count 46→54 (two spots).
+
+## Test results (must-keep-green set + Stage 4 proofs)
+
+- `bash scripts/test-shim.sh` → **54 passed, 0 failed**; `bash
+  scripts/smoke-test.sh --check-only` → **542 passed, 0 failed,
+  7 skipped** (529 + 13 new gates, zero regressions); `shellcheck`
+  zero warnings; `bash scripts/spec-gate.sh --check-only` → **7/7**.
+- Seed dry-run → 52 docs, total == cap, empty stderr. Compose configs
+  exit 0 (default, prebuilt, web-research, devsec, devsec+core, mobile,
+  core+ci, qa-testing+core, proxy+tailscale); all 5 tag@digest pins render.
+- Sweeps: no `:latest` code pins, no secrets, no TODO/dummy/`|| true` added.
+
+## Files changed (uncommitted, Stage 4 only)
+
+- `scripts/opencode-shim.sh`, `scripts/test-shim.sh` (P2-1),
+  `scripts/smoke-test.sh` (pins, budget, round-trip, publish, gitkeep gates)
+- `docker-compose.yml` (P2-3), `docker-compose.sidecars.yml` (P2-5/6/7/8/9/15,
+  P3-1/2), `docker/Dockerfile` (P2-3 comment), `SUPPORTING_SERVICES.md`
+  (mirrors + watchlist), `AGENTS.md` (counts),
+  `docs/reports/wave-e-stage4-implementation.md` (new), `REMEDIATION_LOG.md`
+  (this entry).
+
+## Self-audit notes (Stage 4)
+
+- Fail-closed kept: variant/keys/binary-resolution fixes err loud, never
+  silent; digests enforce while tags document; gates fail on drift, live
+  work stays opt-in SKIPs. No `|| true`/TODO/dummy added; deny tails,
+  ports, networks, permissions, workflows untouched; scripts keep
+  `set -euo pipefail` + `--dry-run`/`--help`.
+- Tracked residuals (not blocking): ghidra-:1337/mitmproxy-12/act-24.04/
+  mailpit/wiremock live-boot verifications, piston move + front,
+  password-file, hound/piston/minio vendoring, dead-MCP build-vs-delete,
+  full round-trip + harness + canary + scrub live runs (all need `make up`).
+- No commits, no merges, no subagents used.

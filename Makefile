@@ -37,6 +37,15 @@ guard-profiles: ## Fail-closed guard: refuse mobile+devsec/web-research co-sched
 sidecars-up: guard-profiles ## Start sidecars: make sidecars-up SIDECAR_PROFILES="web-research" (mobile isolated; see guard-profiles).
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.sidecars.yml $(foreach p,$(SIDECAR_PROFILES),--profile $(p)) up -d
 
+# Wave E Stage 1 (P0-4 co-scheduling note, advisory — NOT an enforced
+# guard): never co-schedule devsec/qa-testing (piston :2000, ghidra :1337,
+# radare2 :9090 — all unauthenticated execution primitives, expose-only)
+# with untrusted workloads. Enforcement is intentionally NOT added here:
+# devsec/qa-testing routinely combine with core in normal ops, and a
+# refusal rule would break that flow; isolation of ghidra/radare2 onto
+# heretek-devsec plus profile gating is the current control, with the
+# shared-secret proxy front tracked in docker-compose.sidecars.yml.
+
 # Wave D P2-6: the caddy proxy binds 80/443 on ALL interfaces — intentional
 # but one word away from an internet-facing auth surface. guard-proxy makes
 # the exposure note in docker-compose.yml enforced, not honor-system:

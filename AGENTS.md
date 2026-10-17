@@ -54,7 +54,7 @@ Any AI coding assistant, autonomous agent, or paired developer working on this c
 │   └── 01_*.md ... 09_*.md         # Departmental specifications (incl. Role 51)
 ├── scripts/
 │   ├── opencode-shim.sh            # Production CLI shim
-│   ├── test-shim.sh                # 46-assertion unit test suite for the shim
+│   ├── test-shim.sh                # 54-assertion unit test suite for the shim
 │   ├── seed-50-fleet.sh            # 51-agent fleet seeding script
 │   ├── generate-50-roles.py        # 51-role disk scaffolding generator
 │   ├── spec-gate.sh                # Spec-driven development gate (PRD/ADR/task deltas in CI)
@@ -78,7 +78,7 @@ Always use the `Makefile` or explicit scripts. Never construct ad-hoc commands t
 
 ```bash
 # Verification & Testing (run before committing any changes)
-make test                           # Runs unit shim tests (46/46 assertions)
+make test                           # Runs unit shim tests (54/54 assertions)
 bash scripts/spec-gate.sh --check-only   # 7 SDD gate verification checks
 bash scripts/smoke-test.sh --check-only  # 495+ static verification assertions
 shellcheck scripts/*.sh             # Shell script static analysis (zero warnings)
@@ -138,7 +138,10 @@ When modifying this repository, follow these non-negotiable rules:
      steps (need `make up` + seeded fleet): run `git status; id`,
      `git status$(id)`, `git status||id`, and `npm test -- --unknown-flag`
      through an agent turn and record whether each is denied; until denials
-     are observed, assume prefix semantics. Scoping rules that hold
+     are observed, assume prefix semantics. Never cite `scripts/smoke-test.sh`
+      §3/§3b as enforcement proof — those gates check JSON shapes only
+      (presence, ordering, tails); enforcement needs the live probes above.
+      Scoping rules that hold
      regardless: `adb connect` is allowlisted to loopback + in-compose
      emulator hosts (never bare `*`); piston `curl` allows are pinned to the
      exact `piston:2000` host paths (advisory — the piston sandbox itself is

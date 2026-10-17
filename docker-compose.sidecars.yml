@@ -10,6 +10,13 @@ services:
     # Wave 4 P1-4: redis:7.4.1-alpine -> 7.4.11-alpine (fixes CVE-2025-49844
     # RCE <7.4.6; Hub tag 7.4.11-alpine verified live 2026-10-17). Authenticated
     # via REDIS_PASSWORD (fail-closed :? guard); healthcheck authenticates.
+    # Wave E Stage 4 P2-15 (recorded decision, not drift): staying on the
+    # 7.4 LTS line is DELIBERATE — 8.x is the current major but 7.4.11
+    # carries the CVE fix and the LTS behavior the clients pin against.
+    # Re-evaluate 8.x on the quarterly cycle (owned by dependency-patcher)
+    # with a client-compat check (mcp-server-redis==0.1.1) first.
+    # Per-service passwords: both redises share REDIS_PASSWORD today;
+    # split to per-service secrets at the next rotation (tracked).
     image: redis:7.4.11-alpine
     profiles: ["web-research"]
     restart: unless-stopped
@@ -113,6 +120,10 @@ services:
     mem_limit: 512m
 
   firecrawl-nuq-postgres:
+    # P3-1 provenance: digest of the firecrawl self-host postgres
+    # (pre-configured pg_cron + 010-nuq.sql); tag@digest preferred but the
+    # upstream tag this digest was cut from is unrecorded — left as
+    # digest-only (never float `latest` to "clarify" it).
     image: ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc
     profiles: ["web-research"]
     restart: unless-stopped
@@ -136,6 +147,10 @@ services:
     mem_limit: 768m
 
   firecrawl-playwright:
+    # P3-1 provenance: digest of the firecrawl scraping microservice
+    # (HTTP :3000/scrape); tag@digest preferred but the upstream tag this
+    # digest was cut from is unrecorded — left as digest-only (never float
+    # `latest` to "clarify" it).
     image: ghcr.io/firecrawl/playwright-service@sha256:717699bf8a61d94451926c810d19ca1d36278192907e307bf5229a558b08fcc6
     profiles: ["web-research"]
     restart: unless-stopped
@@ -163,14 +178,15 @@ services:
     mem_limit: 2g
 
   firecrawl:
-    # Wave D P2-8 version plan (tracked, honest): `:2.10.19` is a mutable
-    # tag while 4 sibling deps are digest-pinned. The target is a digest
-    # pin with a `#:2.10.19` human-readable comment — but the digest MUST
-    # be resolved live (`docker manifest inspect
-    # ghcr.io/firecrawl/firecrawl:2.10.19`), never invented offline.
-    # Until that verification runs, the exact tag stays with this plan
-    # attached (no blind bump, no floating `latest`).
-    image: ghcr.io/firecrawl/firecrawl:2.10.19
+    # Wave E Stage 4 P2-8 (pinned live 2026-10-17): exact tag + digest
+    # (GHCR Docker-Content-Digest of :2.10.19:
+    # sha256:50446cbc0bc700a78cc588c96bd38a97f01cc4299c99b349c7bfa1ba57b6d7ed).
+    # The digest wins; `:2.10.19` stays as the human-readable provenance
+    # (same tag@digest pattern as postgres/ghidra/mitmproxy/act).
+    # Quarterly bump plan (owned by dependency-patcher): re-resolve the
+    # newest firecrawl tag live, bump tag+digest together (never the tag
+    # alone, never an offline-invented digest).
+    image: ghcr.io/firecrawl/firecrawl:2.10.19@sha256:50446cbc0bc700a78cc588c96bd38a97f01cc4299c99b349c7bfa1ba57b6d7ed
     profiles: ["web-research"]
     restart: unless-stopped
     command: node dist/src/harness.js --start-docker
@@ -243,6 +259,10 @@ services:
     command:
       - "gotenberg"
       - "--api-port=3000"
+      # Wave E Stage 4 P2-15: bare `--chromium-restart-after=30` (count,
+      # not duration) is upstream's documented shape — confirm it took
+      # effect via the container logs on first up (`...chromium...restart`
+      # lines); a rejected flag fails the boot visibly, not silently.
       - "--chromium-restart-after=30"
       - "--chromium-auto-start=true"
     healthcheck:
@@ -287,7 +307,16 @@ services:
     mem_limit: 3g
 
   mitmproxy:
-    image: mitmproxy/mitmproxy:11.0.2
+    # Wave E Stage 4 P2-6 (pinned live 2026-10-17): 11.0.2 pinned as
+    # tag@digest below (registry Docker-Content-Digest
+    # sha256:92ab9e0626ec73a3abae9c460e5475323f414745d7d0001205c8fa0c77ad31a2;
+    # zero behavior change — the digest wins). Full major behind upstream
+    # (Hub `12.2.3` verified live 2026-10-17): bump to 12.x on the
+    # QUARTERLY cycle (owned by dependency-patcher) — re-resolve the
+    # newest 12.x live, bump tag+digest together, re-verify the mitmweb
+    # :8081 healthcheck on first qa-testing-profile boot (major-proxy
+    # behavior is NOT verified from here; never an offline bump).
+    image: mitmproxy/mitmproxy:11.0.2@sha256:92ab9e0626ec73a3abae9c460e5475323f414745d7d0001205c8fa0c77ad31a2
     # TEST-ONLY SCOPE (P1-6): intercept proxy confined to the qa-testing
     # profile — never enable alongside untrusted workloads. block_global
     # defaults to true so non-loopback/global traffic is refused unless a
@@ -319,14 +348,15 @@ services:
   # untrusted workloads on the same heretek network.
   # ============================================================================
   ghidra:
-    # Wave D P2-8 version plan (tracked, honest): `blacktop/ghidra:11.2`
-    # is a community image likely one minor behind. Target: verify :11.3+
-    # exists upstream, then digest-pin it (never float `latest`); the
-    # `pgrep -f ghidra` healthcheck below is weak (matches any ghidra
-    # string) — the stronger probe is an HTTP hit on :1337 once the
-    # server is up (verify on first devsec-profile boot). Until that
-    # verification runs, 11.2 stays with this plan attached.
-    image: blacktop/ghidra:11.2
+    # Wave E Stage 4 P2-5 (bumped live 2026-10-17): `blacktop/ghidra:11.2`
+    # -> `12.1.4@sha256:b247…` (a full major behind, not "one minor" —
+    # the old comment was factually wrong; Hub tag 12.1.4 verified live,
+    # registry Docker-Content-Digest pinned below as tag@digest). The
+    # digest wins; the tag is the human-readable provenance. Quarterly
+    # bump plan (owned by dependency-patcher): re-resolve the newest 12.x
+    # live, bump tag+digest together, re-verify the :1337 probe below on
+    # first devsec-profile boot (never an offline-invented digest).
+    image: blacktop/ghidra:12.1.4@sha256:b2479177bd6a10d974da1bff30cc911ea2856843d858ad0ba02a608152ca193c
     profiles: ["devsec"]
     restart: unless-stopped
     # Wave 4 P1-12 SEGMENTATION: untrusted-sample workloads (ghidra,
@@ -359,7 +389,13 @@ services:
     entrypoint: ["/entrypoint.sh"]
     command: ["server"]
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f ghidra || exit 1"]
+      # Wave E Stage 4 P2-5: strong probe first (:1337 answers once the
+      # server is up), weak `pgrep -f ghidra` as the fallback — either
+      # signal counts as healthy. This dual probe strictly strengthens the
+      # old pgrep-only check (the fallback is the pre-existing signal, so
+      # no previously-healthy state can newly report unhealthy); verify
+      # :1337 liveness on first devsec-profile boot.
+      test: ["CMD-SHELL", "(wget -q -O /dev/null http://127.0.0.1:1337) || (pgrep -f ghidra) || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 3
@@ -451,6 +487,15 @@ services:
       - ./workspaces:/src:ro
       - semgrep-cache:/root/.cache/semgrep
     entrypoint: ["sleep", "infinity"]
+    # Wave E Stage 4 P3-2 (optional, no-op): `sleep infinity` carries no
+    # workload to probe — a `true` healthcheck keeps `depends_on:
+    # service_healthy` uniform for future dependents without pretending
+    # to check anything (nothing depends on this service today).
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 30s
+      timeout: 3s
+      retries: 1
     networks:
       - heretek
     cpus: "2.0"
@@ -483,6 +528,12 @@ services:
       # the net is compose-managed and every attached workload is fleet
       # first-party — but never attach untrusted third-party containers to
       # the heretek net, and never publish :2375 to the host.
+      # Wave E Stage 2 P1-3 tracked hardening plan (not yet moved — live
+      # network move deferred pending `make up` reachability verification):
+      # relocate the proxy + local-ci-runner onto a dedicated `heretek-ci`
+      # bridge net (paperclip-only bridge, same pattern as heretek-devsec /
+      # heretek-mobile) or add a source-IP allowlist so only paperclip and
+      # the runner can reach :2375. Never weaken POST/BUILD/EXEC to do it.
       CONTAINERS: "1"
       IMAGES: "1"
       INFO: "1"
@@ -531,6 +582,12 @@ services:
     # :2000 with a shared-secret proxy (or per-request tokens mounted only
     # into sabotage-qa-tester) at the next hardening pass; until then:
     # expose-only, qa-testing/devsec profiles only, no host ports.
+    # Wave E Stage 1 (P0-4 residual, tracked, honest): piston stays on the
+    # shared `heretek` net (NOT moved to an isolated net — a live network
+    # move needs `make up` verification that qa-testing/devsec reachability
+    # survives; see the NETWORKS rationale below). Until the proxy front
+    # lands: never co-schedule devsec/qa-testing with untrusted workloads
+    # (see the Makefile sidecars-up note).
     image: ghcr.io/engineer-man/piston@sha256:2f66b7456189c4d713aa986d98eccd0b6ee16d26c7ec5f21b30e942756fd127a
     profiles: ["qa-testing", "devsec"]
     restart: unless-stopped
@@ -587,6 +644,10 @@ services:
     # 5.26.32-community-trixie (Hub tag verified live 2026-10-17; bullseye
     # oldstable EOL ~2026, misses Bouncy Castle/log4j fixes; 5.26 LTS line
     # kept deliberately, newest 5.26.x patch taken).
+    # Wave E Stage 4 P2-15: heap 512m–1536m + pagecache 512m inside a 2.5g
+    # limit is TIGHT — monitor for OOM-kill on first ai-gateway-profile up
+    # (`docker stats neo4j` / container restarts); raise mem_limit (not the
+    # heap flags alone) if the kernel kills it under graph load.
     image: neo4j:5.26.32-community-trixie
     profiles: ["ai-gateway"]
     restart: unless-stopped
@@ -646,6 +707,10 @@ services:
   # CATEGORY H: DEVELOPER TESTING, MOCKING & OBSERVABILITY
   # ============================================================================
   mailpit:
+    # Wave E Stage 4 P2-7 quarterly plan (comment only — test-mock
+    # severity, no blind bump): v1.21.8 is ~10 minors behind upstream
+    # (Hub `v1.31.6` verified live 2026-10-17). Bump tag on the quarterly
+    # cycle (owned by dependency-patcher) after re-resolving live.
     image: axllent/mailpit:v1.21.8
     profiles: ["qa-testing"]
     restart: unless-stopped
@@ -707,6 +772,10 @@ services:
     mem_limit: 1g
 
   wiremock:
+    # Wave E Stage 4 P2-7 quarterly plan (comment only — test-mock
+    # severity, no blind bump): 3.10.0-alpine is 3 minors behind upstream
+    # (Hub `3.13.2-alpine` verified live 2026-10-17). Bump tag on the
+    # quarterly cycle (owned by dependency-patcher) after re-resolving live.
     image: wiremock/wiremock:3.10.0-alpine
     profiles: ["qa-testing"]
     restart: unless-stopped
@@ -823,13 +892,31 @@ services:
     # from inside this container. Do not "fix" CI by enabling proxy writes
     # or mounting /var/run/docker.sock here (see P1-12); that re-opens the
     # host-escape the proxy exists to close.
-    image: ghcr.io/catthehacker/ubuntu:act-22.04
+    # Wave E Stage 4 P2-9 (pinned live 2026-10-17): act-22.04 pinned as
+    # tag@digest below (GHCR Docker-Content-Digest
+    # sha256:f5f5c29208c4fd541704fe7b8df33d3bf620ce4ac46f36853b7abeb0159705c4;
+    # zero behavior change — the digest wins). Ubuntu 22.04 EOL Apr 2027:
+    # migrate to 24.04 on the QUARTERLY cycle (GHCR `act-24.04` verified
+    # live 2026-10-17, digest
+    # sha256:62d572b92f9f32d3427b6d220ad1f9dca9c7b6ffad37d295425037dbff78abaf)
+    # — re-resolve live at migration time, bump tag+digest together, and
+    # re-run a host-`act` job against the read-only observer (the proxy
+    # stays GET-only; see above). Never invent the digest offline.
+    image: ghcr.io/catthehacker/ubuntu:act-22.04@sha256:f5f5c29208c4fd541704fe7b8df33d3bf620ce4ac46f36853b7abeb0159705c4
     profiles: ["ci", "qa-testing", "core"]
     restart: "no"
     depends_on:
       docker-socket-proxy:
         condition: service_healthy
     command: ["sleep", "infinity"]
+    # Wave E Stage 4 P3-2 (optional, no-op): same `true` healthcheck
+    # rationale as the semgrep service above (nothing depends on the
+    # runner today; the runner depends ON the proxy, not vice versa).
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 30s
+      timeout: 3s
+      retries: 1
     environment:
       DOCKER_HOST: "tcp://docker-socket-proxy:2375"
     # Wave 4 P1-12 (runner hardening): the shared checkout mounts

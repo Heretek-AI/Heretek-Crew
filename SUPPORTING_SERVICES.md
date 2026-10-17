@@ -94,7 +94,7 @@ flowchart TB
 * **Service Identity**: Firecrawl (`firecrawl/firecrawl`)
 * **Repository**: [https://github.com/firecrawl/firecrawl](https://github.com/firecrawl/firecrawl)
 * **Image Tags**:
-  * API / Workers Harness: `ghcr.io/firecrawl/firecrawl:2.10.19`
+  * API / Workers Harness: `ghcr.io/firecrawl/firecrawl:2.10.19@sha256:50446cbc0bc700a78cc588c96bd38a97f01cc4299c99b349c7bfa1ba57b6d7ed` (digest pinned live Wave E Stage 4)
   * Playwright Microservice: `ghcr.io/firecrawl/playwright-service@sha256:717699bf8a61d94451926c810d19ca1d36278192907e307bf5229a558b08fcc6`
   * NuQ Postgres (Queue DB): `ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc`
   * RabbitMQ (Queue Broker): `rabbitmq:4.3.6-management-alpine`
@@ -195,7 +195,7 @@ flowchart TB
     mem_limit: 2g
 
   firecrawl:
-    image: ghcr.io/firecrawl/firecrawl:2.10.19
+    image: ghcr.io/firecrawl/firecrawl:2.10.19@sha256:50446cbc0bc700a78cc588c96bd38a97f01cc4299c99b349c7bfa1ba57b6d7ed
     profiles: ["web-research"]
     restart: unless-stopped
     command: node dist/src/harness.js --start-docker
@@ -564,14 +564,14 @@ flowchart TB
 ### Service B.2: mitmproxy Traffic Auditor
 * **Service Identity**: mitmproxy (`mitmproxy/mitmproxy`)
 * **Repository**: [https://github.com/mitmproxy/mitmproxy](https://github.com/mitmproxy/mitmproxy)
-* **Image Tag**: `mitmproxy/mitmproxy:11.0.2`
+* **Image Tag**: `mitmproxy/mitmproxy:11.0.2@sha256:92ab9e0626ec73a3abae9c460e5475323f414745d7d0001205c8fa0c77ad31a2` (digest pinned live Wave E Stage 4; 12.x bump on the quarterly cycle)
 * **Core Value Proposition**: In an autonomous organization, agents making unmonitored external HTTP calls present data exfiltration and credential leakage risks. Running mitmproxy as an audited outbound egress gateway enables automated logging of all agent HTTP/HTTPS payloads, inspection of API contracts, and cryptographic replay of third-party responses for determinism.
 * **Target Roles**: Site Reliability Engineer, SRE / SecOps Lead, QA Contract Tester.
 
 #### Docker Compose Service Block
 ```yaml
   mitmproxy:
-    image: mitmproxy/mitmproxy:11.0.2
+    image: mitmproxy/mitmproxy:11.0.2@sha256:92ab9e0626ec73a3abae9c460e5475323f414745d7d0001205c8fa0c77ad31a2
     profiles: ["devsec", "qa-testing"]
     restart: unless-stopped
     command: ["mitmweb", "--web-host", "0.0.0.0", "--web-port", "8081", "--set", "block_global=false"]
@@ -600,14 +600,14 @@ flowchart TB
 ### Service C.1: Headless Ghidra Server & MCP Bridge
 * **Service Identity**: Headless Ghidra Bridge (`blacktop/ghidra`)
 * **Repository**: [https://github.com/blacktop/docker-ghidra](https://github.com/blacktop/docker-ghidra) / [https://github.com/bethington/ghidra-mcp](https://github.com/bethington/ghidra-mcp)
-* **Image Tag**: `blacktop/ghidra:11.2`
+* **Image Tag**: `blacktop/ghidra:12.1.4@sha256:b2479177bd6a10d974da1bff30cc911ea2856843d858ad0ba02a608152ca193c` (bumped + digest-pinned live Wave E Stage 4; was 11.2, a full major behind)
 * **Core Value Proposition**: Ghidra is the premier NSA open-source SRE framework. Running Ghidra inside an agent container requires 1.5 GB of JVM dependencies and risks system lockup during intense decompilation passes. As an isolated sidecar, Ghidra executes headless batch scripts (`analyzeHeadless`), exports control-flow graphs, generates decompiled C code, and serves cross-reference queries over a lightweight RPC/MCP socket.
 * **Target Roles**: Reverse Engineering Specialist, Binary Vulnerability Researcher, Firmware Security Auditor.
 
 #### Docker Compose Service Block
 ```yaml
   ghidra:
-    image: blacktop/ghidra:11.2
+    image: blacktop/ghidra:12.1.4@sha256:b2479177bd6a10d974da1bff30cc911ea2856843d858ad0ba02a608152ca193c
     profiles: ["devsec"]
     restart: unless-stopped
     expose:
@@ -1452,24 +1452,37 @@ tag, verify it is live on the registry first — Stage 1 proved six "pinned"
 tags were already pruned upstream and broke pulls by construction. Until an
 automation bot lands, that check is manual: Hub tag API `200` (or GHCR
 manifest `200`) before the edit, `docker compose config` after.
-Wave D P2-8 residual watchlist (quarterly review, no blind bumps):
-`postgres:17-alpine` floating minor → exact `17.<x>-alpine` + digest once
-resolved live; `ghcr.io/firecrawl/firecrawl:2.10.19` mutable tag → digest
-with `#:2.10.19` comment once resolved live (`nuq-postgres` /
-`playwright-service` digests gain tag comments at the same pass);
-`blacktop/ghidra:11.2` → verify `:11.3+`, digest-pin, probe `:1337`
-(healthcheck is weak `pgrep` until then); `jaeger` `COLLECTOR_OTLP_ENABLED`
+Wave D P2-8 residual watchlist (quarterly review, no blind bumps) —
+Wave E Stage 4 resolutions marked [RESOLVED], remainder still tracked:
+`postgres:17-alpine` floating minor → [RESOLVED] exact
+`17.11-alpine@sha256:b0f956…` (17-alpine == 17.11-alpine verified live
+2026-10-17, zero behavior change); `ghcr.io/firecrawl/firecrawl:2.10.19`
+mutable tag → [RESOLVED] tag@digest
+`2.10.19@sha256:50446cbc…` (resolved live 2026-10-17) with `#:2.10.19`
+provenance (`nuq-postgres` / `playwright-service` digests annotated P3-1
+at the same pass);
+`blacktop/ghidra:11.2` → [RESOLVED] `12.1.4@sha256:b24791…` (full major
+bump, digest-pinned live 2026-10-17; healthcheck now tries `:1337` first
+with the `pgrep` fallback — liveness verify on first devsec-profile boot);
+`mitmproxy:11.0.2` → [RESOLVED] tag@digest `11.0.2@sha256:92ab9e…` + 12.x
+(`12.2.3` verified live) quarterly bump plan; `act:22.04` → [RESOLVED]
+tag@digest `act-22.04@sha256:f5f5c2…` + 24.04 (`act-24.04` verified live,
+digest recorded in-file) migration plan;
+`jaeger` `COLLECTOR_OTLP_ENABLED`
 harmless-if-ignored assumption → boot-verify on first
 observability-profile up; `neo4j` heap 512m–1536m + pagecache 512m inside
-2.5g → monitor OOM; `minio` RELEASE.2024-11-07 ~2yr stale → evaluate
+2.5g → monitor OOM (note in-file); `minio` RELEASE.2024-11-07 ~2yr stale → evaluate
 2026.x + localstack alternative (AGPLv3); `gotenberg`
 `--chromium-restart-after=30` bare number → confirm via
-`docker logs gotenberg | grep -i chromium`; dual redis share one
-`REDIS_PASSWORD` → per-service secrets at next rotation; `rabbitmq`
+`docker logs gotenberg | grep -i chromium` (note in-file); dual redis share one
+`REDIS_PASSWORD` → per-service secrets at next rotation (7.4 LTS line
+kept DELIBERATELY — recorded decision, not drift); `rabbitmq`
 512m → 1g (lean for management + quorum overhead); minor lags
-`wiremock:3.10.0` → 3.13+, `mailpit:v1.21.8`, `act:22.04` → 24.04;
-`local-ci-runner` / `semgrep` `sleep infinity` without healthchecks →
-fine as-is, or add no-op `true` healthchecks for `depends_on`.
+`wiremock:3.10.0` → 3.13+ (`3.13.2-alpine` verified live 2026-10-17),
+`mailpit:v1.21.8` → `v1.31.6` (verified live 2026-10-17), both quarterly
+plan comments in-file (test-mock severity, no blind bump);
+`local-ci-runner` / `semgrep` `sleep infinity` → [RESOLVED] no-op `true`
+healthchecks added for `depends_on` uniformity.
 
 **MCP/plugin scope resolutions (Wave 4 P2-7/P2-8, verified live 2026-10-17).**
 `@modelcontextprotocol/server-github@2025.4.8` is already at target in all
@@ -1663,7 +1676,7 @@ services:
     mem_limit: 2g
 
   firecrawl:
-    image: ghcr.io/firecrawl/firecrawl:2.10.19
+    image: ghcr.io/firecrawl/firecrawl:2.10.19@sha256:50446cbc0bc700a78cc588c96bd38a97f01cc4299c99b349c7bfa1ba57b6d7ed
     profiles: ["web-research"]
     restart: unless-stopped
     command: node dist/src/harness.js --start-docker
@@ -1768,7 +1781,7 @@ services:
     mem_limit: 3g
 
   mitmproxy:
-    image: mitmproxy/mitmproxy:11.0.2
+    image: mitmproxy/mitmproxy:11.0.2@sha256:92ab9e0626ec73a3abae9c460e5475323f414745d7d0001205c8fa0c77ad31a2
     profiles: ["devsec", "qa-testing"]
     restart: unless-stopped
     command: ["mitmweb", "--web-host", "0.0.0.0", "--web-port", "8081", "--set", "block_global=false"]
@@ -1793,7 +1806,7 @@ services:
   # CATEGORY C: DEFENSIVE BINARY ANALYSIS & REVERSE ENGINEERING
   # ============================================================================
   ghidra:
-    image: blacktop/ghidra:11.2
+    image: blacktop/ghidra:12.1.4@sha256:b2479177bd6a10d974da1bff30cc911ea2856843d858ad0ba02a608152ca193c
     profiles: ["devsec"]
     restart: unless-stopped
     expose:

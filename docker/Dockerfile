@@ -29,7 +29,7 @@
 #
 # Pinned versions (never `latest`):
 #   node base ........... node:24-trixie-slim (inherited from official base)
-#   postgres ............ postgres:17-alpine (see docker-compose.yml)
+#   postgres ............ postgres:17.11-alpine@sha256:b0f956… (see docker-compose.yml; resolved live 2026-10-17)
 #   @opencode/cli ....... 2.0.32
 #   @opencode/client .... 2.0.32
 #   @heretek-ai/opencode-harness .. 1.0.7

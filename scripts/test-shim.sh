@@ -172,6 +172,37 @@ RUN_ARGS=(run --model mymodel --dir --format json prompt)
 assert_args "strip: mid-argv valueless --dir does not swallow next flag" \
     "run" "--model" "mymodel" "--auto" "--format" "json" "prompt"
 
+# 8h. Wave E P2-1: duplicate --variant is last-wins for non-empty
+# values (vs first-wins --model — the asymmetry is pinned, not changed).
+RUN_ARGS=(run --variant high --variant low --model mymodel prompt)
+assert_args "merge: duplicate --variant last-wins non-empty (P2-1)" \
+    "run" "--model" "mymodel#low" "--auto" "prompt"
+
+# 8i. Wave E P2-1: a trailing empty --variant= must NOT clobber a prior
+# non-empty variant (silent variant loss).
+RUN_ARGS=(run --variant high --variant= --model mymodel prompt)
+assert_args "merge: trailing empty --variant= keeps prior variant (P2-1)" \
+    "run" "--model" "mymodel#high" "--auto" "prompt"
+
+# 8j. Wave E P2-1: empty space-form --variant '' followed by a non-empty
+# --variant still merges (empty values never poison the merge).
+RUN_ARGS=(run --variant '' --variant high --model mymodel prompt)
+assert_args "merge: empty --variant '' then --variant high merges (P2-1)" \
+    "run" "--model" "mymodel#high" "--auto" "prompt"
+
+# 8k. Wave E P2-1: dash-leading token after space-form --variant is a
+# flag boundary, NOT a value — the flag is dropped and the token passes
+# through for the real binary to reject loudly (never silently merged).
+RUN_ARGS=(run --variant -high --model mymodel prompt)
+assert_args "merge: dash-leading space-form --variant value not merged (P2-1)" \
+    "run" "-high" "--model" "mymodel" "--auto" "prompt"
+
+# 8l. Wave E P2-1: equals-form --variant= carries an explicit value, so
+# even a dash-leading value merges (explicit intent, no ambiguity).
+RUN_ARGS=(run --variant=-high --model mymodel prompt)
+assert_args "merge: dash-leading --variant= value merges explicitly (P2-1)" \
+    "run" "--model" "mymodel#-high" "--auto" "prompt"
+
 # 9. --auto already present: never duplicated.
 RUN_ARGS=(run --format json --model m --auto prompt)
 assert_args "auto: not duplicated when present" \
@@ -354,6 +385,24 @@ check_go_fallback "go-key: neither set leaves key unset" \
     "UNSET" -u OPENCODE_API_KEY -u OPENCODE_GO_API_KEY
 check_go_fallback "go-key: empty GO key does not clobber to empty" \
     "UNSET" -u OPENCODE_API_KEY OPENCODE_GO_API_KEY=
+check_go_fallback "go-key: whitespace-only OPENCODE_API_KEY counts as unset (P2-1)" \
+    "go-key-123" OPENCODE_API_KEY="   " OPENCODE_GO_API_KEY=go-key-123
+check_go_fallback "go-key: whitespace-only GO key does not clobber to whitespace (P2-1)" \
+    "UNSET" -u OPENCODE_API_KEY "OPENCODE_GO_API_KEY=   "
+
+# 20b. Wave E P2-1: resolve_real_bin must reject directories with a
+# clean 127 (a +x directory passes `-x` and would otherwise exec-fail
+# with 126 "Is a directory" instead of the fail-closed 127).
+set +e
+mkdir -p "${SANDBOX}/notabin-dir"
+OPENCODE_REAL_BIN="${SANDBOX}/notabin-dir" "${SHIM}" run hi > /dev/null 2> "${SANDBOX}/dirbin.err"
+code=$?
+set -e
+if [[ "${code}" -eq 127 ]] && grep -q "not found" "${SANDBOX}/dirbin.err"; then
+    report PASS "fail-closed: directory OPENCODE_REAL_BIN exits 127, not 126 (P2-1)"
+else
+    report FAIL "fail-closed: directory OPENCODE_REAL_BIN exited ${code} (want 127)"
+fi
 
 # 21. P3-1: without realpath on PATH, a symlink-aliased self-reference
 # must still trip the recursion guard (device+inode comparison, not the

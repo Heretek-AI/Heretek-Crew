@@ -38,7 +38,13 @@
 #      carries a `#variant` suffix is left untouched. A --variant with no
 #      --model cannot be expressed in v2 and is dropped (passing it through
 #      would make the real binary exit 1). An empty `--variant ''` is
-#      consumed and dropped (P2-2b). Duplicate `--model` is FIRST-wins:
+#      consumed and dropped (P2-2b), and an empty `--variant=` never
+#      clobbers a prior non-empty variant (Wave E P2-1). Dash-leading
+#      handling is normalized by form: after space-form `--variant`, a
+#      dash-leading token is a flag boundary (the flag is dropped, the
+#      token passes through for the real binary to reject loudly — never
+#      silently merged); `--variant=<v>` carries an explicit value, so
+#      even a dash-leading value merges. Duplicate `--model` is FIRST-wins:
 #      live-probed against the real binary (v2.0.30; flag parsing stable
 #      across the 2.0.3x series — re-probe on any minor bump), which names
 #      the FIRST of two bogus providers in its error for both space and
@@ -72,29 +78,51 @@ set -euo pipefail
 
 # Normalize OpenCode Go key fallback: if OPENCODE_API_KEY is unset and OPENCODE_GO_API_KEY is provided,
 # export OPENCODE_API_KEY so opencode-go models resolve automatically.
-if [[ -z "${OPENCODE_API_KEY:-}" && -n "${OPENCODE_GO_API_KEY:-}" ]]; then
+# Wave E Stage 2 P1-5 advisory note: this silent fallback is CONVENIENCE,
+# not a security boundary — both vars carry the same privilege, so no
+# privilege is gained or lost here. Key scoping (which processes may see
+# either var) stays tracked under the child-env scrub plan (AGENTS.md §1
+# invariant 1, live canary gate); the no-clobber guarantee (a pre-set
+# OPENCODE_API_KEY is never overwritten, empty GO keys never clobber to
+# empty) is pinned by scripts/test-shim.sh §20. No explicit opt-in gate:
+# adding one would break unattended `run` invocations that rely on the
+# GO key today; re-decide only with a live-stack migration plan.
+# Wave E Stage 4 P2-1: whitespace-only values count as empty on BOTH
+# sides — `"   "` is not a usable key, so it must neither block the GO
+# fallback nor be exported as a whitespace key (pinned by test-shim §20).
+_trimmed_api_key="${OPENCODE_API_KEY:-}"
+_trimmed_api_key="${_trimmed_api_key//[[:space:]]/}"
+_trimmed_go_key="${OPENCODE_GO_API_KEY:-}"
+_trimmed_go_key="${_trimmed_go_key//[[:space:]]/}"
+if [[ -z "${_trimmed_api_key}" && -n "${_trimmed_go_key}" ]]; then
     export OPENCODE_API_KEY="${OPENCODE_GO_API_KEY}"
 fi
+unset _trimmed_api_key _trimmed_go_key
 
 # --- Resolve the real OpenCode v2 binary (fail closed) ---------------------
 resolve_real_bin() {
     if [[ -n "${OPENCODE_REAL_BIN:-}" ]]; then
         # An explicit override that points nowhere is a misconfiguration:
-        # fail closed instead of exec-ing a dangling path.
-        if [[ -x "${OPENCODE_REAL_BIN}" ]]; then
+        # fail closed instead of exec-ing a dangling path. Wave E P2-1:
+        # `-f` (regular file) is required alongside `-x` — a directory
+        # with the execute bit passes `-x` and would exec-fail with 126
+        # ("Is a directory") instead of the clean fail-closed 127.
+        if [[ -f "${OPENCODE_REAL_BIN}" && -x "${OPENCODE_REAL_BIN}" ]]; then
             printf '%s\n' "${OPENCODE_REAL_BIN}"
             return 0
         fi
         return 1
     fi
-    if [[ -x /usr/local/bin/opencode-bin ]]; then
+    if [[ -f /usr/local/bin/opencode-bin && -x /usr/local/bin/opencode-bin ]]; then
         printf '%s\n' '/usr/local/bin/opencode-bin'
         return 0
     fi
     local found
     if found="$(command -v opencode-bin 2>/dev/null)"; then
-        printf '%s\n' "${found}"
-        return 0
+        if [[ -f "${found}" && -x "${found}" ]]; then
+            printf '%s\n' "${found}"
+            return 0
+        fi
     fi
     return 1
 }
@@ -199,7 +227,13 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
             fi
             ;;
         --variant=*)
-            variant="${arg#--variant=}"
+            # Wave E P2-1: an empty --variant= carries no value and must
+            # NOT clobber a prior non-empty variant (silent variant loss).
+            # Non-empty duplicates stay last-wins (pinned by test-shim
+            # §8h — the deliberate asymmetry with first-wins --model).
+            if [[ -n "${arg#--variant=}" ]]; then
+                variant="${arg#--variant=}"
+            fi
             i=$((i + 1))
             ;;
         --model|-m)

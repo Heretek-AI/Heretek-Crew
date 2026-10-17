@@ -571,7 +571,7 @@ if grep -rnE '^[[:space:]]*external:' docker-compose.yml docker-compose.sidecars
 else
   ok "no 'external:' network keys in compose files (managed heretek network)"
 fi
-for pin in 'postgres:17-alpine' 'node:24-trixie-slim' '@opencode/cli@2.0.32' '127.0.0.1:3100'; do
+for pin in 'postgres:17.11-alpine' 'node:24-trixie-slim' '@opencode/cli@2.0.32' '127.0.0.1:3100'; do
   case "${pin}" in
     127.0.0.1:3100)
       if grep -q '127\.0\.0\.1:3100' docker-compose.yml; then ok "pin present: ${pin}"; else bad "pin MISSING: ${pin}"; fi ;;
@@ -676,6 +676,40 @@ if grep -q '"127.0.0.1:3002:3002"' docker-compose.sidecars.yml \
 else
   bad "firecrawl :3002 publish REGRESSED (want 127.0.0.1:3002:3002 only)"
 fi
+# Wave E Stage 2 P1-4: all 14 sidecar loopback binds + paperclip :3100.
+# Every `ports:` entry in this stack must be 127.0.0.1-bound except the
+# profile-gated caddy 80/443 (guard-proxy enforced, compose-noted).
+# Expected set: paperclip 3100 + sidecars 8888/3002/3003/8081/6081/6333/
+# 7474/4000/8025/9001/8089/16686/5555/6080 (14). Any new all-interfaces
+# publish or missing loopback bind fails closed here.
+if python3 -c '
+import re, sys
+base = open("docker-compose.yml").read()
+side = open("docker-compose.sidecars.yml").read()
+want_side = {"8888","3002","3003","8081","6081","6333","7474","4000",
+             "8025","9001","8089","16686","5555","6080"}
+have_side = set(re.findall(r"\"127\.0\.0\.1:(\d+):\d+\"", side))
+problems = []
+if want_side != have_side:
+    problems.append("sidecar loopback set drift: missing=%s extra=%s"
+                    % (sorted(want_side - have_side), sorted(have_side - want_side)))
+if "\"127.0.0.1:3100:3100\"" not in base:
+    problems.append("paperclip 127.0.0.1:3100:3100 missing")
+bare = [l.strip() for l in (base + side).splitlines()
+        if re.search(r"\"[0-9]+:[0-9]+\"", l) and "127.0.0.1" not in l]
+allowed_bare = {"\"80:80\"", "\"443:443\""}
+for b in bare:
+    m = re.search(r"\"[0-9]+:[0-9]+\"", b)
+    if m and m.group(0) not in allowed_bare:
+        problems.append("non-loopback publish outside caddy 80/443: %s" % b)
+if problems:
+    sys.exit("; ".join(problems))
+print("15 loopback binds (3100 + 14 sidecars); only caddy 80/443 all-interfaces (profile-gated)")
+' >"${TMP}/loopback.out" 2>"${TMP}/loopback.err"; then
+  ok "loopback binds enforced ($(cat "${TMP}/loopback.out"))"
+else
+  bad "loopback bind REGRESSION (P1-4): $(head -c 400 "${TMP}/loopback.err")"
+fi
 if python3 -c '
 import re, sys
 text = open("docker-compose.sidecars.yml").read()
@@ -766,6 +800,136 @@ assert any("piston:2000/api/v2/execute" in s for s in shell), "no piston execute
   bad "sabotage-qa-tester NOT pinned to piston/CI: $(head -c 200 "${TMP}/sabotage.err")"
 else
   ok "sabotage-qa-tester executes via piston API (no raw host toolchain)"
+fi
+# Wave E Stage 4 P2-3/P2-5/P2-6/P2-8/P2-9: live-resolved tag@digest pins.
+# Each pin below was resolved live against its registry on 2026-10-17
+# (registry Docker-Content-Digest, never invented offline) with zero
+# behavior change except the ordered ghidra 11.2 -> 12.1.4 major bump
+# (Hub 12.1.4 verified live). The digest wins; the tag is provenance.
+# A tag-only drift back (digest stripped) or a predecessor-tag return
+# FAILs closed here.
+for digpin in 'postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24' 'blacktop/ghidra:12.1.4@sha256:b2479177bd6a10d974da1bff30cc911ea2856843d858ad0ba02a608152ca193c' 'mitmproxy/mitmproxy:11.0.2@sha256:92ab9e0626ec73a3abae9c460e5475323f414745d7d0001205c8fa0c77ad31a2' 'ghcr.io/firecrawl/firecrawl:2.10.19@sha256:50446cbc0bc700a78cc588c96bd38a97f01cc4299c99b349c7bfa1ba57b6d7ed' 'ghcr.io/catthehacker/ubuntu:act-22.04@sha256:f5f5c29208c4fd541704fe7b8df33d3bf620ce4ac46f36853b7abeb0159705c4'; do
+  if grep -rq "image: ${digpin}" docker-compose.yml docker-compose.sidecars.yml; then
+    ok "digest pin present: ${digpin%%@*}"
+  else
+    bad "digest pin MISSING or REGRESSED: ${digpin%%@*} (want exact tag@digest)"
+  fi
+done
+for oldimg in 'image: postgres:17-alpine$' 'blacktop/ghidra:11.2' 'image: mitmproxy/mitmproxy:11.0.2$' 'image: ghcr.io/firecrawl/firecrawl:2.10.19$' 'image: ghcr.io/catthehacker/ubuntu:act-22.04$'; do
+  # (image: lines only — bump-plan comments above legitimately name the
+  # predecessor for provenance; only a live pin may not drift back).
+  if grep -rE "^[[:space:]]*${oldimg}" docker-compose.yml docker-compose.sidecars.yml 2>/dev/null | grep -q .; then
+    bad "image pin REGRESSED: ${oldimg} still present as a live pin"
+  else
+    ok "predecessor pin gone: ${oldimg}"
+  fi
+done
+# Wave E Stage 4 P2-14 (static complement of the publish-workflow gates):
+# the workflow must keep the fixture-argv translation gate
+# (--model#variant + exactly-one --auto reach opencode-bin, no --dir
+# leak), the harness plugin-load gate (FAILs on the empty-string rootDir
+# Die until the upstream fix lands), and the pre-push linux/arm64 smoke.
+# A gate deletion would let P0-1 pass by construction again (Claim 9.3).
+if grep -q 'shim translation gate' .github/workflows/docker-publish.yml \
+  && grep -q 'harness plugin-load gate' .github/workflows/docker-publish.yml \
+  && grep -q 'verify-arm64' .github/workflows/docker-publish.yml \
+  && grep -q 'platform linux/arm64' .github/workflows/docker-publish.yml; then
+  ok "publish workflow keeps translation + plugin-load + arm64 gates (P2-14)"
+else
+  bad "publish workflow lost a P2-14 gate (translation/plugin-load/arm64)"
+fi
+# Wave E Stage 4 P3-8: the runner's /scratch bind source must stay
+# tracked — a first `up` with the ci profile would otherwise create a
+# root-owned ./workspaces/scratch, breaking the node runner.
+if [[ -f workspaces/scratch/.gitkeep ]] && git ls-files --error-unmatch workspaces/scratch/.gitkeep >/dev/null 2>&1; then
+  ok "workspaces/scratch/.gitkeep tracked (runner /scratch source exists, P3-8)"
+else
+  bad "workspaces/scratch/.gitkeep MISSING or untracked (P3-8)"
+fi
+# Wave E Stage 4 P2-10: full-stack + per-profile CPU/memory budget.
+# Every image-bearing service must carry cpus + mem_limit (already true —
+# asserted here so a new service without caps FAILs closed), and the
+# effective load per profile (always-on services + that profile's
+# services) must equal the pinned matrix below. The full stack sums to
+# 32.6 CPUs / ~50G — physically impossible on one host — so safety rests
+# on profile gating + the Makefile co-scheduling guard (mobile refused
+# with devsec/web-research); this gate is the automated assertion that
+# the matrix (and therefore the gating premise) has not drifted. Any
+# resourcing change must update EXPECTED here deliberately.
+if python3 -c '
+import re, sys
+def parse(text):
+    blocks = {}
+    for m in re.finditer(r"^  ([a-z][a-z0-9-]*):\n", text, re.M):
+        start = m.start()
+        nxt = re.search(r"^  [a-z][a-z0-9-]*:\n", text[m.end():], re.M)
+        end = m.end() + nxt.start() if nxt else len(text)
+        blocks[m.group(1)] = text[start:end]
+    return blocks
+def mem_mb(s):
+    m = re.search(r"mem_limit: ([\d.]+)([mg])", s)
+    return float(m.group(1)) * (1024 if m.group(2) == "g" else 1) if m else None
+def cpu(s):
+    m = re.search(r"cpus: \"([\d.]+)\"", s)
+    return float(m.group(1)) if m else None
+def prof(s):
+    m = re.search(r"profiles: \[(.*?)\]", s)
+    return [p.strip().strip("\"") for p in m.group(1).split(",")] if m else None
+base = parse(open("docker-compose.yml").read())
+side = parse(open("docker-compose.sidecars.yml").read())
+svc = {}
+for n, b in list(base.items()) + list(side.items()):
+    if not re.search(r"^\s+(image:|build:)", b, re.M):
+        continue
+    e = svc.get(n, {})
+    if cpu(b) is not None:
+        e["cpu"] = cpu(b)
+    if mem_mb(b) is not None:
+        e["mem"] = mem_mb(b)
+    if prof(b) is not None:
+        e["prof"] = prof(b)
+    svc[n] = e
+nocaps = sorted(n for n, e in svc.items() if "cpu" not in e or "mem" not in e)
+if nocaps:
+    sys.exit("services without cpus+mem_limit: %s" % nocaps)
+# (cpu, mem_MB) per profile, always-on services included. Pinned
+# 2026-10-17; update deliberately with any resourcing change.
+EXPECTED = {
+    "ai-gateway": (7.0, 11264), "ci": (5.0, 9216),
+    "core": (5.7, 10368), "devsec": (11.2, 17536),
+    "mobile": (7.0, 13312), "observability": (3.5, 6144),
+    "proxy": (3.5, 5632), "qa-testing": (13.7, 21248),
+    "tailscale": (3.5, 5376), "web-research": (12.2, 18944),
+}
+always = [e for e in svc.values() if e.get("prof") is None]
+base_cpu = sum(e["cpu"] for e in always)
+base_mem = sum(e["mem"] for e in always)
+problems = []
+have = set()
+for n, e in svc.items():
+    for p in e.get("prof") or []:
+        have.add(p)
+if have != set(EXPECTED):
+    problems.append("profile set drift: have=%s expected=%s"
+                    % (sorted(have), sorted(EXPECTED)))
+for p, (xc, xm) in EXPECTED.items():
+    c = base_cpu + sum(e["cpu"] for e in svc.values() if e.get("prof") and p in e["prof"])
+    m = base_mem + sum(e["mem"] for e in svc.values() if e.get("prof") and p in e["prof"])
+    if abs(c - xc) > 0.001 or abs(m - xm) > 0.5:
+        problems.append("%s: cpu=%.1f mem=%.0fMB want cpu=%.1f mem=%.0fMB"
+                        % (p, c, m, xc, xm))
+fc = sum(e["cpu"] for e in svc.values())
+fm = sum(e["mem"] for e in svc.values())
+if abs(fc - 32.6) > 0.001:
+    problems.append("full-stack cpu=%.1f want 32.6" % fc)
+if problems:
+    sys.exit("; ".join(problems))
+print("%d services capped; full-stack cpu=%.1f mem=%.0fMB across %d profiles"
+      % (len(svc), fc, fm, len(EXPECTED)))
+' >"${TMP}/budget.out" 2>"${TMP}/budget.err"; then
+  ok "resource budget matrix holds ($(cat "${TMP}/budget.out"))"
+else
+  bad "resource budget DRIFT (P2-10): $(head -c 400 "${TMP}/budget.err")"
 fi
 
 # --- 3b. permission deny enforcement (static denied-tool simulation) -----------
@@ -1364,6 +1528,16 @@ if [[ -f scripts/seed-50-fleet.sh ]]; then
   else
     bad "seed-50 dry-run exited nonzero: $(head -c 300 "${TMP}/seed50.err")"
   fi
+  # Wave E Stage 3 P1-9 live rerun-diff gate (live-gated SKIP, needs
+  # `make up`): a second live seeding pass must be drift-only (PATCH on
+  # drift, zero duplicate creates). Run against the live stack:
+  #   PAPERCLIP_TOKEN=... ./scripts/seed-50-fleet.sh >/tmp/rerun1.log 2>&1
+  #   PAPERCLIP_TOKEN=... ./scripts/seed-50-fleet.sh >/tmp/rerun2.log 2>&1
+  # then diff — rerun 2 must create 0 agents and PATCH only drifted
+  # reportsTo/budget fields. Unrunnable here (no live Paperclip); the
+  # static 52-doc / total==cap / no-WARNING assertions above are the
+  # in-repo gate.
+  skip "seeder live two-pass rerun diff (P1-9) — needs live stack (run seed-50-fleet.sh twice against make-up Paperclip, assert rerun creates 0 agents)"
 else
   bad "scripts/seed-50-fleet.sh MISSING"
 fi
@@ -1537,6 +1711,26 @@ if grep -q 'removed partial' scripts/worktree-manager.sh \
 else
   bad "worktree archive missing fail-closed guards (P2-4)"
 fi
+# Wave E Stage 3 P1-10: same-second collision gets a -$RANDOM suffix (never
+# clobber, second collision aborts); evidence stages to a temp dir and is
+# renamed into place only after `remove` succeeds (a failed remove deletes
+# the staged temp instead of littering the archive dir); branch naming is
+# ticket-<id> with a dash (never ticket/<id> with a slash); removal is
+# never --force (dirty worktrees abort, branch retained).
+if grep -q 'timestamp}-${RANDOM}' scripts/worktree-manager.sh \
+  && grep -q 'archive_tmp' scripts/worktree-manager.sh \
+  && grep -q 'removed staged' scripts/worktree-manager.sh; then
+  ok "worktree archive temp-stages + RANDOM same-second guard (P1-10)"
+else
+  bad "worktree archive missing temp-stage or RANDOM guard (P1-10)"
+fi
+if grep -q 'branch_name="ticket-${ticket_id}"' scripts/worktree-manager.sh \
+  && ! grep -q 'ticket/${ticket_id}\|ticket/\${ticket_id}' scripts/worktree-manager.sh \
+  && ! grep -q 'worktree remove --force\|worktree remove -f' scripts/worktree-manager.sh; then
+  ok "worktree branch ticket-<id> dash + never --force (P1-10)"
+else
+  bad "worktree branch naming or --force drift (P1-10: want ticket-<id> dash, no --force)"
+fi
 
 # --- 6. file creation simulation ---------------------------------------------
 section "6. file-creation simulation"
@@ -1570,6 +1764,7 @@ if [[ "${MODE}" == "check-only" ]]; then
   skip "ticket flow — needs live server + PAPERCLIP_TOKEN (see --help)"
   skip "harness tool-visibility probe (P0-1) — needs live stack + HARNESS_LIVE_GATE=1 (fixture: scripts/fixtures/harness-probe-opencode.json)"
   skip "XDG/canary isolation probe (P1-8) — needs live stack (plant canary opencode.json + .opencode/ in scratch workspace, run one agent turn, assert canary ignored)"
+  skip "backup->restore round-trip (P2-12) — needs live stack + BACKUP_ROUNDTRIP_LIVE=1 (backup + --yes restore + table-count verify)"
 else
   section "8. PostgreSQL health"
   if docker compose exec -T postgres pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"; then
@@ -1590,6 +1785,36 @@ else
     fi
   else
     bad "paperclip container not running (run 'make up' first — UID==1000 unverifiable while down)"
+  fi
+
+  # Wave E Stage 4 P2-12: backup->restore round-trip (live-only, opt-in).
+  # Destructive by design (the dump carries --clean, the restore drops
+  # and recreates), so it runs ONLY with BACKUP_ROUNDTRIP_LIVE=1 and
+  # SKIPs otherwise (never fake-passes, never surprises). Uses the --file
+  # + --yes CLI flags (the .env-proof snapshot path, not env passthrough)
+  # into a scratch BACKUP_DIR; asserts the backup lands non-empty and the
+  # --yes restore exits 0 with its own table-count verification.
+  section "8b. backup->restore round-trip (P2-12, live-only)"
+  if [[ "${BACKUP_ROUNDTRIP_LIVE:-0}" != "1" ]]; then
+    skip "BACKUP_ROUNDTRIP_LIVE!=1: backup to scratch dir + --yes restore + table-count verify (re-run with BACKUP_ROUNDTRIP_LIVE=1 + 'make up' healthy for full live proof)"
+  else
+    RT_DIR="${TMP}/roundtrip-backups"
+    mkdir -p "${RT_DIR}"
+    if RT_OUT="$(BACKUP_DIR="${RT_DIR}" ./scripts/backup-db.sh 2>"${TMP}/roundtrip-backup.err")"; then
+      RT_FILE="$(printf '%s\n' "${RT_OUT}" | sed -n 's/^\[backup\] done: //p' | tail -n 1)"
+      if [[ -n "${RT_FILE}" && -s "${RT_FILE}" ]]; then
+        ok "round-trip backup landed non-empty (${RT_FILE})"
+        if ./scripts/restore-db.sh --file="${RT_FILE}" --yes >"${TMP}/roundtrip-restore.out" 2>"${TMP}/roundtrip-restore.err"; then
+          ok "round-trip --yes restore exited 0 (restore-db.sh table-count verification passed)"
+        else
+          bad "round-trip restore FAILED: $(head -c 200 "${TMP}/roundtrip-restore.err")"
+        fi
+      else
+        bad "round-trip backup produced no dump file: $(head -c 200 "${TMP}/roundtrip-backup.err")"
+      fi
+    else
+      bad "round-trip backup FAILED (needs healthy postgres — run 'make up' first): $(head -c 200 "${TMP}/roundtrip-backup.err")"
+    fi
   fi
 
   section "9. Paperclip HTTP health"
@@ -1724,7 +1949,7 @@ print(json.dumps({"usage": usage})[:200])
   # steps, never a fake pass.
   section "10b. harness tool-visibility + XDG canary probes (P0-1/P1-8, live-only)"
   if [[ "${HARNESS_LIVE_GATE:-0}" != "1" ]]; then
-    skip "HARNESS_LIVE_GATE!=1: P0-1 probe = stage scripts/fixtures/harness-probe-opencode.json as XDG config, run one real 'opencode run' turn invoking file_hash_read, FAIL on 'rootDir must be' Die or 'not available'; P1-8 probe = plant canary opencode.json + .opencode/ in a scratch workspace, run one agent turn, assert the canary was ignored (re-run with HARNESS_LIVE_GATE=1 + PAPERCLIP_TOKEN for full live proof)"
+    skip "HARNESS_LIVE_GATE!=1: P0-1 probe = stage scripts/fixtures/harness-probe-opencode.json as XDG config, run one real 'opencode run' turn invoking file_hash_read, FAIL on 'rootDir must be' Die or 'not available'; P1-8 probe = plant canary opencode.json + .opencode/ in a scratch workspace, run one agent turn, assert the canary was ignored; Wave E P1-6 probe = from a scratch workspace, run one agent turn asking to read .env via fs:read AND via filesystem_read_text_file MCP — both must be DENIED (static §3b deny-first ordering is the in-repo gate; enforcement needs this live negative test) (re-run with HARNESS_LIVE_GATE=1 + PAPERCLIP_TOKEN for full live proof)"
   elif ! command -v opencode >/dev/null 2>&1; then
     skip "no opencode binary on PATH for the P0-1 probe (run inside the built image)"
   else

@@ -15,7 +15,10 @@
 #   archive  Save diff and commit log to .worktrees/archive/<ticket-id>-<timestamp>,
 #            then remove a CLEAN worktree (never --force); the branch is RETAINED
 #            for explicit post-merge delete (fail-closed: unmerged work is never
-#            destroyed by this command)
+#            destroyed by this command). Evidence is staged in a temp dir and
+#            renamed into place only after the worktree is removed; a failed
+#            remove deletes the staged temp instead of littering a partial
+#            archive. Same-second reruns get a -$RANDOM suffix (never clobber).
 #   list     List all active Git worktrees
 #
 set -euo pipefail
@@ -108,7 +111,28 @@ cmd_archive() {
   local branch_name="ticket-${ticket_id}"
   local timestamp
   timestamp="$(date +%Y%m%d-%H%M%S)"
+  # Wave E Stage 3 P1-10 same-second guard (mirrors backup-db.sh): a retry
+  # within the same second must not reuse/clobber the prior archive dir.
+  # First collision gets a -$RANDOM suffix; a second collision aborts
+  # fail-closed instead of clobbering an existing archive.
   local archive_dir="${ARCHIVE_ROOT}/${ticket_id}-${timestamp}"
+  if [[ -e "${archive_dir}" ]]; then
+    archive_dir="${ARCHIVE_ROOT}/${ticket_id}-${timestamp}-${RANDOM}"
+  fi
+  if [[ -e "${archive_dir}" ]]; then
+    echo "error: refusing to overwrite existing archive ${archive_dir} (fail-closed)" >&2
+    exit 1
+  fi
+  # Wave E Stage 3 P1-10 temp-staging: evidence lands in a sibling temp dir
+  # (name carries $RANDOM so concurrent archivers cannot share it) and is
+  # renamed into place ONLY after `git worktree remove` succeeds. A failed
+  # remove deletes the staged temp instead of littering a partial archive
+  # that could be mistaken for a complete one.
+  local archive_tmp="${ARCHIVE_ROOT}/.tmp-${ticket_id}-${timestamp}-${RANDOM}"
+  if [[ -e "${archive_tmp}" ]]; then
+    echo "error: refusing to overwrite existing staging dir ${archive_tmp} (fail-closed)" >&2
+    exit 1
+  fi
 
   if [ ! -d "${target_dir}" ]; then
     echo "error: worktree directory ${target_dir} does not exist" >&2
@@ -124,17 +148,17 @@ cmd_archive() {
     exit 1
   fi
 
-  mkdir -p "${archive_dir}"
+  mkdir -p "${ARCHIVE_ROOT}" "${archive_tmp}"
   echo "[worktree] Archiving ${target_dir} to ${archive_dir}..."
 
   # Stage the evidence files as one guarded unit (Wave B P2-4 / Alpha P3-5):
-  # ANY failure removes the just-created archive dir instead of littering a
+  # ANY failure removes the just-created staging dir instead of littering a
   # partial archive that could be mistaken for a complete one.
   if ! {
-    git -C "${target_dir}" diff "${base_branch}" > "${archive_dir}/patch.diff" &&
-    git -C "${target_dir}" status --short > "${archive_dir}/status.log" &&
-    git -C "${target_dir}" log -n 20 --oneline > "${archive_dir}/commits.log" &&
-    cat > "${archive_dir}/manifest.json" <<EOF
+    git -C "${target_dir}" diff "${base_branch}" > "${archive_tmp}/patch.diff" &&
+    git -C "${target_dir}" status --short > "${archive_tmp}/status.log" &&
+    git -C "${target_dir}" log -n 20 --oneline > "${archive_tmp}/commits.log" &&
+    cat > "${archive_tmp}/manifest.json" <<EOF
 {
   "ticketId": "${ticket_id}",
   "branch": "${branch_name}",
@@ -144,15 +168,22 @@ cmd_archive() {
 }
 EOF
   }; then
-    rm -rf "${archive_dir}"
-    echo "error: archive evidence staging failed; removed partial ${archive_dir} (fail-closed)" >&2
+    rm -rf "${archive_tmp}"
+    echo "error: archive evidence staging failed; removed partial ${archive_tmp} (fail-closed)" >&2
     exit 1
   fi
 
   echo "[worktree] Detaching and removing worktree ${target_dir}..."
   # Fail-closed removal: never --force here. A dirty or locked worktree
-  # aborts instead of destroying uncommitted work.
-  git worktree remove "${target_dir}"
+  # aborts instead of destroying uncommitted work — and the staged temp is
+  # removed with it, so no orphan archive dir is left behind.
+  if ! git worktree remove "${target_dir}"; then
+    rm -rf "${archive_tmp}"
+    echo "error: worktree remove failed; removed staged ${archive_tmp} instead of littering ${archive_dir} (fail-closed)" >&2
+    exit 1
+  fi
+
+  mv "${archive_tmp}" "${archive_dir}"
 
   # The branch is deliberately RETAINED: only delete it explicitly after
   # the work is merged (git branch -d). Archive must never destroy the

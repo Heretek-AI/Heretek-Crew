@@ -10,7 +10,9 @@
 #   docker compose build                                       # wave1 layer
 #   docker compose up -d
 #
-# Pinned images (never `latest`): postgres:17-alpine, caddy:2.11.7-alpine,
+# Pinned images (never `latest`): postgres:17.11-alpine@sha256:b0f956… (Wave E
+# Stage 4 P2-3: 17-alpine == 17.11-alpine verified live 2026-10-17),
+# caddy:2.11.7-alpine,
 # tailscale/tailscale:v1.104.1. The paperclip image pins node:24-trixie-slim
 # (via the official base) and @opencode/cli + @opencode/client 2.0.32
 # (see docker/Dockerfile).
@@ -19,13 +21,16 @@ name: heretek-crew
 
 services:
   postgres:
-    # Wave D P2-8 version plan (tracked, honest): `17-alpine` floats the
-    # minor. The target is an exact `17.<x>-alpine` + digest pin, refreshed
-    # quarterly by dependency-patcher — but the minor + digest MUST be
-    # resolved live against the registry (`docker manifest inspect`),
-    # never invented offline. Until that verification runs, the floating
-    # minor stays with this plan attached (no blind bump).
-    image: postgres:17-alpine
+    # Wave E Stage 4 P2-3 (pinned live 2026-10-17): exact minor + digest.
+    # `17-alpine` was resolved live to 17.11-alpine (registry
+    # Docker-Content-Digest of both tags identical:
+    # sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24)
+    # and pinned as tag@digest below — zero behavior change (the digest
+    # wins; the tag is the human-readable provenance). Quarterly bump plan
+    # (owned by dependency-patcher): re-resolve `17-alpine` live, and when
+    # the digest moves, bump the tag+digest together (never the tag alone,
+    # never an offline-invented digest).
+    image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-paperclip}
@@ -193,7 +198,10 @@ services:
     # read_only is likewise NOT set (P2-3): the server writes
     # ./workspaces:/paperclip/workspaces and paperclip-data:/paperclip by
     # design (agent checkouts, sqlite/state), plus /tmp — a read-only root
-    # needs live-boot verification before it can be claimed (tracked).
+    # needs live-boot verification before it can be claimed (tracked plan
+    # only: read_only:true + tmpfs mounts for /tmp + /run once a live boot
+    # proves the entrypoint + server survive it; do NOT set read_only
+    # without that live run).
     # no-new-privileges IS safe: it blocks privilege gain, not the
     # entrypoint's root-to-node drop, and agent children never gain privs.
     security_opt:

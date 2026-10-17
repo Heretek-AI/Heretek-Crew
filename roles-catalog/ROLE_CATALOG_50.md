@@ -221,5 +221,29 @@ As established in `NOTES.md`, OpenCode v2 (`@opencode/cli@2.0.32`) strictly enfo
 2. Model Variants: Variants are merged into the model spec (`--model opencode/gemini-3.8-flash#high`).
 3. Auto Permissions: `--auto` flag is injected to prevent unattended runs from blocking on interactive prompts while enforcing the permissions declared in `opencode.json`.
 
+### 4.3 Role-Ready, Infra-Pending MCP Wiring (Wave E Stage 3 P1-14)
+Seven MCP server declarations reference sidecars absent from every compose file.
+They are kept deliberately as role-ready, infra-pending (product decision —
+prefer docs over breaking roles by deleting declarations); agents holding them
+fail connection-refused until the sidecar lands. Pinned by the smoke dead-MCP
+allowlist gate (`scripts/smoke-test.sh`, flagged set must equal this list
+exactly); each role charter carries the same note:
+
+| Role | Server | Missing infra |
+|---|---|---|
+| `mlops-serving-eng` | `ollama` (`ollama-mcp@2.1.0`, `OLLAMA_HOST=http://ollama:11434`) | no `ollama` sidecar |
+| `observability-eng` | `prometheus` (`prometheus-mcp-server==1.6.2`) | no `prometheus` sidecar |
+| `sre-incident-eng` | `prometheus` (`prometheus-mcp-server==1.6.2`) | no `prometheus` sidecar |
+| `cache-streaming-eng` | `redis` (`mcp-server-redis==0.1.1`) | no `redis` service in any compose file |
+| `cache-streaming-eng` | `kafka` (`kafka-mcp-server==0.1.1`, PyPI-unresolvable) | no `kafka` sidecar |
+| `analytics-metrics-eng` | `clickhouse` (`mcp-clickhouse==0.7.0`) | no `clickhouse` sidecar |
+| `load-stress-tester` | `k6` (`k6-mcp-server==2.2.0`) | no `k6` sidecar (CLI load injector, not a persistent sidecar) |
+
+(The two `docker` MCP blocks left this list in Wave D P1-6: they now declare
+`DOCKER_HOST=tcp://docker-socket-proxy:2375` and talk to the GET-only socket
+proxy as read-only observers.) To activate a row, add the pinned sidecar and
+remove its charter note + allowlist entry together; to drop one, delete the
+server block when the role is next touched.
+
 ---
 *Catalog generated and verified against npm registry, PyPI, and GitHub Model Context Protocol standards.*

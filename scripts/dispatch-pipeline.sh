@@ -112,7 +112,7 @@ log_stage "1/6 PRD" "Product Director generates feature specification (manual st
 log_step "Role: product-director (Department: Executive & Product Management)"
 log_step "Input Prompt: ${FEATURE_PROMPT}"
 if [ "${DRY_RUN}" = "true" ]; then
-  log_step "[DRY-RUN] Emitted PRD task to Paperclip agent 'product-director'"
+  log_step "[DRY-RUN] MANUAL assignment (no API call, nothing emitted): assign the PRD task to 'product-director' in Paperclip"
   log_step "[DRY-RUN] Output artifact expected: docs/prd/PRD-${TICKET_ID}.md"
 else
   log_step "MANUAL step: assign the PRD task to 'product-director' in Paperclip (no API call performed by this script)"
@@ -123,7 +123,7 @@ log_stage "2/6 ARCH" "System Architect defines technical architecture & contract
 log_step "Role: system-architect (Department: Executive & Product Management)"
 log_step "Input Spec: docs/prd/PRD-${TICKET_ID}.md"
 if [ "${DRY_RUN}" = "true" ]; then
-  log_step "[DRY-RUN] Emitted ADR task to Paperclip agent 'system-architect'"
+  log_step "[DRY-RUN] MANUAL assignment (no API call, nothing emitted): assign the ADR task to 'system-architect' in Paperclip"
   log_step "[DRY-RUN] Output artifact expected: docs/adr/ADR-${TICKET_ID}.md"
 else
   log_step "MANUAL step: assign the ADR task to 'system-architect' in Paperclip (no API call performed by this script)"
@@ -165,7 +165,7 @@ log_stage "4/6 DEV" "Specialist engineer implements feature in worktree (manual 
 log_step "Role: ${PRIMARY_ROLE} (Target Workspace: ${WORKTREE_DIR})"
 log_step "Runtime: OpenCode v2 + opencode-harness (FNV-1a hash edits, AST transforms)"
 if [ "${DRY_RUN}" = "true" ]; then
-  log_step "[DRY-RUN] Emitted implementation task to Paperclip agent '${PRIMARY_ROLE}'"
+  log_step "[DRY-RUN] MANUAL assignment (no API call, nothing emitted): assign the implementation task to '${PRIMARY_ROLE}' in Paperclip"
   log_step "[DRY-RUN] Working directory: ${WORKTREE_DIR}"
 else
   log_step "MANUAL step: assign the implementation task to '${PRIMARY_ROLE}' in Paperclip (no API call performed by this script)"

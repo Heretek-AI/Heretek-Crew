@@ -46,11 +46,14 @@
    - **Transport**: `stdio`
    - **Command**: `uvx docker-mcp`
    - **Configuration / Environment Variables**: Docker socket path.
-> **Wave C P1-2 — Docker MCP infra-pending:** no `DOCKER_HOST` is wired into this
-> server block and no compose sidecar backs it (the fleet `docker-socket-proxy`
-> is GET-only by design). Role-ready, infra-pending: activation requires an explicit
-> `DOCKER_HOST=tcp://docker-socket-proxy:2375` env (read-only observer) or removal of
-> this server.
+> **Wave E Stage 2 P1-2 — Docker MCP active via read-only observer (supersedes the
+> Wave C P1-2 infra-pending note):** `DOCKER_HOST=tcp://docker-socket-proxy:2375`
+> IS wired into this server block (`roles/k8s-orchestrator/opencode/opencode.json`,
+> Wave D P1-6) and the fleet `docker-socket-proxy` (`:0.3.0`, GET-only by design:
+> `POST/BUILD/EXEC/VOLUMES/NETWORKS=0`) backs it. Activation posture: read-only
+> observer (list/get-logs reads only — creation/compose-deploy denied in
+> `opencode.json`); never mount `/var/run/docker.sock` here and never weaken
+> the proxy to "fix" CI (see `docker-compose.sidecars.yml` proxy comment).
 > Tracked by the smoke dead-MCP allowlist gate.
    - **Wave 2 P0-2 containment:** list/get-logs reads only — container
      creation and compose deployment are denied (`docker_create*`,

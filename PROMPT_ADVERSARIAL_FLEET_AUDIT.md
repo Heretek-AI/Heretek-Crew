@@ -90,22 +90,22 @@ Audit each of the following 11 functional domains against its claimed behavior:
 * **Claim 4.3 (Claimed Harness Primitives)**: Provides FNV-1a hash-anchored edits (`file_hash_edit`), AST structural transforms, blast radius analysis, and doom-loop recovery circuit breakers. *Auditors must verify if these tools actually register and work with OpenCode v2.*
 
 ### Domain 5: Automated Fleet Seeding & Topology (`scripts/seed-*.sh`)
-* **Claim 5.1 (Two-Pass Idempotency)**: `scripts/seed-company.sh` and `scripts/seed-50-fleet.sh` execute pass 1 to create agents and pass 2 to PATCH `reportsTo` and `budgetMonthlyCents` only upon drift.
-* **Claim 5.2 (Fleet Organization)**: 50 specialist roles organized into 9 departments with an unambiguous hierarchy reporting up through `exec-director`.
-* **Claim 5.3 (Budget Cap)**: Total fleet budget sums exactly to $12,790.00 USD/mo (1,279,000 cents).
-* **Claim 5.4 (On-Demand Wake Policy)**: 48 of 50 roles have `heartbeat.enabled: false` and wake only on assignment or `@mention`. Only `exec-director` (1800s) and `tpm-scrum-lead` (3600s) have recurring timers.
+* **Claim 5.1 (Two-Pass Idempotency — corrected Wave E Stage 3 per AUDIT P1-9)**: `scripts/seed-50-fleet.sh` (the ONLY seeder — `scripts/seed-company.sh` was deleted with the 6 legacy prototype roles, Wave 3 P1-11; `ls scripts/seed*` shows only `seed-50-fleet.sh`) executes pass 1 to create agents and pass 2 to PATCH `reportsTo` and `budgetMonthlyCents` only upon drift. Live two-pass rerun diff (rerun creates 0 agents) needs `make up` — see the §4 live-gated SKIP in `scripts/smoke-test.sh`.
+* **Claim 5.2 (Fleet Organization)**: 51 specialist roles organized into 9 departments with an unambiguous hierarchy reporting up through `exec-director`.
+* **Claim 5.3 (Budget Cap — corrected Wave E Stage 3 per AUDIT P1-9)**: Total fleet budget sums exactly to $13,000.00 USD/mo (1,300,000 cents) — the prior "1,279,000¢/$12,790" figure matched neither the code nor the catalog.
+* **Claim 5.4 (On-Demand Wake Policy)**: 49 of 51 roles have `heartbeat.enabled: false` and wake only on assignment or `@mention`. Only `exec-director` (1800s) and `tpm-scrum-lead` (3600s) have recurring timers.
 
 ### Domain 6: Git Worktree Concurrency & Archiving Engine (`scripts/worktree-manager.sh`)
-* **Claim 6.1 (Branch & Worktree Isolation)**: `worktree-manager.sh create <ticket>` provisions an isolated worktree at `workspaces/tickets/<ticket>` on branch `ticket/<ticket>`.
-* **Claim 6.2 (Safe Archiving & Detachment)**: `worktree-manager.sh archive <ticket>` captures full git diffs, status logs, commit logs, and metadata into `.worktrees/archive/<ticket>-<timestamp>/` before force-removing the worktree.
+* **Claim 6.1 (Branch & Worktree Isolation — corrected Wave E Stage 3 per AUDIT P1-10)**: `worktree-manager.sh create <ticket>` provisions an isolated worktree at `workspaces/tickets/<ticket>` on branch `ticket-<ticket>` (dash, NOT `ticket/<ticket>` with a slash).
+* **Claim 6.2 (Safe Archiving & Detachment — corrected Wave E Stage 3 per AUDIT P1-10)**: `worktree-manager.sh archive <ticket>` captures full git diffs, status logs, commit logs, and metadata into `.worktrees/archive/<ticket>-<timestamp>/` (temp-staged, renamed into place only after removal; same-second reruns get a `-$RANDOM` suffix), then removes a CLEAN worktree with plain `git worktree remove` — never `--force` (dirty worktrees abort, branch retained). The prior "force-removing" wording was false.
 
 ### Domain 7: Multi-Agent Relay Pipeline (`scripts/dispatch-pipeline.sh`)
-* **Claim 7.1 (Assembly Line Orchestration)**: Dispatches a 6-phase relay: Product Director (PRD) $\rightarrow$ System Architect (ADR) $\rightarrow$ TPM Scrum Lead (Decompose & Worktree) $\rightarrow$ Specialist Developer $\rightarrow$ QA (Tester + Release QA Officer) $\rightarrow$ Git Drift Coordinator (Merge).
-* **Claim 7.2 (Ticket Status Transition)**: Polls and advances Paperclip ticket status (`todo` $\rightarrow$ `in_progress` $\rightarrow$ `in_review` $\rightarrow$ `done`).
+* **Claim 7.1 (Provisioner-Tracer, NOT Assembly-Line Orchestration — corrected Wave E Stage 2 per AUDIT P1-7)**: `scripts/dispatch-pipeline.sh` is a worktree provisioner + pipeline tracer: in execute mode it provisions ONE isolated git worktree + `task_plan.md` (phase 3 only) and exits 0; phases 1/2/4/5 print MANUAL assignment steps a human performs in Paperclip; phase 6 never merges (archive-only after an explicit human merge). Do NOT audit it as a 6-phase relay dispatcher — the prior wording ("Dispatches a 6-phase relay … → Git Drift Coordinator (Merge)") was false as stated; the implementation header (`scripts/dispatch-pipeline.sh:4-17`) is the authoritative semantics.
+* **Claim 7.2 (No Ticket Status Transition — corrected Wave E Stage 2 per AUDIT P1-7)**: the script performs NO Paperclip API calls (`grep -n "curl\|PAPERCLIP_URL\|/api/\|poll"` matches the header disclaimer only) and NO `todo` → `in_progress` → `in_review` → `done` transitions. Dry-run lines describe MANUAL assignments ("assign … in Paperclip — no API call performed"), never emissions. Audit any ticket-state automation as absent-by-design (fail-closed), not as a polling defect.
 
 ### Domain 8: Containerized Local CI/CD Runner (`local-ci-runner` / `act`)
-* **Claim 8.1 (In-Docker Workflow Execution)**: `local-ci-runner` (`ghcr.io/catthehacker/ubuntu:act-22.04`) connects to `docker-socket-proxy:2375` to run `.github/workflows/ci.yml` inside Docker.
-* **Claim 8.2 (Daemon Protection)**: `docker-socket-proxy:0.1.1` allows container creation and builds while blocking volume and network tampering.
+* **Claim 8.1 (Read-Only Observer, NOT In-Docker Workflow Execution — corrected Wave E Stage 2 per AUDIT P1-8)**: `local-ci-runner` (`ghcr.io/catthehacker/ubuntu:act-22.04`, `sleep infinity`, `DOCKER_HOST=tcp://docker-socket-proxy:2375`, checkouts `:ro` + writable `/scratch`) is a quarantined read-only observer: it can INSPECT the daemon (list containers/images, read version/info) through the GET-only proxy but CANNOT run `.github/workflows/ci.yml` inside Docker (mutating `act` jobs need create/build/exec, which the proxy denies). Mutating CI runs on the HOST daemon via host-installed `act`, never from inside the container. The prior wording ("connects to `docker-socket-proxy:2375` to run `.github/workflows/ci.yml` inside Docker") was inverted — do NOT audit it as in-docker execution.
+* **Claim 8.2 (Daemon Protection — corrected Wave E Stage 2 per AUDIT P1-8 / P1-3)**: `docker-socket-proxy:0.3.0` (actual pin in `docker-compose.sidecars.yml`; the prior `0.1.1` reference was stale) is GET-only BY DESIGN: `POST/BUILD/EXEC/VOLUMES/NETWORKS=0` blocks container creation, image builds, exec, and volume/network tampering; only `CONTAINERS/IMAGES/INFO/VERSION=1` reads are allowed. The prior wording ("allows container creation and builds while blocking volume and network tampering") was inverted. Never weaken POST/BUILD/EXEC to "fix" CI; residual unauthenticated GET-recon from any `heretek`-net container is tracked in-file (dedicated `heretek-ci` net / source-IP allowlist plan).
 
 ### Domain 9: GHCR Multi-Arch Publishing & Prebuilt Overrides
 * **Claim 9.1 (CI/CD Container Publishing)**: `.github/workflows/docker-publish.yml` builds and pushes multi-architecture (`linux/amd64`, `linux/arm64`) images to `ghcr.io/heretek-ai/heretek-crew`.
@@ -142,7 +142,7 @@ Audit each of the following 11 functional domains against its claimed behavior:
   - `otel-collector` (`otel/opentelemetry-collector-contrib:0.113.0`) OTLP telemetry.
 * **Claim 11.8 (Category H: Security & Auditing)**:
   - `mitmproxy` (`mitmproxy/mitmproxy:11.0.1`) inspection proxy on port 8081.
-  - `docker-socket-proxy` (`tecnativa/docker-socket-proxy:0.1.1`) Docker API firewall.
+  - `docker-socket-proxy` (`tecnativa/docker-socket-proxy:0.3.0`) Docker API firewall.
 * **Claim 11.9 (Category I: Mobile Testing)**: `docker-android` (`budtmo/docker-android:emulator_14.0_v3.8.0-p1`) Android 14 emulator with noVNC on port 6080.
 
 ---
