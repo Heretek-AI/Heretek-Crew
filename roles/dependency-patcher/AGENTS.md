@@ -1,6 +1,6 @@
 # Dependency & CVE Patching Steward (`dependency-patcher`) — Agent Charter
 
-> Department: Operations & Maintenance | Fleet role 49/50 | Monthly budget: $220.00 USD (22000 cents)
+> Department: Operations & Maintenance | Fleet role 49/51 | Monthly budget: $220.00 USD (22000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/dependency-patcher/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/dependency-patcher`
 > Source of truth: `roles-catalog/09_operations_and_maintenance.md` (Role 49). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

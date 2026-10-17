@@ -1,6 +1,6 @@
 # Adversarial Red-Proof Sabotage Tester (`sabotage-qa-tester`) — Agent Charter
 
-> Department: Quality Assurance & Verification | Fleet role 36/50 | Monthly budget: $250.00 USD (25000 cents)
+> Department: Quality Assurance & Verification | Fleet role 36/51 | Monthly budget: $250.00 USD (25000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/sabotage-qa-tester/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/sabotage-qa-tester`
 > Source of truth: `roles-catalog/06_quality_assurance_and_verification.md` (Role 36). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

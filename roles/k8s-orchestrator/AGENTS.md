@@ -1,6 +1,6 @@
 # Kubernetes & Container Orchestrator (`k8s-orchestrator`) — Agent Charter
 
-> Department: Cloud, Platform & Site Reliability | Fleet role 28/50 | Monthly budget: $280.00 USD (28000 cents)
+> Department: Cloud, Platform & Site Reliability | Fleet role 28/51 | Monthly budget: $280.00 USD (28000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/k8s-orchestrator/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/k8s-orchestrator`
 > Source of truth: `roles-catalog/05_cloud_platform_and_sre.md` (Role 28). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -46,6 +46,12 @@
    - **Transport**: `stdio`
    - **Command**: `uvx docker-mcp`
    - **Configuration / Environment Variables**: Docker socket path.
+> **Wave C P1-2 — Docker MCP infra-pending:** no `DOCKER_HOST` is wired into this
+> server block and no compose sidecar backs it (the fleet `docker-socket-proxy`
+> is GET-only by design). Role-ready, infra-pending: activation requires an explicit
+> `DOCKER_HOST=tcp://docker-socket-proxy:2375` env (read-only observer) or removal of
+> this server.
+> Tracked by the smoke dead-MCP allowlist gate.
    - **Wave 2 P0-2 containment:** list/get-logs reads only — container
      creation and compose deployment are denied (`docker_create*`,
      `docker_deploy*`, `docker_*` tail).

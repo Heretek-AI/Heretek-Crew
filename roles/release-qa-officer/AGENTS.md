@@ -1,6 +1,6 @@
 # Release QA & Acceptance Sign-off Officer (`release-qa-officer`) — Agent Charter
 
-> Department: Quality Assurance & Verification | Fleet role 38/50 | Monthly budget: $180.00 USD (18000 cents)
+> Department: Quality Assurance & Verification | Fleet role 38/51 | Monthly budget: $180.00 USD (18000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/release-qa-officer/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/release-qa-officer`
 > Source of truth: `roles-catalog/06_quality_assurance_and_verification.md` (Role 38). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

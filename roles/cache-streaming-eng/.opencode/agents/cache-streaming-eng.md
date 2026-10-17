@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `cache-streaming-eng` (fleet role 32/50).
+- Role ID: `cache-streaming-eng` (fleet role 32/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $250.00 USD (25000 cents).
 - Reports to: `system-architect`.

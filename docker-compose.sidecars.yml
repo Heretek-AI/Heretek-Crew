@@ -357,6 +357,14 @@ services:
   hound:
     # Pinned by digest 2026-10-17 (skopeo inspect; tag 0.6.0 verified live on GHCR).
     # Upstream publishes 0.6.0 without the 'v' prefix (v0.6.0 was GHCR 404).
+    # Wave C P1-14 TRACKED DECISION (hound is archived upstream): etsy/hound
+    # is archived/inactive — no future CVE fixes; the digest above freezes
+    # dead code. Options, in preference order: (a) migrate to a maintained
+    # trigram index (livegrep, zoekt) with a pinned image + this service's
+    # volume/API contract re-verified; (b) vendor hound-search/hound at a
+    # fleet tag and self-build from the archived source. Until either
+    # lands, the exact digest pin stays (no floating tag) and hound stays
+    # on expose-only + loopback :6080 (blast radius: read-only index).
     image: ghcr.io/hound-search/hound@sha256:5b7fd0982ce12ebf41cfdbb8ab7aac081679667e778a8641bcd3026c98fc470e
     profiles: ["devsec", "web-research"]
     restart: unless-stopped
@@ -681,6 +689,11 @@ services:
     # PROFILE GATING (P1-6): privileged + /dev/kvm. Enable --profile mobile
     # only on dedicated test hosts, never alongside untrusted workloads or
     # with the devsec profile on shared infrastructure.
+    # Wave C P1-14 RESOURCING: full AOSP + noVNC realistically wants 4+ CPUs
+    # and 6-8g RAM — 2.0/4g OOMs or boot-timeouts. HOST REQUIREMENT: do not
+    # enable --profile mobile on hosts with < 8g free RAM and < 4 free CPUs;
+    # on smaller hosts the emulator will fail closed (healthcheck stays
+    # unhealthy) rather than run degraded.
     # Wave 4 P1-12 SEGMENTATION: the privileged emulator moves off the
     # shared heretek bridge onto the isolated heretek-mobile net (paperclip
     # joins it too — see the paperclip extension at the end of this file).
@@ -703,15 +716,21 @@ services:
     volumes:
       - docker-android-data:/root
     healthcheck:
-      test: ["CMD-SHELL", "adb devices | grep -q 'device' || exit 1"]
+      # Wave C P1-14: `adb` on PATH inside budtmo/docker-android is
+      # UNVERIFIED upstream — a bare `adb devices` probe would report
+      # unhealthy forever if adb is absent. Dual probe: emulator booted
+      # (adb sees a device) OR the noVNC listener answers on :6080
+      # (container alive, emulator still booting). Either signal counts
+      # as healthy; neither for 5x20s+60s-start counts as failed.
+      test: ["CMD-SHELL", "(command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -q device) || (wget -q -O /dev/null http://127.0.0.1:6080) || exit 1"]
       interval: 20s
       timeout: 10s
       retries: 5
       start_period: 60s
     networks:
       - heretek-mobile
-    cpus: "2.0"
-    mem_limit: 4g
+    cpus: "4.0"
+    mem_limit: 8g
 
   # ============================================================================
   # CATEGORY J: CONTAINERIZED LOCAL CI/CD RUNNER (ACT)

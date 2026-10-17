@@ -54,8 +54,8 @@ Any AI coding assistant, autonomous agent, or paired developer working on this c
 ├── scripts/
 │   ├── opencode-shim.sh            # Production CLI shim
 │   ├── test-shim.sh                # 45-assertion unit test suite for the shim
-│   ├── seed-50-fleet.sh            # 50-agent fleet seeding script
-│   ├── generate-50-roles.py        # 50-role disk scaffolding generator
+│   ├── seed-50-fleet.sh            # 51-agent fleet seeding script
+│   ├── generate-50-roles.py        # 51-role disk scaffolding generator
 │   ├── spec-gate.sh                # Spec-driven development gate (PRD/ADR/task deltas in CI)
 │   ├── smoke-test.sh               # Static and end-to-end integration test runner (495+ assertions)
 │   ├── backup-db.sh                # Automated PostgreSQL timestamped backup
@@ -96,10 +96,10 @@ make backup                         # Generate timestamped dump in backups/
 make restore FILE=backups/<file>.sql.gz  # Restore database with confirmation prompt
 
 # Fleet Seeding
-make seed-50                       # Seed the 50-agent fleet (Wave 3 P1-11:
+make seed-50                       # Seed the 51-agent fleet (Wave 3 P1-11, Wave C P1-4:
                                    # the 6-role prototype seeder is removed;
                                    # the fleet is the only role set)
-bash scripts/seed-50-fleet.sh --dry-run  # Validate 50-agent payloads without network calls
+bash scripts/seed-50-fleet.sh --dry-run  # Validate 51-agent payloads without network calls
 
 # Sidecar Services
 docker compose -f docker-compose.yml -f docker-compose.sidecars.yml --profile web-research up -d

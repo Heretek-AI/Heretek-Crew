@@ -65,10 +65,14 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
+            # Wave C P0-6: NO `latest` tag is minted here, ever. The repo's
+            # never-:latest invariant (AGENTS.md §4) forbids mutable tags;
+            # consumers pin the exact semver (`:1.0.0`) or a `sha-*` digest.
+            # (A `type=raw,value=latest` line was removed for this reason —
+            # do not re-add it; cut a semver release instead.)
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
           labels: |
             org.opencontainers.image.title=heretek-crew
@@ -97,8 +101,43 @@ jobs:
           docker run --rm heretek-crew:verify /usr/local/bin/opencode --version
           # 2. Verify binary opencode-bin is present and functional
           docker run --rm heretek-crew:verify /usr/local/bin/opencode-bin --version
-          # 3. Verify @heretek-ai/opencode-harness + opencode-mem are installed globally
-          docker run --rm heretek-crew:verify npm ls -g --depth=0 @heretek-ai/opencode-harness opencode-mem
+          # 3. Verify @heretek-ai/opencode-harness + opencode-mem +
+          # @prevalentware/opencode-goal-plugin are installed globally
+          # (Wave C P0-5: goal-plugin added — exec-director references it)
+          docker run --rm heretek-crew:verify npm ls -g --depth=0 @heretek-ai/opencode-harness opencode-mem @prevalentware/opencode-goal-plugin
+          # 3b. Wave C P0-5 plugin-resolution gate: EVERY plugin string in
+          # any roles/*/opencode/opencode.json must resolve to a globally
+          # installed package in this image. The plugin list is extracted
+          # from the checked-out repo (jq over the exact `plugins`
+          # arrays — not grep); each entry is asserted via `npm ls -g` inside the
+          # image. A role referencing an unpublished plugin (e.g. the
+          # removed `opencode-rea`, npm E404) fails the publish here
+          # instead of materializing as a role whose designed tool surface
+          # can never load.
+          echo "Running plugin-resolution gate (role plugins -> npm ls -g)..."
+          command -v jq >/dev/null 2>&1 || { echo "gate FAIL: jq is required on the runner" >&2; exit 1; }
+          : > /tmp/wavec-plugins.txt
+          for f in roles/*/opencode/opencode.json; do
+            count="$(jq -r '.plugins | length' "${f}")"
+            if [ "${count}" -eq 0 ]; then
+              echo "gate FAIL: plugins missing/empty in ${f}" >&2
+              exit 1
+            fi
+            jq -r '.plugins[]' "${f}" >> /tmp/wavec-plugins.txt
+          done
+          sort -u /tmp/wavec-plugins.txt -o /tmp/wavec-plugins.txt
+          echo "tracked role plugins: $(tr '\n' ' ' < /tmp/wavec-plugins.txt)"
+          while IFS= read -r plugin; do
+            [ -n "${plugin}" ] || continue
+            case "${plugin}" in
+              opencode-harness) plugin="@heretek-ai/opencode-harness" ;;
+            esac
+            if ! docker run --rm heretek-crew:verify npm ls -g --depth=0 "${plugin}" >/dev/null 2>&1; then
+              echo "gate FAIL: role plugin '${plugin}' not installed globally (unresolvable at runtime)" >&2
+              exit 1
+            fi
+          done < /tmp/wavec-plugins.txt
+          echo "plugin-resolution gate PASSED"
           # 4. Verify system dependencies
           docker run --rm heretek-crew:verify tini --version
           docker run --rm heretek-crew:verify rg --version

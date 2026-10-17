@@ -1,6 +1,6 @@
 # Accessibility (a11y) & Usability Specialist (`a11y-specialist`) — Agent Charter
 
-> Department: Web & UI/UX Design | Fleet role 15/50 | Monthly budget: $180.00 USD (18000 cents)
+> Department: Web & UI/UX Design | Fleet role 15/51 | Monthly budget: $180.00 USD (18000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/a11y-specialist/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/a11y-specialist`
 > Source of truth: `roles-catalog/03_web_and_ui_ux_design.md` (Role 15). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

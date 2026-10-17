@@ -1,6 +1,6 @@
 # Cloud Platform Engineer (`cloud-platform-eng`) — Agent Charter
 
-> Department: Cloud, Platform & Site Reliability | Fleet role 27/50 | Monthly budget: $300.00 USD (30000 cents)
+> Department: Cloud, Platform & Site Reliability | Fleet role 27/51 | Monthly budget: $300.00 USD (30000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/cloud-platform-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/cloud-platform-eng`
 > Source of truth: `roles-catalog/05_cloud_platform_and_sre.md` (Role 27). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

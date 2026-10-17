@@ -1,6 +1,6 @@
 # Binary & Protocol Reverse Engineer (`binary-reverse-eng`) — Agent Charter
 
-> Department: Defensive Security, Binary Analysis & Forensics | Fleet role 41/50 | Monthly budget: $350.00 USD (35000 cents)
+> Department: Defensive Security, Binary Analysis & Forensics | Fleet role 41/51 | Monthly budget: $350.00 USD (35000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/binary-reverse-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/binary-reverse-eng`
 > Source of truth: `roles-catalog/07_defensive_security_and_forensics.md` (Role 41). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -29,32 +29,36 @@
 
 ## 4. MCP Servers & Tool Access
 
-1. **REA (Reverse Engineer Anything) MCP Server**:
-   - **Package / Repo**: `morluto/rea` / `Heretek-AI/opencode-rea` (verified GitHub)
-   - **Transport**: `stdio`
-   - **Command**: `npx -y @morluto/rea-mcp`
-   - **Configuration / Environment Variables**:
-     - `GHIDRA_INSTALL_DIR`: `/opt/ghidra` (or `ghidra:1337` network bridge)
-     - Capabilities: 120+ specialized reverse engineering tools bridging Ghidra, Binary Ninja, Radare2, and APK tools for control-flow graphs, cross-references, decompilation, and symbol renaming.
-2. **Radare2 MCP Server**:
+1. **Radare2 MCP Server**:
    - **Package / Repo**: `r2mcp` (PyPI verified v0.2.5)
    - **Transport**: `stdio`
-   - **Command**: `uvx r2mcp`
+   - **Command**: `uvx r2mcp==0.2.5`
    - **Configuration / Environment Variables**: Target binary workspace directory.
-3. **Filesystem MCP Server**:
+2. **Filesystem MCP Server**:
    - **Package / Repo**: `@modelcontextprotocol/server-filesystem` (npm verified v1.0.0)
    - **Transport**: `stdio`
-   - **Command**: `npx -y @modelcontextprotocol/server-filesystem`
+   - **Command**: `npx -y @modelcontextprotocol/server-filesystem@1.0.0`
    - **Configuration / Environment Variables**: Read-only sample scope
      `/paperclip/workspaces/binaries` (Wave 2 P0-2 re-root off the shared
      workspace; read verbs only — write/edit/create/move denied in
      `opencode.json`, sample writes go through `fs:write`).
 
+> **Wave C P0-5/P1-12 — REA MCP REMOVED (role-ready, tooling-pending):**
+> `@morluto/rea-mcp` returns npm `E404` (verified 2026-10-17) and the
+> `opencode-rea` plugin is likewise unpublished — neither artifact exists,
+> so no pin can resolve them. The published successor `rea-agents@6.5.0`
+> registers its MCP server via interactive `setup` (no verified headless
+> stdio argv for an opencode `mcp.servers` block — inventing one would be
+> a stub). The `rea` server block and `opencode-rea` plugin are therefore
+> REMOVED from the live config; the `rea_*` permission allows stay as
+> dormant re-activation scope. The role operates on r2mcp + filesystem +
+> shell toolchain until upstream publishes a resolvable package/argv.
+> Re-add with an exact pin when upstream documents one (then drop this note).
+
 ### Mandated integration endpoints (do not downgrade)
 
-- Primary MCP: morluto/rea via `npx -y @morluto/rea-mcp` (120+ RE tools bridging Ghidra, Binary Ninja, Radare2 and APK tooling).
-- Disassembler MCP: r2mcp via `uvx r2mcp` (Radare2 control-flow, strings, imports).
-- Plugin: opencode-rea (`@heretek-ai/opencode-rea`) for in-turn decompilation support.
+- Disassembler MCP: r2mcp via `uvx r2mcp==0.2.5` (Radare2 control-flow, strings, imports).
+- Wave C P0-5/P1-12: the morluto/rea MCP (`npx -y @morluto/rea-mcp`, npm E404 2026-10-17) and the opencode-rea plugin (npm E404 2026-10-17) are REMOVED from the live config (unpublished artifacts cannot be pinned); the published successor rea-agents@6.5.0 registers via interactive setup with no verified headless stdio argv. The `rea_*` permission allows stay as dormant re-activation scope.
 - Headless Ghidra decompilation passes with GHIDRA_INSTALL_DIR=/opt/ghidra and semantic symbol renaming.
 
 ## 5. Skills
@@ -68,8 +72,12 @@ Skill-name cross-reference (fleet brief shorthand → catalog skill file):
 
 ## 6. Plugins & Extensions
 
-- `opencode-rea` (`@heretek-ai/opencode-rea`): OpenCode v2 native plugin integrating REA multi-tool decompilation and symbol synchronization directly into agent turns.
 - `opencode-mem`: Preserves discovered protocol opcodes, endianness standards, and magic byte signatures.
+
+> **Wave C P0-5:** the `opencode-rea` (`@heretek-ai/opencode-rea`) plugin
+> entry was removed here — npm returns `E404` for `opencode-rea`
+> (verified 2026-10-17), so the plugin string could never resolve.
+> Re-add pinned when upstream publishes it.
 
 ## 7. Per-Ticket Workflow (mandatory sequence)
 

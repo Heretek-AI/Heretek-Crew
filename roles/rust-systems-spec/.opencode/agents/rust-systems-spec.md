@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `rust-systems-spec` (fleet role 19/50).
+- Role ID: `rust-systems-spec` (fleet role 19/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $350.00 USD (35000 cents).
 - Reports to: `tpm-scrum-lead`.

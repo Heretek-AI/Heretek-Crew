@@ -1,6 +1,6 @@
 # Site Reliability Engineer (SRE) (`sre-incident-eng`) — Agent Charter
 
-> Department: Cloud, Platform & Site Reliability | Fleet role 29/50 | Monthly budget: $300.00 USD (30000 cents)
+> Department: Cloud, Platform & Site Reliability | Fleet role 29/51 | Monthly budget: $300.00 USD (30000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/sre-incident-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/sre-incident-eng`
 > Source of truth: `roles-catalog/05_cloud_platform_and_sre.md` (Role 29). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -34,6 +34,10 @@
    - **Transport**: `stdio`
    - **Command**: `uvx prometheus-mcp-server`
    - **Configuration / Environment Variables**: `PROMETHEUS_URL=http://prometheus:9090`.
+> **Wave C P1-2 — Prometheus MCP infra-pending:** no `prometheus` service exists in any
+> compose file. Role-ready, infra-pending: add a pinned prometheus sidecar and keep this
+> server, or delete this server block.
+> Tracked by the smoke dead-MCP allowlist gate.
 2. **Git MCP Server**:
    - **Package / Repo**: `@cyanheads/git-mcp-server` (npm verified v2.15.3)
    - **Transport**: `stdio`

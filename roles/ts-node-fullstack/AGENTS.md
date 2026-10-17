@@ -1,6 +1,6 @@
 # TypeScript / Node Fullstack Engineer (`ts-node-fullstack`) — Agent Charter
 
-> Department: Specialized Language Engineers | Fleet role 22/50 | Monthly budget: $300.00 USD (30000 cents)
+> Department: Specialized Language Engineers | Fleet role 22/51 | Monthly budget: $300.00 USD (30000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/ts-node-fullstack/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/ts-node-fullstack`
 > Source of truth: `roles-catalog/04_specialized_language_engineers.md` (Role 22). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

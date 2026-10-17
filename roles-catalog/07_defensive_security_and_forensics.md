@@ -260,23 +260,28 @@ METHODOLOGY & HANDOFF:
   - Protocol specifications (`docs/protocols/SPEC-*.md`), reverse engineered C/Rust struct definitions, defensive analysis reports.
 
 ### 3. Active & Maintained MCP Servers
-1. **REA (Reverse Engineer Anything) MCP Server**:
-   - **Package / Repo**: `morluto/rea` / `Heretek-AI/opencode-rea` (verified GitHub)
-   - **Transport**: `stdio`
-   - **Command**: `npx -y @morluto/rea-mcp`
-   - **Configuration / Environment Variables**:
-     - `GHIDRA_INSTALL_DIR`: `/opt/ghidra` (or `ghidra:1337` network bridge)
-     - Capabilities: 120+ specialized reverse engineering tools bridging Ghidra, Binary Ninja, Radare2, and APK tools for control-flow graphs, cross-references, decompilation, and symbol renaming.
-2. **Radare2 MCP Server**:
+1. **Radare2 MCP Server**:
    - **Package / Repo**: `r2mcp` (PyPI verified v0.2.5)
    - **Transport**: `stdio`
-   - **Command**: `uvx r2mcp`
+   - **Command**: `uvx r2mcp==0.2.5`
    - **Configuration / Environment Variables**: Target binary workspace directory.
-3. **Filesystem MCP Server**:
+2. **Filesystem MCP Server**:
    - **Package / Repo**: `@modelcontextprotocol/server-filesystem` (npm verified v1.0.0)
    - **Transport**: `stdio`
-   - **Command**: `npx -y @modelcontextprotocol/server-filesystem`
+   - **Command**: `npx -y @modelcontextprotocol/server-filesystem@1.0.0`
    - **Configuration / Environment Variables**: Workspace binaries directory.
+
+> **Wave C P0-5/P1-12 — REA MCP REMOVED (role-ready, tooling-pending):**
+> `@morluto/rea-mcp` returns npm `E404` (verified 2026-10-17) and the
+> `opencode-rea` plugin is likewise unpublished — neither artifact exists,
+> so no pin can resolve them. The published successor `rea-agents@6.5.0`
+> registers its MCP server via interactive `setup` (no verified headless
+> stdio argv for an opencode `mcp.servers` block — inventing one would be
+> a stub). The `rea` server block and `opencode-rea` plugin are therefore
+> REMOVED from the live config; the `rea_*` permission allows stay as
+> dormant re-activation scope. The role operates on r2mcp + filesystem +
+> shell toolchain until upstream publishes a resolvable package/argv.
+> Re-add with an exact pin when upstream documents one (then drop this note).
 
 ### 4. Role-Specific Skills
 
@@ -320,8 +325,12 @@ description: Performs deep evidence-based decompilation, symbol reconstruction, 
 ```
 
 ### 5. OpenCode Plugins & Extensions
-- `opencode-rea` (`@heretek-ai/opencode-rea`): OpenCode v2 native plugin integrating REA multi-tool decompilation and symbol synchronization directly into agent turns.
 - `opencode-mem`: Preserves discovered protocol opcodes, endianness standards, and magic byte signatures.
+
+> **Wave C P0-5:** the `opencode-rea` (`@heretek-ai/opencode-rea`) plugin
+> entry was removed here — npm returns `E404` for `opencode-rea`
+> (verified 2026-10-17), so the plugin string could never resolve.
+> Re-add pinned when upstream publishes it.
 
 ### 6. Native OpenCode v2 Configuration (`opencode.json`)
 ```json
@@ -346,18 +355,10 @@ description: Performs deep evidence-based decompilation, symbol reconstruction, 
     "/roles/binary-reverse-eng/skills"
   ],
   "plugins": [
-    "opencode-rea",
     "opencode-mem"
   ],
   "mcp": {
     "servers": {
-      "rea": {
-        "type": "local",
-        "command": ["npx", "-y", "@morluto/rea-mcp"],
-        "env": {
-          "GHIDRA_INSTALL_DIR": "/opt/ghidra"
-        }
-      },
       "radare2": {
         "type": "local",
         "command": ["uvx", "r2mcp"]
@@ -895,7 +896,8 @@ description: Audits MCP servers for tool poisoning, shadowing, rug pulls, SSRF, 
     { "action": "shell", "resource": "promptfoo*", "effect": "allow" },
     { "action": "shell", "resource": "*", "effect": "deny" },
     { "action": "codebase-memory_*", "resource": "*", "effect": "allow" },
-    { "action": "context7_*", "resource": "*", "effect": "allow" }
+    { "action": "context7_*", "resource": "*", "effect": "allow" },
+    { "action": "git_*", "resource": "*", "effect": "allow" }
   ],
   "skills": [
     "/roles/ai-red-teamer/skills",

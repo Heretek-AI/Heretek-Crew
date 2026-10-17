@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `ts-node-fullstack` (fleet role 22/50).
+- Role ID: `ts-node-fullstack` (fleet role 22/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $300.00 USD (30000 cents).
 - Reports to: `tpm-scrum-lead`.

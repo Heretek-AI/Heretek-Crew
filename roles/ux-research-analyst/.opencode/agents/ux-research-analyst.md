@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `ux-research-analyst` (fleet role 06/50).
+- Role ID: `ux-research-analyst` (fleet role 06/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $120.00 USD (12000 cents).
 - Reports to: `product-director`.

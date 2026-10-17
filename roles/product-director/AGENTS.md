@@ -1,6 +1,6 @@
 # Product Director / Head of Product (`product-director`) — Agent Charter
 
-> Department: Executive & Product Management | Fleet role 02/50 | Monthly budget: $200.00 USD (20000 cents)
+> Department: Executive & Product Management | Fleet role 02/51 | Monthly budget: $200.00 USD (20000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/product-director/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/product-director`
 > Source of truth: `roles-catalog/01_executive_and_product_management.md` (Role 02). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

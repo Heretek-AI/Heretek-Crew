@@ -1078,3 +1078,84 @@ Full report: `docs/reports/wave-a-implementation.md`.
 - Catalog lacks all `.env` denies (fs:read AND fs:write) present on disk;
   ai-red-teamer `git_*` read verbs likewise hand-only — catalog-sync wave.
 - No commits, no merges, no subagents used.
+
+---
+
+# Wave C Remediation Log — P0-5/P0-6 + P1-2/P1-3/P1-4/P1-12/P1-13/P1-14
+
+**Worktree:** `/home/john/Projects/Heretek-Crew` (no worktree — base clean at Wave B `09e1e6a`; branch `main`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` + task envelope (TARGETS + ACCEPTANCE)
+**Status:** all Wave C items closed or honestly recorded as tracked residuals, verified empirically. Changes left UNCOMMITTED for QA/Drift-Guard. No commits, no merges, no subagents used.
+Full report: `docs/reports/wave-c-implementation.md`.
+
+## Registry evidence (live, before any edit)
+
+- `npm view opencode-rea version` → `E404 Not Found` (P0-5 reproduced).
+- `npm view @prevalentware/opencode-goal-plugin version` → `0.1.64` (pinned).
+- `npm view @morluto/rea-mcp version` → `E404 Not Found` (P1-12 removal path).
+- `npm pack rea-agents@6.5.0` → real package ("one CLI and MCP server", bin `rea`/`rea-agents`) but MCP registers via interactive `setup` — no verified headless stdio argv, so migration would invent an invocation (stub). Removal chosen, fail-closed.
+- Forks at npm latest (no migration owed): `@executeautomation/playwright-mcp-server` 1.0.12, `@playwright/mcp` 0.0.83 (different package line), `@upstash/context7-mcp` 4.4.2, `@modelcontextprotocol/server-postgres` 0.6.2, `@cyanheads/git-mcp-server` 2.15.3.
+- `pip index versions`: 9/10 uvx pins resolve at pinned versions; `kafka-mcp-server` → "No matching distribution" (doubly dead with its absent sidecar — recorded residual, kept infra-pending).
+- Local `curl 8.22.0` supports `--fail-with-body` (script floor: curl >= 7.76, noted in-code).
+
+## P0-5: phantom plugin removed, goal-plugin installed, publish gate added
+
+- `roles/binary-reverse-eng/opencode/opencode.json`: `"opencode-rea"` dropped from `plugins`; `rea` MCP server block deleted (`rea_*` allows stay as dormant re-activation scope). Charter §4/§6 + catalog Role 41 §3/§5/§6 fence + generator `INTEGRATION_NOTES` carry the removal note with re-add criteria (exact pin when upstream publishes/documents).
+- `docker/Dockerfile`: `@prevalentware/opencode-goal-plugin@0.1.64` added (pin comment + `ENV OPENCODE_GOAL_PLUGIN_VERSION` + global install + `npm ls` assert).
+- `.github/workflows/docker-publish.yml`: step 3 asserts harness+mem+goal-plugin; new 3b plugin-resolution gate extracts exact `plugins` arrays (jq, not grep) from the checkout and asserts each via `npm ls -g` in the built image. (One self-caught breakage: an embedded multi-line `python3 -c` terminated the `run: |` literal block — caught by `yaml.safe_load`, rewritten with jq, re-proven.)
+
+## P0-6: no digest invented; latest removed; HERETEK_IMAGE constrained
+
+- `type=raw,value=latest` line DELETED (stronger than a scoped exception) with in-file rationale; workflow mints `1.0.0`/`1.0`/`sha-*` only. Stale mint-list prose updated in prebuilt header + smoke comment.
+- `docker-compose.prebuilt.yml` header: local-build routing retained + digest procedure (tag → manifest-inspect → replace pin) + `HERETEK_IMAGE` override constraint (exact `:1.0.0` or digest only, never floating). Mirrored in `README.md` Option A + `.env.example` (via scripted replacement — `.env*` edit guard).
+
+## P1-2: dead wiring pinned as infra-pending + allowlist gate
+
+- 8 `(role, server)` pairs (ollama, prometheus×2, kafka, clickhouse, k6, docker×2 without `DOCKER_HOST`) noted in catalog §3 + all 7 disk charters. Smoke gate asserts flagged == allowlist exactly (absent-host env match + `k6` + `docker`-without-`DOCKER_HOST` detectors).
+
+## P1-3: seeder fail-closed (proven against a live 500/422 fixture)
+
+- `api()` `--fail-with-body`; health `-f`; PATCH body capture + `|| exit 1`; `find_*` parse/shape failures exit 1. Fixture proof: old argv rc=0 on 500 (bug reproduced) vs new rc=22 with body on stderr.
+
+## P1-4: ai-red-teamer promoted (52 payloads, $13,000.00)
+
+- Seeder: ROLE_LIST +1, budget 30000¢, `system-architect` parent, `security` paperclip role, display/title entries, cap → 1300000. Dry-run: 52 docs, total == cap, empty stderr, payload verified (`security`/30000/`<system-architect-id>`/XDG/skip-false).
+- Generator: EXPECTED_IDS + REPORTS_TO + cap + count strings; four convergence fixes (small_model/compaction, fs:write denies, skill roots, timeout) so scratch `--root` regen reproduces ALL 51 `opencode.json` byte-identically (fixes the dies-at-HEAD mismatch AND the Wave A catalog-drift notes for these fields).
+- Catalog Total → $13,000.00/51 agents; README/AGENTS/Makefile/NOTES counts + budget prose; smoke §4 → 52 payloads; catalog-derived role-dir-count assertion unchanged (51==51).
+- Charter prose NOT regenerated in-repo (disk is hand-richer; full run would regress exec-director skills/workflow lines, mlops containment, ai-red-teamer prose+5th skill) — targeted disk edits only (`NN/50`→`NN/51` + note insertions); residual + warning recorded in the generator docstring.
+
+## P1-12: pins closed out (zero exceptions)
+
+- Exception sets deleted (generator branches + smoke `EXCEPTIONS`/`seen_exception`). Fork/PyPI verification recorded in the smoke header comment. kafka-mcp PyPI-404 recorded as the sole tracked residual.
+
+## P1-13/P1-14: piston plan, android resourcing, hound decision
+
+- Piston: numbered vendoring plan in `SUPPORTING_SERVICES.md` E.2; digest kept, never `:latest`.
+- Android: 4.0 CPU / 8g + host-requirement warning + dual-probe healthcheck (adb OR noVNC, both verified in rendered config); resource table updated (mobile 4.0/8.00g, fleet total ~46 GB).
+- Hound: tracked decision (livegrep/zoekt preferred, else vendor; digest frozen meanwhile) in compose + D.3, incl. the :6080 profile-overlap note.
+
+## Test results (must-keep-green set + Wave C proofs)
+
+- `bash scripts/smoke-test.sh --check-only` → **514 passed, 0 failed, 3 skipped** (513 Wave-B-era → 514: +3 new gates +1 count update, net of the pin-gate rewrite; zero regressions).
+- `bash scripts/test-shim.sh` → **45 passed, 0 failed** (untouched).
+- `shellcheck -S warning scripts/*.sh` → zero warnings; `bash -n` all OK.
+- `bash scripts/seed-50-fleet.sh --dry-run` → 52 docs, total == cap, empty stderr.
+- `bash scripts/spec-gate.sh --check-only` → 7/0.
+- `docker compose config -q` exit 0: default, prebuilt, web-research, devsec, ai-gateway, observability, mobile, core+ci, qa-testing+core, proxy+tailscale (dummy secrets; unset negative probe still fails naming the var).
+- Watched-fail probes: unpinned+dead injection → pin + dead-MCP gates FAIL; `opencode-rea` re-added → plugin gate FAILs naming it; live `value=latest` appended → no-latest gate FAILs; garbage parse → exit 1. All restored byte-identical.
+- `make test` (live mode, stack down) → same 2 environmental fails as every prior baseline (`postgres not healthy`, `paperclip not responding`) — full green needs `make up` (live stage).
+
+## Files changed (uncommitted, Wave C only — 120 files)
+
+- `roles/binary-reverse-eng/opencode/opencode.json` + `AGENTS.md` (P0-5/P1-12 removal)
+- 7 dead-MCP charters + 100 mechanical `NN/50`→`NN/51` charter/agent-md bumps
+- `docker/Dockerfile`, `.github/workflows/docker-publish.yml`, `docker-compose.prebuilt.yml`, `docker-compose.sidecars.yml`, `.env.example`
+- `scripts/seed-50-fleet.sh`, `scripts/generate-50-roles.py`, `scripts/smoke-test.sh`
+- `roles-catalog/05|06|07|08_*.md`, `ROLE_CATALOG_50.md`, `README.md`, `AGENTS.md`, `Makefile`, `NOTES.md`, `SUPPORTING_SERVICES.md`
+- `docs/reports/wave-c-implementation.md` (new), `REMEDIATION_LOG.md` (this entry)
+
+## Self-audit notes (Wave C)
+
+- Fail-closed kept throughout (see stage report §5); no `|| true`/`TODO`/dummy returns added; no floating tags (one tag REMOVED); deny tails 51/51; no secrets in repo.
+- Not done / residuals: live image build + publish-gate execution, prebuilt pull post-`v1.0.0`, charter-prose catalog back-sync, kafka-mcp package+sidecar, piston vendoring + hound migration (maintainer), full segmentation, `redis://redis:6379` hostname (unfiled by the audit — flagged, unchanged).
+- No commits, no merges, no subagents used.

@@ -1,6 +1,6 @@
 # Technical Documentation Lead (`tech-docs-lead`) — Agent Charter
 
-> Department: Executive & Product Management | Fleet role 05/50 | Monthly budget: $150.00 USD (15000 cents)
+> Department: Executive & Product Management | Fleet role 05/51 | Monthly budget: $150.00 USD (15000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/tech-docs-lead/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/tech-docs-lead`
 > Source of truth: `roles-catalog/01_executive_and_product_management.md` (Role 05). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

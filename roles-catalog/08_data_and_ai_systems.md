@@ -271,11 +271,17 @@ METHODOLOGY & HANDOFF:
    - **Transport**: `stdio`
    - **Command**: `npx -y ollama-mcp`
    - **Configuration / Environment Variables**: `OLLAMA_HOST=http://ollama:11434`.
+> **Wave C P1-2 — Ollama MCP infra-pending:** no `ollama` service exists in any
+> compose file. Role-ready, infra-pending: add a pinned ollama sidecar and keep this
+> server, or delete this server block. Tracked by the smoke dead-MCP allowlist gate.
 2. **Docker MCP Server**:
    - **Package / Repo**: `docker-mcp` (PyPI verified v0.2.0)
    - **Transport**: `stdio`
    - **Command**: `uvx docker-mcp`
    - **Configuration / Environment Variables**: None.
+> **Wave C P1-2 — Docker MCP infra-pending:** no `DOCKER_HOST` is wired into this
+> server block and no compose sidecar backs it. Role-ready, infra-pending (same terms
+> as k8s-orchestrator). Tracked by the smoke dead-MCP allowlist gate.
 
 ### 4. Role-Specific Skills
 
@@ -394,6 +400,9 @@ METHODOLOGY & HANDOFF:
    - **Command**: `uvx mcp-clickhouse`
    - **Configuration / Environment Variables**:
      - `CLICKHOUSE_URL`: `http://clickhouse:8123`
+> **Wave C P1-2 — ClickHouse MCP infra-pending:** no `clickhouse` service exists in any
+> compose file. Role-ready, infra-pending: add a pinned clickhouse sidecar and keep this
+> server, or delete this server block. Tracked by the smoke dead-MCP allowlist gate.
      - Read-only analytics credentials.
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)

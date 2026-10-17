@@ -1,6 +1,6 @@
 # End-to-End Browser Automation Engineer (`e2e-browser-qa`) — Agent Charter
 
-> Department: Quality Assurance & Verification | Fleet role 33/50 | Monthly budget: $280.00 USD (28000 cents)
+> Department: Quality Assurance & Verification | Fleet role 33/51 | Monthly budget: $280.00 USD (28000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/e2e-browser-qa/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/e2e-browser-qa`
 > Source of truth: `roles-catalog/06_quality_assurance_and_verification.md` (Role 33). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

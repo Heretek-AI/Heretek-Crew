@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `vector-rag-spec` (fleet role 46/50).
+- Role ID: `vector-rag-spec` (fleet role 46/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $300.00 USD (30000 cents).
 - Reports to: `system-architect`.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""generate-50-roles.py — scaffold the 50-agent Heretek fleet on disk.
+"""generate-50-roles.py — scaffold the 51-agent Heretek fleet on disk.
 
 Parses the authoritative specifications in roles-catalog/0*.md (the single
-source of truth) and generates, for each of the 50 canonical roles:
+source of truth) and generates, for each of the 51 canonical roles (Roles 01-51):
 
     roles/<role-id>/
     ├── AGENTS.md                              # charter, chain of command, workflow
@@ -11,14 +11,13 @@ source of truth) and generates, for each of the 50 canonical roles:
         ├── agents/<role-id>.md                # agent system prompt + frontmatter
         └── skills/<skill-name>/SKILL.md       # procedural skill + frontmatter
 
-Normalization applied to every parsed opencode.json (fail-closed):
-  * injects "model" (default anthropic/claude-sonnet-4-5, overridable via
+Normalization applied to every parsed opencode.json (fail-closed):  * injects "model" (default anthropic/claude-sonnet-4-5, overridable via
     MODEL_DEFAULT) when the catalog block omits it,
   * re-appends {"action": "shell", "resource": "*", "effect": "deny"} so the
     permissions array always ends with deny-all shell,
   * pins every mcp.servers npx/uvx command to exact registry versions
-    (npx pkg@ver, uvx pkg==ver; sole tracked exception @morluto/rea-mcp,
-    unpublished upstream) and dies on any other unpinned package,
+    (npx pkg@ver, uvx pkg==ver) and dies on any unpinned package (Wave C:
+    the former @morluto/rea-mcp exception was removed with the server),
   * pins Role 26 (android-mobile-spec) mobile MCP to
     npx -y @mobile-next/mobile-mcp@0.1.2 (catalog text names mobile-mcp;
     the fleet spec mandates the scoped pinned package),
@@ -27,10 +26,18 @@ Normalization applied to every parsed opencode.json (fail-closed):
 Usage:
     python3 scripts/generate-50-roles.py [--root PATH] [--help]
 
-Exit codes: 0 when all 50 roles generate cleanly; 1 on any structural
+Exit codes: 0 when all 51 roles generate cleanly; 1 on any structural
 deviation (missing role, empty permissions/skills, unparseable JSON, TODO
 markers, :latest pins). Safe to re-run: output files are rewritten
 deterministically and no unrelated paths are touched or deleted.
+
+Wave C residual (tracked, honest): `opencode.json` output reproduces the
+on-disk files byte-identically for all 51 roles (verified via --root
+into scratch + diff), but charter prose (AGENTS.md / agents/*.md) on
+disk is hand-richer than the catalog blocks (extra skills, containment
+notes, workflow lines). A full in-repo run would rewrite charters down
+to catalog text and REGRESS those hand additions — back-sync the catalog
+blocks first (or accept the rewrite) before running without --root.
 """
 
 import argparse
@@ -42,10 +49,11 @@ from pathlib import Path
 
 MODEL_FALLBACK = "anthropic/claude-sonnet-4-5"
 # Fleet cap as stated in roles-catalog/ROLE_CATALOG_50.md and the fleet brief.
-# The per-role matrix in the catalog sums to 1270000, which equals the cap;
-# a mismatch (e.g. after a catalog edit) is reported as a WARNING (per-role
-# values are authoritative) rather than failing.
-DOCUMENTED_FLEET_CAP_CENTS = 1270000
+# The per-role matrix in the catalog sums to 1300000 (51 roles incl.
+# ai-red-teamer @ $300), which equals the cap; a mismatch (e.g. after a
+# catalog edit) is reported as a WARNING (per-role values are
+# authoritative) rather than failing.
+DOCUMENTED_FLEET_CAP_CENTS = 1300000
 DENY_ALL_SHELL = {"action": "shell", "resource": "*", "effect": "deny"}
 # Wave 2 (P0-2/P0-3) MCP sandbox scoping: bare-namespace MCP allow-all
 # entries are replaced with read-verb-scoped allows + same-namespace deny
@@ -175,12 +183,10 @@ READONLY_HARNESS_STRIPPED = frozenset(
         "ux-research-analyst",
     ]
 )
-# NOTE: ai-red-teamer is a member above but is NOT covered by this
-# generator (EXPECTED_IDS = catalog Roles 01-50 only; ai-red-teamer has
-# no catalog block). Its on-disk file carries the identical transform
-# applied by hand (see the Wave A stage report); if it ever gains a
-# catalog block, add it to EXPECTED_IDS and the generator will enforce
-# the strip automatically (the smoke gate already covers all 51 on disk).
+# NOTE (Wave C P1-4): ai-red-teamer is now a full member of EXPECTED_IDS
+# (Role 51 catalog block in 07_defensive_security_and_forensics.md); the
+# generator enforces its harness strip automatically like the other 15.
+# Canonical secret-hygiene fs:read denies (Wave A P1-7; AGENTS.md §4).
 # Canonical secret-hygiene fs:read denies (Wave A P1-7; AGENTS.md §4).
 FS_READ_ENV_DENIES = [
     {"action": "fs:read", "resource": ".env", "effect": "deny"},
@@ -188,6 +194,26 @@ FS_READ_ENV_DENIES = [
     {"action": "fs:read", "resource": "**/.env", "effect": "deny"},
     {"action": "fs:read", "resource": "**/*.env.*", "effect": "deny"},
 ]
+# Wave C P1-4: the same four resources denied for fs:write (secret
+# hygiene at the write layer). The catalog fences predate these entries
+# (added to on-disk files by hand), so generation ENSURES them here,
+# positioned immediately before the terminal shell deny — exactly the
+# on-disk invariant. Any additional pre-existing fs:write denies are
+# kept in place; only the canonical four are relocated.
+FS_WRITE_ENV_DENIES = [
+    {"action": "fs:write", "resource": ".env", "effect": "deny"},
+    {"action": "fs:write", "resource": "*.env.*", "effect": "deny"},
+    {"action": "fs:write", "resource": "**/.env", "effect": "deny"},
+    {"action": "fs:write", "resource": "**/*.env.*", "effect": "deny"},
+]
+
+# Wave C P1-4: fleet-wide model/compaction hardening (AGENTS.md §4
+# invariants — every role file carries these). The catalog fences predate
+# them (added to on-disk files by hand), so generation ENSURES the
+# canonical values here in the canonical position (directly after
+# "model"), reproducing the on-disk invariant instead of dropping it.
+FLEET_SMALL_MODEL = "anthropic/claude-haiku-4-5"
+FLEET_COMPACTION = {"auto": True, "prune": True, "reserved": 10000}
 
 
 def _allow(action):
@@ -300,6 +326,31 @@ def order_fs_read_denies_first(perms):
     return canonical + extra_denies + rest
 
 
+def ensure_fs_write_denies_before_tail(perms):
+    """Ensure the canonical .env fs:write denies, just before the tail.
+
+    Counterpart of order_fs_read_denies_first for the write layer:
+    strips any existing copies of the canonical four (wherever they sit)
+    and re-inserts them as a block at the end of the array — the caller
+    appends the terminal shell deny afterwards, so the denies land
+    immediately before the tail, exactly the on-disk invariant. Any
+    non-canonical fs:write denies keep their relative order in place.
+    Stable otherwise: every other entry keeps its relative order.
+    """
+    canonical_keys = {
+        (p["action"], p["resource"], p["effect"]) for p in FS_WRITE_ENV_DENIES
+    }
+    rest = [
+        p
+        for p in perms
+        if not (
+            isinstance(p, dict)
+            and (p.get("action"), p.get("resource"), p.get("effect")) in canonical_keys
+        )
+    ]
+    return rest + [dict(p) for p in FS_WRITE_ENV_DENIES]
+
+
 def scope_mcp_permissions(role_id, perms):
     """Replace bare-namespace MCP allows with scoped allows + deny tails."""
     scoped = []
@@ -389,12 +440,13 @@ MCP_UVX_PINS = {
     "prometheus-mcp-server": "prometheus-mcp-server==1.6.2",
     "mcp-server-qdrant": "mcp-server-qdrant==0.8.1",
 }
-# Sole unpinned exception (product decision pending): @morluto/rea-mcp is not
-# published on npm (registry 404 2026-10-17; upstream ships `rea-agents`
-# instead). Left as-is and tracked; any OTHER unpinned package fails the run.
-MCP_UNPINNED_EXCEPTIONS = {"@morluto/rea-mcp"}
 
 
+# (Wave C P1-12: the former @morluto/rea-mcp unpinned exception was
+# removed with the server itself — npm E404, verified 2026-10-17. No
+# unpinned npx/uvx package is tolerated; pin_mcp_command dies on any
+# package without @ver/==ver. Do not re-add an exception set here —
+# track removals in the catalog block notes instead.)
 def pin_mcp_command(role_id, server_name, command):
     """Rewrite one mcp.servers command argv through the pin maps (fail-closed)."""
     if not isinstance(command, list) or not command:
@@ -415,8 +467,6 @@ def pin_mcp_command(role_id, server_name, command):
         pkg = command[y + 1]
         if "@" in pkg.rsplit("/", 1)[-1]:
             return command  # already pinned (pkg@ver)
-        if pkg in MCP_UNPINNED_EXCEPTIONS:
-            return command  # tracked exception, see map comment
         if pkg not in MCP_NPX_PINS:
             die(
                 "role '%s' mcp server '%s' unpinned npx package '%s'"
@@ -432,8 +482,6 @@ def pin_mcp_command(role_id, server_name, command):
         pkg = command[1]
         if "==" in pkg:
             return command  # already pinned (pkg==ver)
-        if pkg in MCP_UNPINNED_EXCEPTIONS:
-            return command
         if pkg not in MCP_UVX_PINS:
             die(
                 "role '%s' mcp server '%s' unpinned uvx package '%s'"
@@ -447,7 +495,8 @@ def pin_mcp_command(role_id, server_name, command):
     return command
 
 
-# Canonical 50 role IDs in catalog order (Roles 01-50).
+# Canonical 51 role IDs in catalog order (Roles 01-51; Role 51
+# ai-red-teamer promoted Wave C P1-4 — see ROLE_CATALOG_50.md Total line).
 EXPECTED_IDS = [
     "exec-director",
     "product-director",
@@ -499,6 +548,7 @@ EXPECTED_IDS = [
     "analytics-metrics-eng",
     "dependency-patcher",
     "git-drift-coord",
+    "ai-red-teamer",
 ]
 
 # Org-chart wiring (None = reports to the Human Board). Source: fleet brief.
@@ -553,6 +603,7 @@ REPORTS_TO = {
     "analytics-metrics-eng": "system-architect",
     "dependency-patcher": "tpm-scrum-lead",
     "git-drift-coord": "tpm-scrum-lead",
+    "ai-red-teamer": "system-architect",
 }
 
 # Fleet-brief skill names cross-referenced to catalog skill names where the
@@ -577,10 +628,12 @@ INTEGRATION_NOTES = {
         "Automated UI exploration: google/artemis (`artemis explore --apk <debug.apk> --timeout 180s`).",
     ],
     "binary-reverse-eng": [
-        "Primary MCP: morluto/rea via `npx -y @morluto/rea-mcp` "
-        "(120+ RE tools bridging Ghidra, Binary Ninja, Radare2 and APK tooling).",
-        "Disassembler MCP: r2mcp via `uvx r2mcp` (Radare2 control-flow, strings, imports).",
-        "Plugin: opencode-rea (`@heretek-ai/opencode-rea`) for in-turn decompilation support.",
+        "Disassembler MCP: r2mcp via `uvx r2mcp==0.2.5` (Radare2 control-flow, strings, imports).",
+        "Wave C P0-5/P1-12: the morluto/rea MCP (`npx -y @morluto/rea-mcp`, npm E404 2026-10-17) "
+        "and the opencode-rea plugin (npm E404 2026-10-17) are REMOVED from the live config "
+        "(unpublished artifacts cannot be pinned); the published successor rea-agents@6.5.0 "
+        "registers via interactive setup with no verified headless stdio argv. The `rea_*` "
+        "permission allows stay as dormant re-activation scope.",
         "Headless Ghidra decompilation passes with GHIDRA_INSTALL_DIR=/opt/ghidra and semantic symbol renaming.",
     ],
 }
@@ -716,6 +769,10 @@ def normalize_config(role):
     cfg = dict(role["raw_config"])
     cfg["$schema"] = "https://opencode.ai/config.json"
     cfg["model"] = model
+    # Wave C P1-4: canonical small_model + compaction (fleet hardening
+    # invariant — every on-disk role file carries these exact values).
+    cfg["small_model"] = FLEET_SMALL_MODEL
+    cfg["compaction"] = dict(FLEET_COMPACTION)
 
     perms = cfg.get("permissions")
     if not isinstance(perms, list) or not perms:
@@ -749,12 +806,29 @@ def normalize_config(role):
     # fs:write ordering is deliberately untouched (scoped allows then *
     # deny is already correct).
     perms = order_fs_read_denies_first(perms)
+    # Wave C P1-4: fs:write .env denies ensured immediately before the
+    # terminal deny (secret hygiene at the write layer; mirrors disk).
+    perms = ensure_fs_write_denies_before_tail(perms)
     perms.append(dict(DENY_ALL_SHELL))
     cfg["permissions"] = perms
 
     skills = cfg.get("skills")
     if not isinstance(skills, list) or not skills:
         die("role '%s' skills array is missing or empty" % role_id)
+    # Wave C P1-4: every role declares BOTH skill roots (the symlinked
+    # `/roles/<id>/skills` and the canonical `.opencode/skills`), in
+    # this order — exactly the on-disk invariant (AGENTS.md §4).
+    canonical_skills = [
+        "/roles/%s/skills" % role_id,
+        "/roles/%s/.opencode/skills" % role_id,
+    ]
+    for entry in list(skills):
+        if entry not in canonical_skills:
+            die(
+                "role '%s' has an unexpected skills entry %r (want exactly %r)"
+                % (role_id, entry, canonical_skills)
+            )
+    cfg["skills"] = canonical_skills
 
     if "plugins" not in cfg or not cfg["plugins"]:
         die("role '%s' plugins list is missing or empty" % role_id)
@@ -835,6 +909,11 @@ def normalize_config(role):
         if not isinstance(server, dict):
             die("role '%s' mcp server '%s' is not a mapping" % (role_id, server_name))
         server["command"] = pin_mcp_command(role_id, server_name, server.get("command"))
+        # Wave C P1-4: every local MCP server carries `"timeout": 5000
+        # (fleet hardening invariant — prevents unhandled process hangs).
+        # Appended last, exactly the on-disk key order.
+        if server.get("type") == "local":
+            server.setdefault("timeout", 5000)
 
     # Wave 4 (P1-7) glob-specificity: fs:write allows starting with a
     # SINGLE `*` (unanchored `*substring*`/`*.md`) match repo-wide and are
@@ -857,6 +936,8 @@ def normalize_config(role):
     ordered = {
         "$schema": cfg["$schema"],
         "model": cfg["model"],
+        "small_model": cfg["small_model"],
+        "compaction": cfg["compaction"],
         "permissions": cfg["permissions"],
         "skills": cfg["skills"],
         "plugins": cfg["plugins"],
@@ -921,7 +1002,7 @@ def render_agents_md(role, perms, known):
     lines.append("# %s (`%s`) — Agent Charter" % (role["title"], rid))
     lines.append("")
     lines.append(
-        "> Department: %s | Fleet role %02d/50 | Monthly budget: $%.2f USD (%d cents)"
+        "> Department: %s | Fleet role %02d/51 | Monthly budget: $%.2f USD (%d cents)"
         % (role["department"], role["num"], dollars, role["budget_cents"])
     )
     lines.append(
@@ -1130,7 +1211,7 @@ def render_agent_md(role):
     parts.append("")
     parts.append("## Runtime Binding (Heretek-Crew Fleet)")
     parts.append("")
-    parts.append("- Role ID: `%s` (fleet role %02d/50)." % (rid, role["num"]))
+    parts.append("- Role ID: `%s` (fleet role %02d/51)." % (rid, role["num"]))
     parts.append(
         "- Model: `%s`."
         % (os.environ.get("MODEL_DEFAULT", MODEL_FALLBACK).strip() or MODEL_FALLBACK)
@@ -1168,7 +1249,7 @@ def render_skill_md(skill):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Scaffold the 50-agent Heretek fleet under roles/<role-id>/ "
+        description="Scaffold the 51-agent Heretek fleet under roles/<role-id>/ "
         "from roles-catalog/0*.md (single source of truth)."
     )
     ap.add_argument(
@@ -1211,7 +1292,10 @@ def main():
 
     model = os.environ.get("MODEL_DEFAULT", MODEL_FALLBACK).strip() or MODEL_FALLBACK
     total_cents = sum(roles[rid]["budget_cents"] for rid in EXPECTED_IDS)
-    print("[generate] parsed 50/50 roles from %d catalog files" % len(dept_files))
+    print(
+        "[generate] parsed %d/%d roles from %d catalog files"
+        % (len(roles), len(EXPECTED_IDS), len(dept_files))
+    )
     print("[generate] model=%s" % model)
     print("[generate] per-role budgets (cents):")
     for rid in EXPECTED_IDS:
@@ -1256,12 +1340,12 @@ def main():
             files_written += 1
 
     print(
-        "[generate] wrote %d files across 50 roles under %s"
-        % (files_written, roles_dir)
+        "[generate] wrote %d files across %d roles under %s"
+        % (files_written, len(EXPECTED_IDS), roles_dir)
     )
     print(
-        "[generate] done: roles=50 files=%d budget_total_cents=%d"
-        % (files_written, total_cents)
+        "[generate] done: roles=%d files=%d budget_total_cents=%d"
+        % (len(EXPECTED_IDS), files_written, total_cents)
     )
 
 

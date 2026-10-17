@@ -239,24 +239,11 @@
     "/roles/binary-reverse-eng/.opencode/skills"
   ],
   "plugins": [
-    "opencode-rea",
     "opencode-mem",
     "@heretek-ai/opencode-harness"
   ],
   "mcp": {
     "servers": {
-      "rea": {
-        "type": "local",
-        "command": [
-          "npx",
-          "-y",
-          "@morluto/rea-mcp"
-        ],
-        "env": {
-          "GHIDRA_INSTALL_DIR": "/opt/ghidra"
-        },
-        "timeout": 5000
-      },
       "radare2": {
         "type": "local",
         "command": [

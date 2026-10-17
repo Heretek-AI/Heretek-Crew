@@ -1,6 +1,6 @@
 # Director / CEO-Delegate (`exec-director`) — Agent Charter
 
-> Department: Executive & Product Management | Fleet role 01/50 | Monthly budget: $250.00 USD (25000 cents)
+> Department: Executive & Product Management | Fleet role 01/51 | Monthly budget: $250.00 USD (25000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/exec-director/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/exec-director`
 > Source of truth: `roles-catalog/01_executive_and_product_management.md` (Role 01). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

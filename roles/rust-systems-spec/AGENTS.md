@@ -1,6 +1,6 @@
 # Rust Systems Specialist (`rust-systems-spec`) — Agent Charter
 
-> Department: Specialized Language Engineers | Fleet role 19/50 | Monthly budget: $350.00 USD (35000 cents)
+> Department: Specialized Language Engineers | Fleet role 19/51 | Monthly budget: $350.00 USD (35000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/rust-systems-spec/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/rust-systems-spec`
 > Source of truth: `roles-catalog/04_specialized_language_engineers.md` (Role 19). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

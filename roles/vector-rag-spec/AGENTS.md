@@ -1,6 +1,6 @@
 # Vector Search & RAG Specialist (`vector-rag-spec`) — Agent Charter
 
-> Department: Data & AI Systems | Fleet role 46/50 | Monthly budget: $300.00 USD (30000 cents)
+> Department: Data & AI Systems | Fleet role 46/51 | Monthly budget: $300.00 USD (30000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/vector-rag-spec/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/vector-rag-spec`
 > Source of truth: `roles-catalog/08_data_and_ai_systems.md` (Role 46). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

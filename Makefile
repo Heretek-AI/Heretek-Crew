@@ -83,10 +83,10 @@ logs: ## Follow logs of the paperclip service (Ctrl-C to stop).
 
 # Wave 3 P1-11: `seed` (6-agent prototype seeder) removed with the legacy
 # roles it seeded — the 50-fleet is the only role set; use `seed-50`.
-generate-roles: ## Scaffold the 50-agent fleet on disk (idempotent; see scripts/generate-50-roles.py --help).
+generate-roles: ## Scaffold the 51-agent fleet on disk (idempotent; see scripts/generate-50-roles.py --help).
 	python3 $(GENERATE_ROLES_SCRIPT)
 
-seed-50: ## Seed the 50-agent fleet (idempotent; see scripts/seed-50-fleet.sh --help).
+seed-50: ## Seed the 51-agent fleet (idempotent; see scripts/seed-50-fleet.sh --help).
 	$(SEED_50_SCRIPT)
 
 backup: ## Create a timestamped database dump in backups/ (with retention pruning).

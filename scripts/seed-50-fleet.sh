@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
 # seed-50-fleet.sh — idempotently seed "Heretek Autonomous Fleet" and its
-# 50-agent specialist fleet into Paperclip.
+# 51-agent specialist fleet into Paperclip.
 #
-# Scope note (Wave 3 P1-11): this seeds the 50 fleet roles — the ONLY
-# roles on disk (`ls roles/` = 50, single fleet dialect). The 6 legacy
+# Scope note (Wave 3 P1-11, Wave C P1-4): this seeds the 51 fleet roles -
+# the ONLY roles on disk (`ls roles/` = 51, single fleet dialect;
+# ai-red-teamer promoted from pending to seeded Wave C P1-4). The 6 legacy
 # prototype roles (director, pm, programmer, tester, qa, designer) and
 # their seeder (scripts/seed-company.sh) were deleted as superseded:
 # director -> exec-director; pm -> product-director + tpm-scrum-lead;
@@ -12,13 +13,13 @@
 # e2e-browser-qa + api-contract-tester + release-qa-officer; designer ->
 # ui-ux-designer + design-system-eng + brand-copy-spec.
 # scripts/smoke-test.sh discovers roles dynamically and asserts this
-# seed's own payload count (51 documents).
+# seed's own payload count (52 documents: 1 company + 51 agents).
 #
 # Usage:
 #   ./scripts/seed-50-fleet.sh [--dry-run] [--help]
 #
 #   --dry-run   Print the exact JSON payloads that would be POSTed (1 company +
-#               50 agents) without performing any network calls. Also prints the
+#               51 agents) without performing any network calls. Also prints the
 #               computed total fleet budget and a WARNING when it differs from
 #               the documented fleet cap.
 #   --help, -h  Print this usage guide and exit.
@@ -31,7 +32,7 @@
 #                             --dry-run is passed.
 #   ADMIN_API_KEY             Fallback for PAPERCLIP_TOKEN.
 #   COMPANY_NAME              Default: "Heretek Autonomous Fleet"
-#   MODEL_DEFAULT             Default model for all 50 agents.
+#   MODEL_DEFAULT             Default model for all 51 agents.
 #                             Default: anthropic/claude-sonnet-4-5
 #   MODEL_COORDINATOR         Model override for the three coordination roles
 #                             (exec-director, tpm-scrum-lead, system-architect).
@@ -41,9 +42,10 @@
 #   TIMER_TPM_SEC             Scheduler heartbeat interval for tpm-scrum-lead.
 #                             0 disables. Default: 3600 (1h)
 #   FLEET_BUDGET_CAP_CENTS    Documented total fleet budget cap, in cents.
-#                             Default: 1270000 ($12,700.00 USD) — exactly the
+#                             Default: 1300000 ($13,000.00 USD) — exactly the
 #                             sum of the verbatim per-role catalog values
-#                             (authoritative). A WARNING is emitted when the
+#                             (51 roles incl. ai-red-teamer @ $300, promoted
+#                             Wave C P1-4). A WARNING is emitted when the
 #                             computed sum differs (e.g. via env override).
 #   HEALTH_TIMEOUT_SEC        How long to wait for Paperclip health.
 #                             Default: 120
@@ -94,7 +96,7 @@
 #     -> system-architect
 #
 # Budgets: exact integer cents from roles-catalog/ROLE_CATALOG_50.md
-# (authoritative per-role values), summing to 1270000 cents ($12,700.00 USD),
+# (authoritative per-role values), summing to 1300000 cents ($13,000.00 USD),
 # which equals FLEET_BUDGET_CAP_CENTS. Per-role values are used verbatim and
 # never invented to force a total; print_budget_summary still warns if an
 # env override makes the cap disagree with the computed sum.
@@ -108,7 +110,7 @@ MODEL_DEFAULT="${MODEL_DEFAULT:-anthropic/claude-sonnet-4-5}"
 MODEL_COORDINATOR="${MODEL_COORDINATOR:-${MODEL_DEFAULT}}"
 TIMER_EXEC_SEC="${TIMER_EXEC_SEC:-1800}"
 TIMER_TPM_SEC="${TIMER_TPM_SEC:-3600}"
-FLEET_BUDGET_CAP_CENTS="${FLEET_BUDGET_CAP_CENTS:-1270000}"
+FLEET_BUDGET_CAP_CENTS="${FLEET_BUDGET_CAP_CENTS:-1300000}"
 HEALTH_TIMEOUT_SEC="${HEALTH_TIMEOUT_SEC:-120}"
 
 DRY_RUN="false"
@@ -179,16 +181,23 @@ trap 'rm -rf "${TMPDIR_WORK}"' EXIT
 log() { printf '[seed] %s\n' "$*"; }
 
 # api METHOD PATH [BODY_FILE] -> prints response body to stdout.
+# Wave C P1-3: --fail-with-body (curl >= 7.76) makes every HTTP error
+# (4xx/5xx, including a 500 page on GET) exit nonzero WITH the body on
+# stderr — a 500 can no longer parse as "missing" and trigger a
+# duplicate-create POST, and a rejected Pass-2 PATCH can no longer
+# report success. No `|| true`, no status swallowing: callers run under
+# `set -e`, so any failed call aborts the run fail-closed.
 api() {
   local method="$1" path="$2" body_file="${3:-}"
-  local args=(-sS -m 30 -H "Content-Type: application/json" -H "Authorization: Bearer ${PAPERCLIP_TOKEN}")
+  local args=(-sS -m 30 --fail-with-body -H "Content-Type: application/json" -H "Authorization: Bearer ${PAPERCLIP_TOKEN}")
   if [ -n "${body_file}" ]; then
     args+=(-d "@${body_file}")
   fi
   curl "${args[@]}" -X "${method}" "${PAPERCLIP_URL}${path}"
 }
 
-# Canonical 50 role IDs in catalog order (Roles 01-50).
+# Canonical 51 role IDs in catalog order (Roles 01-51; Role 51
+# ai-red-teamer promoted Wave C P1-4 — see ROLE_CATALOG_50.md Total line).
 ROLE_LIST=(
   exec-director product-director tpm-scrum-lead system-architect tech-docs-lead
   ux-research-analyst game-systems-dev graphics-shader-eng engine-systems-eng
@@ -202,6 +211,7 @@ ROLE_LIST=(
   appsec-engineer cloud-sec-auditor binary-reverse-eng firmware-sec-analyst
   threat-modeler compliance-auditor data-pipeline-eng vector-rag-spec
   mlops-serving-eng analytics-metrics-eng dependency-patcher git-drift-coord
+  ai-red-teamer
 )
 
 # Static per-role metadata: Paperclip role enum values come from AGENT_ROLES
@@ -222,6 +232,7 @@ role_paperclip_role() {
     cloud-platform-eng|k8s-orchestrator|sre-incident-eng|observability-eng|dba-specialist|cache-streaming-eng) echo "devops" ;;
     e2e-browser-qa|api-contract-tester|load-stress-tester|sabotage-qa-tester|static-analysis-lead|release-qa-officer) echo "qa" ;;
     appsec-engineer|cloud-sec-auditor|binary-reverse-eng|firmware-sec-analyst|threat-modeler|compliance-auditor) echo "security" ;;
+    ai-red-teamer) echo "security" ;;
     data-pipeline-eng|mlops-serving-eng) echo "engineer" ;;
     vector-rag-spec|analytics-metrics-eng) echo "researcher" ;;
     dependency-patcher|git-drift-coord) echo "engineer" ;;
@@ -283,6 +294,7 @@ role_display_name() {
     analytics-metrics-eng) echo "Analytics & Metrics Engineer" ;;
     dependency-patcher) echo "Dependency & CVE Patching Steward" ;;
     git-drift-coord) echo "Git & Worktree Drift Coordinator" ;;
+    ai-red-teamer) echo "Adversarial AI Red-Teamer" ;;
     *) echo "$1" ;;
   esac
 }
@@ -303,6 +315,8 @@ role_title() {
     e2e-browser-qa|api-contract-tester|load-stress-tester|sabotage-qa-tester|static-analysis-lead|release-qa-officer)
       printf '%s (Quality Assurance & Verification)\n' "$(role_display_name "$1")" ;;
     appsec-engineer|cloud-sec-auditor|binary-reverse-eng|firmware-sec-analyst|threat-modeler|compliance-auditor)
+      printf '%s (Defensive Security & Forensics)\n' "$(role_display_name "$1")" ;;
+    ai-red-teamer)
       printf '%s (Defensive Security & Forensics)\n' "$(role_display_name "$1")" ;;
     data-pipeline-eng|vector-rag-spec|mlops-serving-eng|analytics-metrics-eng)
       printf '%s (Data & AI Systems)\n' "$(role_display_name "$1")" ;;
@@ -373,6 +387,7 @@ role_budget_cents() {
     analytics-metrics-eng) printf '25000' ;; # $250.00 USD
     dependency-patcher) printf '22000' ;; # $220.00 USD
     git-drift-coord) printf '20000' ;; # $200.00 USD
+    ai-red-teamer) printf '30000' ;; # $300.00 USD (Role 51, promoted Wave C P1-4)
     *) echo "error: unknown role '$1' has no catalog budget (fail-closed)" >&2; exit 1 ;;
   esac
 }
@@ -394,6 +409,7 @@ role_reports_to_parent() {
     tpm-scrum-lead|tech-docs-lead|ux-research-analyst) printf 'product-director' ;;
     cloud-platform-eng|k8s-orchestrator|sre-incident-eng|observability-eng|dba-specialist|cache-streaming-eng) printf 'system-architect' ;;
     appsec-engineer|cloud-sec-auditor|binary-reverse-eng|firmware-sec-analyst|threat-modeler|compliance-auditor) printf 'system-architect' ;;
+    ai-red-teamer) printf 'system-architect' ;;
     data-pipeline-eng|vector-rag-spec|mlops-serving-eng|analytics-metrics-eng) printf 'system-architect' ;;
     *) printf 'tpm-scrum-lead' ;;
   esac
@@ -456,16 +472,19 @@ print(json.dumps(payload, indent=2))
 
 find_company_id() {
   # Prints the company id matching $COMPANY_NAME in a list response, else "".
+  # Wave C P1-3: an unparseable body or an unexpected shape exits NONZERO
+  # (fail-closed) instead of masquerading as "" = "not found" — only a
+  # successfully parsed list without a match prints "".
   COMPANY_NAME="${COMPANY_NAME}" python3 -c '
 import json, os, sys
 raw = sys.stdin.read()
 try:
     doc = json.loads(raw)
 except Exception:
-    sys.exit(0)
+    sys.exit(1)
 items = doc.get("companies", doc) if isinstance(doc, dict) else doc
 if not isinstance(items, list):
-    sys.exit(0)
+    sys.exit(1)
 for c in items:
     if isinstance(c, dict) and c.get("name") == os.environ["COMPANY_NAME"]:
         print(c.get("id", ""))
@@ -475,16 +494,18 @@ for c in items:
 
 find_agent() {
   # Prints "<id>\t<reportsTo>\t<budgetMonthlyCents>" for agent named $1, else "".
+  # Wave C P1-3: same fail-closed contract as find_company_id — parse
+  # failure or unexpected shape exits nonzero, never "" = "not found".
   AGENT_NAME="$1" python3 -c '
 import json, os, sys
 raw = sys.stdin.read()
 try:
     doc = json.loads(raw)
 except Exception:
-    sys.exit(0)
+    sys.exit(1)
 items = doc.get("agents", doc) if isinstance(doc, dict) else doc
 if not isinstance(items, list):
-    sys.exit(0)
+    sys.exit(1)
 for a in items:
     if isinstance(a, dict) and a.get("name") == os.environ["AGENT_NAME"]:
         print(str(a.get("id", "")) + "\t" + str(a.get("reportsTo") or "") + "\t" + str(a.get("budgetMonthlyCents", "")))
@@ -498,7 +519,7 @@ print_budget_summary() {
   local total_cents="$1"
   local dollars=$((total_cents / 100))
   local cents=$((total_cents % 100))
-  printf '[seed] total fleet budget: %s cents ($%s.%02d USD) across 50 agents (cap %s cents)\n' "${total_cents}" "${dollars}" "${cents}" "${FLEET_BUDGET_CAP_CENTS}"
+  printf '[seed] total fleet budget: %s cents ($%s.%02d USD) across 51 agents (cap %s cents)\n' "${total_cents}" "${dollars}" "${cents}" "${FLEET_BUDGET_CAP_CENTS}"
   if [ "${total_cents}" != "${FLEET_BUDGET_CAP_CENTS}" ]; then
     printf '[seed] WARNING: catalog per-role budgets sum to %s cents, which differs from the documented fleet cap of %s cents; per-role catalog values are authoritative and are used verbatim.\n' "${total_cents}" "${FLEET_BUDGET_CAP_CENTS}" >&2
   fi
@@ -527,7 +548,9 @@ fi
 log "waiting for Paperclip health at ${PAPERCLIP_URL} (timeout ${HEALTH_TIMEOUT_SEC}s)"
 deadline=$((SECONDS + HEALTH_TIMEOUT_SEC))
 while true; do
-  if curl -sS -m 5 -o /dev/null "${PAPERCLIP_URL}/api/health"; then
+  # Wave C P1-3: -f so ANY HTTP error (incl. 500) counts as unhealthy —
+  # a 500 page used to count as "healthy" and poison every later lookup.
+  if curl -sS -f -m 5 -o /dev/null "${PAPERCLIP_URL}/api/health"; then
     break
   fi
   if [ "${SECONDS}" -ge "${deadline}" ]; then
@@ -556,7 +579,7 @@ else
   log "company exists: ${COMPANY_ID}"
 fi
 
-# Pass 1: ensure all 50 agents exist (reportsTo wired in pass 2, when every id
+# Pass 1: ensure all 51 agents exist (reportsTo wired in pass 2, when every id
 # is known — keeps the script idempotent and order-independent).
 for role in "${ROLE_LIST[@]}"; do
   name="$(role_display_name "${role}")"
@@ -616,11 +639,20 @@ payload = {
 }
 print(json.dumps(payload))
 ' > "${TMPDIR_WORK}/patch-${role}.json"
-    api PATCH "/api/agents/${agent_id}" "${TMPDIR_WORK}/patch-${role}.json" > /dev/null
+    # Wave C P1-3: the PATCH result is checked — a rejected PATCH (bad
+    # reportsTo/budget) aborts with the server body on stderr instead of
+    # exiting 0 while "PATCH only upon drift" silently never happened.
+    # (api() already exits nonzero on HTTP error via --fail-with-body;
+    # the explicit `|| exit 1` pins the contract at this call site too.)
+    api PATCH "/api/agents/${agent_id}" "${TMPDIR_WORK}/patch-${role}.json" > "${TMPDIR_WORK}/patch-${role}.resp.json" || {
+      echo "error: PATCH for agent '${name}' failed; server response:" >&2
+      cat "${TMPDIR_WORK}/patch-${role}.resp.json" >&2
+      exit 1
+    }
   else
     log "agent '${name}' already correctly wired; no update"
   fi
 done
 
-log "seed complete: company '${COMPANY_NAME}' (${COMPANY_ID}) with 50 agents"
-log "org chart: exec-director -> {product-director, system-architect}; product-director -> {tpm-scrum-lead, tech-docs-lead, ux-research-analyst}; tpm-scrum-lead -> {game(6), web(6), language(8), qa(6), ops(2)}; system-architect -> {cloud(6), security(6), data(4)}"
+log "seed complete: company '${COMPANY_NAME}' (${COMPANY_ID}) with 51 agents"
+log "org chart: exec-director -> {product-director, system-architect}; product-director -> {tpm-scrum-lead, tech-docs-lead, ux-research-analyst}; tpm-scrum-lead -> {game(6), web(6), language(8), qa(6), ops(2)}; system-architect -> {cloud(6), security(7), data(4)}"

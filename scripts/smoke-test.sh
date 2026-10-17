@@ -45,8 +45,8 @@
 #                       checkboxes + acceptance criteria, per-role spec
 #                       charters complete, fleet hardening invariants hold)
 #                    4. seed dry-run emits company + agent payloads:
-#                       seed-50-fleet.sh (1 company + 50 agents =
-#                       51 payloads, fleet total == cap with no WARNING)
+#                       seed-50-fleet.sh (1 company + 51 agents =
+#                       52 payloads, fleet total == cap with no WARNING)
 #                    5. shim translation: --dir flag dropped (ambiguous
 #                       values preserved per P1-9), --variant merged into
 #                       first --model#variant (first-wins, P2-2c), exactly
@@ -264,9 +264,9 @@ fi
 # asserts: valid v2
 # opencode.json (provider/model, non-empty permissions with a fail-closed
 # deny tail, non-empty rules where present), exact-pinned MCP commands
-# (npx pkg@x.y.z / uvx pkg==x.y.z in the fleet `mcp.servers` shape; sole
-# tracked exception @morluto/rea-mcp), and non-empty AGENTS.md +
-# .opencode/agents/<role>.md charters.
+# (npx pkg@x.y.z / uvx pkg==x.y.z in the fleet `mcp.servers` shape, zero
+# exceptions since Wave C removed the rea-mcp server), and non-empty
+# AGENTS.md + .opencode/agents/<role>.md charters.
 section "3. role opencode.json validity + version pins"
 ROLE_COUNT=0
 for roledir in roles/*/; do
@@ -351,16 +351,32 @@ if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)' \
 else
   ok "no :latest pins in any roles/*/opencode/opencode.json"
 fi
-# P1-7: every npx/uvx MCP command must carry an exact pin (npx pkg@x.y.z,
-# uvx pkg==x.y.z). Sole tracked exception: npx -y @morluto/rea-mcp, which
-# is not published on npm (registry 404) — any OTHER unpinned package, or
-# any drift in the exception itself, FAILs closed.
+# Wave C P1-12: every npx/uvx MCP command must carry an exact pin
+# (npx pkg@x.y.z, uvx pkg==x.y.z) with NO exceptions — the former
+# @morluto/rea-mcp exception is gone with the server itself (npm E404,
+# verified 2026-10-17). Any unpinned package FAILs closed.
+# Fork-justification record (npm dist-tags verified 2026-10-17, all pins
+# == latest so no migration is owed):
+#   @executeautomation/playwright-mcp-server@1.0.12 (latest 1.0.12;
+#     canonical @playwright/mcp@0.0.83 is a DIFFERENT package line,
+#     not a newer same-package release — no migration invented),
+#   @upstash/context7-mcp@4.4.2 (latest 4.4.2),
+#   @cyanheads/git-mcp-server@2.15.3 (latest 2.15.3),
+#   @modelcontextprotocol/server-postgres@0.6.2 (latest 0.6.2).
+# PyPI pins verified via `pip index versions` 2026-10-17:
+#   mcp-server-redis 0.1.1, mcp-server-kubernetes 0.1.6,
+#   mcp-server-qdrant 0.8.1, k6-mcp-server 2.2.0, mcp-clickhouse 0.7.0,
+#   docker-mcp 0.2.0, r2mcp 0.2.5, prometheus-mcp-server 1.6.2,
+#   mcp-server-duckdb 1.1.0 — all == pinned.
+# Residual (tracked, honest): kafka-mcp-server is NOT resolvable on PyPI
+# (pip 404, verified 2026-10-17) AND its kafka sidecar does not exist —
+# doubly dead, kept as role-ready/infra-pending under the dead-MCP
+# allowlist gate below (delete the server block when the role is next
+# touched, or provide sidecar + resolvable package).
 if ROLE_PIN_TMP="${TMP}" python3 -c '
 import glob, json, os, sys
 
-EXCEPTIONS = {"npx -y @morluto/rea-mcp"}
 violations = []
-seen_exception = set()
 for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
     role = f.split("/")[1]
     doc = json.load(open(f))
@@ -377,9 +393,6 @@ for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
                     except (ValueError, IndexError):
                         violations.append("%s: malformed npx argv %r" % (role, argv))
                         continue
-                    if "npx -y %s" % pkg in EXCEPTIONS:
-                        seen_exception.add(pkg)
-                        continue
                     if "@" not in pkg.rsplit("/", 1)[-1]:
                         violations.append("%s: unpinned npx package %r" % (role, pkg))
                 elif argv[:1] == ["uvx"]:
@@ -390,15 +403,94 @@ for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
                 stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
         elif isinstance(node, list):
             stack.extend(v for v in node if isinstance(v, (dict, list)))
-if set(seen_exception) != {"@morluto/rea-mcp"}:
-    violations.append("tracked rea-mcp exception drifted (seen=%r)" % sorted(seen_exception))
 if violations:
     sys.exit("\n".join(violations))
-print("all npx (pkg@ver) + uvx (pkg==ver) pinned; sole exception @morluto/rea-mcp tracked")
+print("all npx (pkg@ver) + uvx (pkg==ver) pinned, zero exceptions")
 ' >"${TMP}/pins.out" 2>"${TMP}/pins.err"; then
   ok "MCP supply chain pinned ($(cat "${TMP}/pins.out"))"
 else
   bad "unpinned MCP package(s): $(head -c 400 "${TMP}/pins.err")"
+fi
+# Wave C P1-2 dead-wiring allowlist: seven MCP declarations reference
+# sidecars absent from every compose file (plus two docker-MCP blocks
+# with no DOCKER_HOST). They are kept as role-ready/infra-pending by
+# product decision (catalog §3 notes) — this gate pins that decision:
+# the flagged set must EQUAL the allowlist exactly. A new dead server,
+# or a pending server gaining infra without leaving the list, FAILs.
+if python3 -c '
+import glob, json, sys
+
+# (role, server) pairs whose backing infra is knowingly absent.
+EXPECTED_DEAD = {
+    ("mlops-serving-eng", "ollama"),      # no ollama sidecar
+    ("observability-eng", "prometheus"),   # no prometheus sidecar
+    ("sre-incident-eng", "prometheus"),    # no prometheus sidecar
+    ("cache-streaming-eng", "redis"),      # no redis service in any compose file
+    ("cache-streaming-eng", "kafka"),      # no kafka sidecar (+ PyPI 404)
+    ("analytics-metrics-eng", "clickhouse"),  # no clickhouse sidecar
+    ("load-stress-tester", "k6"),          # no k6 sidecar (CLI tool)
+    ("k8s-orchestrator", "docker"),        # no DOCKER_HOST wired
+    ("mlops-serving-eng", "docker"),       # no DOCKER_HOST wired
+}
+ABSENT_HOSTS = ("://ollama", "://prometheus", "kafka:", "://clickhouse", "://redis:")
+
+flagged = set()
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    doc = json.load(open(f))
+    for name, srv in ((doc.get("mcp") or {}).get("servers", {}) or {}).items():
+        if not isinstance(srv, dict):
+            continue
+        env = srv.get("env") or {}
+        blob = " ".join(str(v) for v in env.values())
+        if any(h in blob for h in ABSENT_HOSTS):
+            flagged.add((role, name))
+        elif name == "k6":
+            flagged.add((role, name))
+        elif name == "docker" and "DOCKER_HOST" not in env:
+            flagged.add((role, name))
+if flagged != EXPECTED_DEAD:
+    sys.exit("dead-MCP drift: flagged=%r expected=%r"
+             % (sorted(flagged), sorted(EXPECTED_DEAD)))
+print("dead-MCP wiring matches the tracked infra-pending allowlist (%d)" % len(flagged))
+' >"${TMP}/deadmcp.out" 2>"${TMP}/deadmcp.err"; then
+  ok "no untracked dead MCP wiring ($(cat "${TMP}/deadmcp.out"))"
+else
+  bad "dead MCP wiring drift: $(head -c 400 "${TMP}/deadmcp.err")"
+fi
+# Wave C P0-5 plugin-install gate (static complement of the publish
+# workflow plugin-resolution gate): every `plugins` string in any
+# roles/*/opencode/opencode.json must name a package the Dockerfile
+# installs globally — otherwise the role loads with a tool surface
+# that can never materialize (the `opencode-rea` E404 class).
+if python3 -c '
+import glob, json, re, sys
+
+dockerfile = open("docker/Dockerfile").read()
+installed = set()
+for tok in re.findall(r"\"(@?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?)@\$\{", dockerfile):
+    installed.add(tok)
+plugins = set()
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    for p in json.load(open(f)).get("plugins", []):
+        plugins.add("@heretek-ai/opencode-harness" if p == "opencode-harness" else p)
+missing = sorted(p for p in plugins if p not in installed)
+if missing:
+    sys.exit("plugins without a Dockerfile install: %r (installed=%r)" % (missing, sorted(installed)))
+print("all role plugins installed by Dockerfile: %s" % sorted(plugins))
+' >"${TMP}/plugate.out" 2>"${TMP}/plugate.err"; then
+  ok "role plugins resolve to Dockerfile installs ($(cat "${TMP}/plugate.out"))"
+else
+  bad "unresolvable role plugin(s): $(head -c 400 "${TMP}/plugate.err")"
+fi
+# Wave C P0-6: the publish workflow must NEVER mint a `latest` tag
+# (repo never-:latest invariant — the raw `value=latest` line was
+# removed; semver 1.0.0/1.0 + sha-* remain the only tags). Comment lines
+# are exempt (they document the removal); any live YAML line FAILs.
+if grep -vE '^[[:space:]]*#' .github/workflows/docker-publish.yml | grep -q 'value=latest'; then
+  bad "docker-publish.yml mints a 'latest' tag (never-:latest invariant violated)"
+else
+  ok "docker-publish.yml mints no 'latest' tag (semver + sha only)"
 fi
 if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)|npm install[^@]*opencode[^@]*$' \
     docker-compose.yml docker-compose.prebuilt.yml docker-compose.override.yml.example docker/Dockerfile .env.example Makefile 2>/dev/null | grep -v '^.*#.*latest' | grep -q .; then
@@ -406,9 +498,10 @@ if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)|npm inst
 else
   ok "no :latest pins in docker-compose.yml / prebuilt overrides / Dockerfile / .env.example / Makefile"
 fi
-# Wave 3 P1-9: the prebuilt pin is the semver form :1.0.0 (NOT :v1.0.0 —
-# the publish workflow's metadata-action semver on refs/tags/v* mints
-# 1.0.0/1.0/latest/sha-* and NEVER :v1.0.0, so the old pin was
+# Wave 3 P1-9 (Wave C P0-6: `latest` is no longer minted — the workflow
+# emits 1.0.0/1.0/sha-* only): the prebuilt pin is the semver form
+# :1.0.0 (NOT :v1.0.0 — the publish workflow's metadata-action semver on
+# refs/tags/v* mints 1.0.0/1.0/sha-* and NEVER :v1.0.0, so the old pin was
 # unpublishable by construction). Fail closed on any drift back.
 if grep -q 'ghcr\.io/heretek-ai/heretek-crew:1\.0\.0' docker-compose.prebuilt.yml \
   && ! grep -q 'heretek-crew:v1\.0\.0' docker-compose.prebuilt.yml; then
@@ -578,7 +671,7 @@ section "3b. permission deny enforcement (static)"
 # Wave 3 P1-11: single fleet dialect — no bare allow-all may exist in ANY
 # role (the old programmer-specific probe generalized after the 6 legacy
 # roles were deleted as superseded). §3 already asserts each file's
-# terminal deny tail; this gate additionally scans all 50 for allow-all.
+# terminal deny tail; this gate additionally scans all 51 for allow-all.
 if python3 -c '
 import glob, json, sys
 bad_roles = []
@@ -1042,7 +1135,7 @@ if [[ -f scripts/seed-50-fleet.sh ]]; then
     SEED50_NAMES="$(grep -c '"name"' "${TMP}/seed50.out" || true)"
     SEED50_TOTAL="$(grep -oE 'total fleet budget: [0-9]+ cents' "${TMP}/seed50.out" | grep -oE '[0-9]+' || true)"
     SEED50_CAP="$(grep -oE '\(cap [0-9]+ cents\)' "${TMP}/seed50.out" | grep -oE '[0-9]+' || true)"
-    if [[ "${SEED50_NAMES}" -eq 51 ]] \
+    if [[ "${SEED50_NAMES}" -eq 52 ]] \
       && grep -q 'Heretek Autonomous Fleet' "${TMP}/seed50.out" \
       && grep -q 'opencode_local' "${TMP}/seed50.out" \
       && grep -q 'XDG_CONFIG_HOME' "${TMP}/seed50.out" \
@@ -1051,9 +1144,9 @@ if [[ -f scripts/seed-50-fleet.sh ]]; then
       && grep -q 'total fleet budget' "${TMP}/seed50.out" \
       && [[ -n "${SEED50_TOTAL}" && "${SEED50_TOTAL}" == "${SEED50_CAP}" ]] \
       && ! grep -q 'WARNING' "${TMP}/seed50.err"; then
-      ok "seed-50 dry-run emits 51 payloads (1 company + 50 agents: opencode_local, XDG_CONFIG_HOME, OPENCODE_DISABLE_PROJECT_CONFIG, skipPermissions, budget total ${SEED50_TOTAL} == cap, no WARNING)"
+      ok "seed-50 dry-run emits 52 payloads (1 company + 51 agents: opencode_local, XDG_CONFIG_HOME, OPENCODE_DISABLE_PROJECT_CONFIG, skipPermissions, budget total ${SEED50_TOTAL} == cap, no WARNING)"
     else
-      bad "seed-50 dry-run output unexpected (name keys=${SEED50_NAMES}, want 51 with fleet payload keys + total==cap and no WARNING)"
+      bad "seed-50 dry-run output unexpected (name keys=${SEED50_NAMES}, want 52 with fleet payload keys + total==cap and no WARNING)"
     fi
   else
     bad "seed-50 dry-run exited nonzero: $(head -c 300 "${TMP}/seed50.err")"

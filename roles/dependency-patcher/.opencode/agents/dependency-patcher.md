@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `dependency-patcher` (fleet role 49/50).
+- Role ID: `dependency-patcher` (fleet role 49/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $220.00 USD (22000 cents).
 - Reports to: `tpm-scrum-lead`.

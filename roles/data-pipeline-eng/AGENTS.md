@@ -1,6 +1,6 @@
 # Data Pipeline & ETL Engineer (`data-pipeline-eng`) — Agent Charter
 
-> Department: Data & AI Systems | Fleet role 45/50 | Monthly budget: $280.00 USD (28000 cents)
+> Department: Data & AI Systems | Fleet role 45/51 | Monthly budget: $280.00 USD (28000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/data-pipeline-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/data-pipeline-eng`
 > Source of truth: `roles-catalog/08_data_and_ai_systems.md` (Role 45). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

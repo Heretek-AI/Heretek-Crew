@@ -842,6 +842,19 @@ In `opencode.json`:
 curl -s "http://hound:6080/api/v1/search?q=class.*Handler&files=*.ts&repos=*" | jq .
 ```
 
+#### Tracked Decision — Archived Upstream (Wave C P1-14)
+`etsy/hound` (now `hound-search/hound`) is archived/inactive: no future
+CVE fixes, and the digest pin above freezes dead code. Decision, in
+preference order: **(a)** migrate to a maintained trigram index
+(`livegrep`, `zoekt`) with a pinned image and this service's
+volume/API contract re-verified; **(b)** vendor hound at a fleet tag and
+self-build from the archived source. Until either lands, the exact
+digest pin stays (no floating tag) and hound remains expose-only with a
+loopback `:6080` publish (blast radius: read-only index). Also note the
+host-port overlap: hound `:6080` and `docker-android` `:6080` are in
+mutually-exclusive profiles (`devsec`/`web-research` vs `mobile`) — the
+Makefile co-scheduling guard enforces the separation.
+
 ---
 
 ## 5. Category E: Isolated Execution Sandboxes & Code Runners
@@ -928,6 +941,25 @@ curl -s -X POST http://piston:2000/api/v2/execute \
     "run_timeout": 3000
   }' | jq .
 ```
+
+#### Maintainer Vendoring Plan (Wave C P1-13 — Do Not Float to `:latest`)
+Upstream `engineer-man/piston` publishes ONLY the mutable `latest` tag
+(there is no `v2.0.0` — GHCR 404, verified); the compose pin is therefore
+the digest OF that floating tag. The digest is immutable, but the next
+upstream push silently moves `latest` elsewhere while this file keeps
+pointing at the old bytes — a sustainability hole, not a drift hole.
+The fix (maintainer, needs network + GHCR push rights — NOT runnable
+from a quarantined env):
+1. `git clone https://github.com/engineer-man/piston && cd piston`
+2. Check out a pinned source tag/commit (record the exact ref used).
+3. `docker build -t ghcr.io/heretek-ai/piston:<semver> .` (use the
+   upstream release version as `<semver>`).
+4. `docker push ghcr.io/heretek-ai/piston:<semver>`, then
+   `docker manifest inspect ghcr.io/heretek-ai/piston:<semver>` to read
+   the immutable digest.
+5. Replace the `image:` digest in `docker-compose.sidecars.yml` with the
+   pushed digest and record the source ref + `<semver>` in this section.
+Until then the exact upstream digest pin stays — never `:latest`.
 
 ---
 
@@ -1372,7 +1404,7 @@ To ensure lean resource usage, services are segregated into logical Docker Compo
 | `ai-gateway` | qdrant 1.5/2g, neo4j 1.5/2.5g, litellm 1.0/1.5g | 4.0 | 6.00g | 4 CPU / 8 GB RAM free |
 | `qa-testing` | gotenberg 1.0/1.5g, browserless 2.0/3g, mitmproxy 0.5/512m, semgrep 2.0/3g, piston 2.0/2g, mailpit 0.2/256m, minio 0.5/1g, wiremock 0.5/512m, local-ci-runner 2.0/4g | 10.7 | 15.75g | 12 CPU / 20 GB RAM free (heaviest profile — never with all others) |
 | `observability` | jaeger 0.5/1g | 0.5 | 1.00g | negligible |
-| `mobile` | docker-android 2.0/4g | 2.0 | 4.00g | dedicated test host; never with devsec/web-research (Makefile guard) |
+| `mobile` | docker-android 4.0/8g | 4.0 | 8.00g | dedicated test host with 4+ free CPUs / 8g+ free RAM (Wave C P1-14: 2.0/4g OOMs); never with devsec/web-research (Makefile guard) |
 | `core` | docker-socket-proxy 0.2/128m, minio 0.5/1g, local-ci-runner 2.0/4g | 2.7 | 5.13g | schedules the proxy for `ci` |
 | `ci` | local-ci-runner 2.0/4g | 2.0 | 4.00g | always paired with `core` |
 
@@ -1387,7 +1419,7 @@ doubt, bring up one profile, `docker stats`, then add the next.
 ### 1b. Profile Selection Guard & Version Maintenance Cadence
 
 **Do NOT enable every profile at once (P2-4).** Summed `mem_limit`
-reservations across all sidecar services exceed **~42 GB** — `docker compose`
+reservations across all sidecar services exceed **~46 GB** — `docker compose`
 with all profiles will overcommit or OOM a small host. Select only the
 profiles the current task needs and leave the rest down:
 

@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `mlops-serving-eng` (fleet role 47/50).
+- Role ID: `mlops-serving-eng` (fleet role 47/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $350.00 USD (35000 cents).
 - Reports to: `system-architect`.

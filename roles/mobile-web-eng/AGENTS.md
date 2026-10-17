@@ -1,6 +1,6 @@
 # Mobile Web & Responsive Layout Engineer (`mobile-web-eng`) — Agent Charter
 
-> Department: Web & UI/UX Design | Fleet role 17/50 | Monthly budget: $200.00 USD (20000 cents)
+> Department: Web & UI/UX Design | Fleet role 17/51 | Monthly budget: $200.00 USD (20000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/mobile-web-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/mobile-web-eng`
 > Source of truth: `roles-catalog/03_web_and_ui_ux_design.md` (Role 17). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

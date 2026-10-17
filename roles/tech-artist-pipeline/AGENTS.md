@@ -1,6 +1,6 @@
 # Technical Artist & Asset Pipeline Lead (`tech-artist-pipeline`) — Agent Charter
 
-> Department: Game Development | Fleet role 12/50 | Monthly budget: $200.00 USD (20000 cents)
+> Department: Game Development | Fleet role 12/51 | Monthly budget: $200.00 USD (20000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/tech-artist-pipeline/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/tech-artist-pipeline`
 > Source of truth: `roles-catalog/02_game_development.md` (Role 12). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

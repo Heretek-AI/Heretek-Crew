@@ -229,7 +229,7 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 
 ### 50-Agent Fleet Scaffolding & Seeding Engine
 - `scripts/generate-50-roles.py`: Parser-driven generator creating 50 concrete role directories (`roles/<role-id>/`), 52 procedural `SKILL.md` files, and native `opencode.json` files with strict Least-Privilege permissions.
-- `scripts/seed-50-fleet.sh`: Two-pass idempotent Paperclip seeding script provisioning the complete 50-agent corporate hierarchy, on-demand heartbeats (`wakeOnAssignment: true`, `wakeOnMention: true`), and exact per-role budgets summing to $12,700.00 USD (1,270,000 cents).
+- `scripts/seed-50-fleet.sh`: Two-pass idempotent Paperclip seeding script provisioning the complete 51-agent corporate hierarchy, on-demand heartbeats (`wakeOnAssignment: true`, `wakeOnMention: true`), and exact per-role budgets summing to $13,000.00 USD (1,300,000 cents, Wave C P1-4).
 - `scripts/smoke-test.sh`: Expanded to dynamically discover all 56 roles under `roles/` (50 fleet + 6 bootstrap), verifying valid JSON, fail-closed deny tails, non-empty `AGENTS.md`, and zero `:latest` pins across 216 static assertions.
 
 ### 41-Repository Adversarial Review Decisions
@@ -270,7 +270,7 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 - Uses BuildKit GitHub Actions cache (`type=gha,mode=max`) and least-privilege token permissions (`contents: read`, `packages: write`).
 
 ### Zero-Compilation Prebuilt Docker Compose Stack
-- `docker-compose.prebuilt.yml`: Fail-closed override using `build: !reset null` and pinning `ghcr.io/heretek-ai/heretek-crew:1.0.0` (with `${HERETEK_IMAGE}` fallback). The image is unpublished as of Wave 3 (no tag resolvable; pull requires auth after the maintainer publishes per the release step in the prebuilt header — until then build locally). Enables operators to spin up the entire 50-agent fleet without needing Node.js, pnpm, or source checkouts.
+- `docker-compose.prebuilt.yml`: Fail-closed override using `build: !reset null` and pinning `ghcr.io/heretek-ai/heretek-crew:1.0.0` (with `${HERETEK_IMAGE}` fallback). The image is unpublished as of Wave 3 (no tag resolvable; pull requires auth after the maintainer publishes per the release step in the prebuilt header — until then build locally). Enables operators to spin up the entire 51-agent fleet without needing Node.js, pnpm, or source checkouts.
 - `docker-compose.override.yml.example`: Frictionless template allowing operators to opt into automatic prebuilt discovery for standard `docker compose up -d` invocations.
 - `Makefile`: Added `prebuilt-pull`, `prebuilt-up`, and `prebuilt-config` operational targets.
 - `scripts/smoke-test.sh`: Extended static test suite to 225 assertions verifying prebuilt files, config parsing, and absence of `:latest` tags.
@@ -334,7 +334,7 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 
 ### Tracked Non-Blocking Residuals
 1. **Exact-Count Manifest**: Smoke test currently asserts $\ge 1$ `SKILL.md` per role; consider generating an exact-count manifest in a follow-up.
-2. **Seeder Payload 52**: Seeder currently generates 51 payloads (1 company + 50 agents); `ai-red-teamer` requires a 52nd payload and budget cap bump ($12,700.00 $\rightarrow$ updated cap) upon live deployment.
+2. **Seeder Payload 52 — DONE (Wave C P1-4)**: Seeder now generates 52 payloads (1 company + 51 agents); `ai-red-teamer` promoted with budget cap $12,700.00 $\rightarrow$ $13,000.00 (1,300,000 cents).
 3. **Prefix Enforcer Limits**: Chained command continuations (`garak;payload`) and MCP namespace write bypasses remain tracked defense-in-depth limitations per `AGENTS.md` §4.
 4. **Phase-A Spec Fallback**: `spec-gate.sh` S2 contains a standing Phase-A fallback passing changes while `PROMPT_*.md` and `RESEARCH_*.md` exist; retire/narrow post-Phase A.
 

@@ -11,23 +11,35 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml pull paperclip
 #   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d
 #
-# Release status (Wave 3 P1-9): no image tag is published yet — anonymous
-# `docker manifest inspect` of both :v1.0.0 and :1.0.0 returns
+# Release status (Wave 3 P1-9, Wave C P0-6): no image tag is published yet —
+# anonymous `docker manifest inspect` of both :v1.0.0 and :1.0.0 returns
 # `manifest unknown`, and the repo has no git tags. The pin is :1.0.0
 # (NOT :v1.0.0) because the publish workflow
 # (.github/workflows/docker-publish.yml, docker/metadata-action `semver`
-# on `refs/tags/v*`) mints `1.0.0` / `1.0` / `latest` / `sha-<sha>` from a
-# `v1.0.0` git tag — it NEVER mints a `:v1.0.0` tag, so the old pin was
+# on `refs/tags/v*`) mints `1.0.0` / `1.0` / `sha-<sha>` from a `v1.0.0`
+# git tag — it NEVER mints a `:v1.0.0` tag (and NEVER mints `:latest`
+# per the repo's never-:latest invariant, Wave C P0-6), so the old pin was
 # unpublishable by construction. To publish (maintainer, needs network +
 # push rights — NOT runnable from a quarantined env):
 #   git tag v1.0.0 && git push origin v1.0.0
 # then verify before pulling (fail-closed: no anonymous fallback, no
 # invented digest — the exact tag pin below stays until a published
-# `sha-<sha>` digest is resolvable):
+# `sha-<sha>` digest is resolvable, at which point replace the tag pin
+# with the immutable digest):
 #   echo "$GITHUB_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
 #   docker manifest inspect ghcr.io/heretek-ai/heretek-crew:1.0.0
 # Until the tag is published, build locally (README Option B) instead of
 # pulling — `pull` fails closed with the registry's own error.
+#
+# HERETEK_IMAGE override constraint (Wave C P0-6): the override below
+# accepts ONLY digest-pinned values
+# (HERETEK_IMAGE=ghcr.io/heretek-ai/heretek-crew@sha256:<digest>) or the
+# exact `:1.0.0` release pin. Mutable tags (`:latest`, `:main`, branch
+# SHAs-as-tags) are rejected by operator convention and by the smoke
+# `:latest` gate — a floating prebuilt image silently reintroduces the
+# exact supply-chain drift the digest/tag pins exist to prevent. The
+# default below is the exact release pin; leave it until the published
+# digest is known (see verify step above).
 #
 # With supporting sidecars (e.g. web research profile):
 #   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml -f docker-compose.sidecars.yml --profile web-research up -d

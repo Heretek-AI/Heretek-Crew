@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `load-stress-tester` (fleet role 35/50).
+- Role ID: `load-stress-tester` (fleet role 35/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $260.00 USD (26000 cents).
 - Reports to: `tpm-scrum-lead`.

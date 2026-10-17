@@ -61,7 +61,7 @@ METHODOLOGY & COMPLETION:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `tpm-scrum-lead` (fleet role 03/50).
+- Role ID: `tpm-scrum-lead` (fleet role 03/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $200.00 USD (20000 cents).
 - Reports to: `product-director`.

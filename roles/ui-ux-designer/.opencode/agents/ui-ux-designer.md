@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `ui-ux-designer` (fleet role 13/50).
+- Role ID: `ui-ux-designer` (fleet role 13/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $200.00 USD (20000 cents).
 - Reports to: `tpm-scrum-lead`.

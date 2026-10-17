@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `e2e-browser-qa` (fleet role 33/50).
+- Role ID: `e2e-browser-qa` (fleet role 33/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $280.00 USD (28000 cents).
 - Reports to: `tpm-scrum-lead`.

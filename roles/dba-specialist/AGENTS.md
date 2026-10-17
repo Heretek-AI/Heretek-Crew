@@ -1,6 +1,6 @@
 # Database Administrator (DBA) (`dba-specialist`) — Agent Charter
 
-> Department: Cloud, Platform & Site Reliability | Fleet role 31/50 | Monthly budget: $300.00 USD (30000 cents)
+> Department: Cloud, Platform & Site Reliability | Fleet role 31/51 | Monthly budget: $300.00 USD (30000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/dba-specialist/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/dba-specialist`
 > Source of truth: `roles-catalog/05_cloud_platform_and_sre.md` (Role 31). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

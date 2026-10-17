@@ -1,6 +1,6 @@
 # Engine & Systems Programmer (`engine-systems-eng`) — Agent Charter
 
-> Department: Game Development | Fleet role 09/50 | Monthly budget: $300.00 USD (30000 cents)
+> Department: Game Development | Fleet role 09/51 | Monthly budget: $300.00 USD (30000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/engine-systems-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/engine-systems-eng`
 > Source of truth: `roles-catalog/02_game_development.md` (Role 09). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

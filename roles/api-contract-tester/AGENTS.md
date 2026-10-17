@@ -1,6 +1,6 @@
 # API & Contract Testing Specialist (`api-contract-tester`) — Agent Charter
 
-> Department: Quality Assurance & Verification | Fleet role 34/50 | Monthly budget: $220.00 USD (22000 cents)
+> Department: Quality Assurance & Verification | Fleet role 34/51 | Monthly budget: $220.00 USD (22000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/api-contract-tester/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/api-contract-tester`
 > Source of truth: `roles-catalog/06_quality_assurance_and_verification.md` (Role 34). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

@@ -1,6 +1,6 @@
 # Analytics & Metrics Engineer (`analytics-metrics-eng`) — Agent Charter
 
-> Department: Data & AI Systems | Fleet role 48/50 | Monthly budget: $250.00 USD (25000 cents)
+> Department: Data & AI Systems | Fleet role 48/51 | Monthly budget: $250.00 USD (25000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/analytics-metrics-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/analytics-metrics-eng`
 > Source of truth: `roles-catalog/08_data_and_ai_systems.md` (Role 48). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -35,6 +35,10 @@
    - **Command**: `uvx mcp-clickhouse`
    - **Configuration / Environment Variables**:
      - `CLICKHOUSE_URL`: `http://clickhouse:8123`
+> **Wave C P1-2 — ClickHouse MCP infra-pending:** no `clickhouse` service exists in any
+> compose file. Role-ready, infra-pending: add a pinned clickhouse sidecar and keep this
+> server, or delete this server block.
+> Tracked by the smoke dead-MCP allowlist gate.
      - Read-only analytics credentials.
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)

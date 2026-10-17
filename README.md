@@ -87,6 +87,8 @@ tag is published yet: until `docker manifest inspect
 ghcr.io/heretek-ai/heretek-crew:1.0.0` resolves (after `docker login
 ghcr.io`), use Option B below — `make prebuilt-pull` fails closed with
 the registry's own error rather than falling back to anything unpinned.
+(`HERETEK_IMAGE` override, if used, must be the exact `:1.0.0` pin or a
+digest pin — never `:latest`/floating; see `docker-compose.prebuilt.yml`.)
 
 ```bash
 # 1. Configure secrets
@@ -102,7 +104,7 @@ make prebuilt-up
 #   cp docker-compose.override.yml.example docker-compose.override.yml
 #   docker compose pull paperclip && docker compose up -d
 
-# 3. Seed the 50-agent fleet (the only role set)
+# 3. Seed the 51-agent fleet (the only role set)
 make seed-50
 
 # 4. Verify
@@ -125,7 +127,7 @@ make build
 # 3. Start the stack (postgres + paperclip, UI/API on 127.0.0.1:3100)
 make up
 
-# 4. Seed "Heretek Autonomous Fleet" + the 50-agent fleet (idempotent)
+# 4. Seed "Heretek Autonomous Fleet" + the 51-agent fleet (idempotent)
 make seed-50
 
 # 5. Verify (static checks; live checks run when the stack is up)
@@ -148,8 +150,8 @@ set `PROXY_DOMAIN`), or `docker compose --profile tailscale up -d`
 | `make up` | Start the stack detached |
 | `make down` | Stop the stack (named volumes keep all data) |
 | `make logs` | Follow `paperclip` service logs |
-| `make generate-roles` | Scaffold the 50-agent fleet on disk (`roles/<role-id>/`, idempotent) |
-| `make seed-50` | Seed the 50-agent fleet (safe to re-run; patches org-chart/budget drift) |
+| `make generate-roles` | Scaffold the 51-agent fleet on disk (`roles/<role-id>/`, idempotent) |
+| `make seed-50` | Seed the 51-agent fleet (safe to re-run; patches org-chart/budget drift) |
 | `make backup` | `pg_dump` → `backups/backup-YYYYMMDD-HHMMSS.sql.gz`, keeps newest 14 |
 | `make restore FILE=backups/…` | Confirm-then-restore a dump (`ON_ERROR_STOP=1`, fail-closed) |
 | `make test` | Smoke test: `--check-only` static suite, or full live suite when up |
@@ -176,7 +178,7 @@ Smoke test modes (`scripts/smoke-test.sh --help` documents both):
 
 ## Roles
 
-50 specialist roles ship under `roles/<role-id>/`, each with `AGENTS.md`
+51 specialist roles ship under `roles/<role-id>/`, each with `AGENTS.md`
 (charter, chain of command, delegation triggers) and
 `opencode/opencode.json` (v2-native permissions, skills, MCPs) — the full
 spec lives in `roles-catalog/ROLE_CATALOG_50.md` (see the department table
@@ -185,7 +187,7 @@ in a terminal `shell * deny` tail. Only `exec-director` (30 min) and
 `tpm-scrum-lead` (1 h) have timer heartbeats; everyone else wakes on
 assignment and on mention. Per-role monthly budgets are exact integer
 cents in `scripts/seed-50-fleet.sh` (`role_budget_cents()`), summing to
-the $12,700.00 fleet cap.
+the $13,000.00 fleet cap (51 roles incl. `ai-red-teamer`, promoted Wave C P1-4).
 
 Wave 3 P1-11 supersession map (the 6 legacy prototype roles were deleted;
 use the fleet role instead):
@@ -239,12 +241,12 @@ Three levels, cheapest first:
    (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …); they are injected at runtime,
    never baked into the image.
 
-## 50-agent fleet (`roles-catalog/` → `roles/` → Paperclip)
+## 51-agent fleet (`roles-catalog/` → `roles/` → Paperclip)
 
-The repo ships a full **50-specialist enterprise fleet** specified in
+The repo ships a full **51-specialist enterprise fleet** specified in
 `roles-catalog/ROLE_CATALOG_50.md` (plus department modules `01_*.md` …
 `09_*.md`) and scaffolded on disk under `roles/<role-id>/` — this IS the
-role set (`ls roles/ | wc -l` = 50; the 6-role prototype was removed in
+role set (`ls roles/ | wc -l` = 51; the 6-role prototype was removed in
 Wave 3 P1-11, see the supersession map above). Each fleet role carries
 the same four artifacts: `AGENTS.md`, `opencode/opencode.json`,
 `.opencode/agents/<role-id>.md`, and skill packs under
@@ -267,32 +269,33 @@ the same four artifacts: `AGENTS.md`, `opencode/opencode.json`,
 Notable specialist wiring (see the catalog for the full spec):
 `android-mobile-spec` drives `mobile-mcp` (`@mobile-next/mobile-mcp@0.1.2`)
 against a `docker-android` emulator over ADB (`127.0.0.1:5555`);
-`binary-reverse-eng` pairs `morluto/rea` + `r2mcp` (Radare2) with the
-`opencode-rea` plugin for evidence-based decompilation.
+`binary-reverse-eng` pairs `r2mcp` (Radare2) with filesystem + shell tooling
+for evidence-based decompilation (the `morluto/rea` MCP and `opencode-rea`
+plugin were removed Wave C P0-5/P1-12 — both unpublished on npm).
 
 ### Seeding the fleet
 
 ```bash
-# 1. Scaffold (or re-scaffold) all 50 role directories from the catalog
+# 1. Scaffold (or re-scaffold) all 51 role directories from the catalog
 make generate-roles            # python3 scripts/generate-50-roles.py (idempotent)
 
 # 2. Preview exactly what would be POSTed — no network calls
-bash scripts/seed-50-fleet.sh --dry-run   # 1 company + 50 agent payloads
+bash scripts/seed-50-fleet.sh --dry-run   # 1 company + 51 agent payloads
 
-# 3. Seed "Heretek Autonomous Fleet" + 50 agents into Paperclip (idempotent)
+# 3. Seed "Heretek Autonomous Fleet" + 51 agents into Paperclip (idempotent)
 make seed-50                   # bash scripts/seed-50-fleet.sh
 ```
 
-Model overrides: `MODEL_DEFAULT=…` re-targets all 50 agents,
+Model overrides: `MODEL_DEFAULT=…` re-targets all 51 agents,
 `MODEL_COORDINATOR=…` re-targets the three coordination roles
 (`exec-director`, `tpm-scrum-lead`, `system-architect`); heartbeat
 intervals via `TIMER_EXEC_SEC` / `TIMER_TPM_SEC` (defaults 1800 / 3600).
 
-**Budget note — reconciled (Wave 3 P1-1).** The catalog's documented
-fleet cap is **$12,700.00 USD** (1,270,000 cents), exactly the sum of the
+**Budget note — reconciled (Wave 3 P1-1, Wave C P1-4).** The catalog's documented
+fleet cap is **$13,000.00 USD** (1,300,000 cents), exactly the sum of the
 verbatim per-role table values (verified: `python3` re-sum of both the
-catalog `$` column and the seeder's per-role cents table = 1,270,000¢,
-n=50). The seeder uses the per-role catalog values verbatim, prints the
+catalog `$` column and the seeder's per-role cents table = 1,300,000¢,
+n=51 incl. `ai-red-teamer` @ $300 promoted from pending). The seeder uses the per-role catalog values verbatim, prints the
 computed total, and emits a `WARNING` only on drift (e.g. via
 `FLEET_BUDGET_CAP_CENTS` env override) — it never invents budgets to force
 a total. The smoke test asserts total == cap with no `WARNING`, so any
@@ -307,7 +310,7 @@ future catalog/seed drift stays visible.
   OpenCode v2. No image rebuild is needed to change a role: edit
   `roles/<role-id>/`, re-run `make generate-roles` if the change belongs
   in the generator, and re-seed.
-- **On-demand wake** — 48 of the 50 roles are seeded with
+- **On-demand wake** — 49 of the 51 roles are seeded with
   `heartbeat.enabled: false, intervalSec: 0, wakeOnAssignment: true,
   wakeOnMention: true`: they consume no idle tokens and wake only when a
   ticket is assigned or they are `@mentioned`. Only `exec-director`
@@ -389,7 +392,7 @@ Makefile                  build/up/down/logs/seed/backup/restore/test + prebuilt
 scripts/
   opencode-shim.sh        v1→v2 CLI translation (--dir/--variant/--auto)
   generate-50-roles.py    50-role disk scaffolding generator (roles/<role-id>/)
-  seed-50-fleet.sh        idempotent 50-agent fleet seeder (supports --dry-run)
+  seed-50-fleet.sh        idempotent 51-agent fleet seeder (supports --dry-run)
   spec-gate.sh            spec-driven development gate (PRD/ADR/task deltas in CI)
   backup-db.sh            timestamped pg_dump + retention
   restore-db.sh           confirmed, fail-closed restore

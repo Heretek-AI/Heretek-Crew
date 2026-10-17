@@ -1,6 +1,6 @@
 # Load & Performance Stress Tester (`load-stress-tester`) — Agent Charter
 
-> Department: Quality Assurance & Verification | Fleet role 35/50 | Monthly budget: $260.00 USD (26000 cents)
+> Department: Quality Assurance & Verification | Fleet role 35/51 | Monthly budget: $260.00 USD (26000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/load-stress-tester/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/load-stress-tester`
 > Source of truth: `roles-catalog/06_quality_assurance_and_verification.md` (Role 35). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -34,6 +34,11 @@
    - **Transport**: `stdio`
    - **Command**: `uvx k6-mcp-server`
    - **Configuration / Environment Variables**: None.
+> **Wave C P1-2 — k6 MCP infra-pending:** no `k6` service exists in any compose file
+> (k6 runs as a CLI load injector, not a persistent sidecar). Role-ready, infra-pending:
+> the `k6` server block stays for operators who provide k6 locally; remove it if the
+> fleet standardizes on a pinned k6 sidecar.
+> Tracked by the smoke dead-MCP allowlist gate.
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`

@@ -1,6 +1,6 @@
 # C++ Systems & Low-Level Engineer (`cpp-lowlevel-eng`) — Agent Charter
 
-> Department: Specialized Language Engineers | Fleet role 23/50 | Monthly budget: $350.00 USD (35000 cents)
+> Department: Specialized Language Engineers | Fleet role 23/51 | Monthly budget: $350.00 USD (35000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/cpp-lowlevel-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/cpp-lowlevel-eng`
 > Source of truth: `roles-catalog/04_specialized_language_engineers.md` (Role 23). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

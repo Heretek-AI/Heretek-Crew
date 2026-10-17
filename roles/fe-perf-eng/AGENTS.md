@@ -1,6 +1,6 @@
 # Frontend Performance Engineer (`fe-perf-eng`) — Agent Charter
 
-> Department: Web & UI/UX Design | Fleet role 16/50 | Monthly budget: $220.00 USD (22000 cents)
+> Department: Web & UI/UX Design | Fleet role 16/51 | Monthly budget: $220.00 USD (22000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/fe-perf-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/fe-perf-eng`
 > Source of truth: `roles-catalog/03_web_and_ui_ux_design.md` (Role 16). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

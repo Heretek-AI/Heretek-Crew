@@ -1,6 +1,6 @@
 # Cache & Streaming Systems Engineer (`cache-streaming-eng`) — Agent Charter
 
-> Department: Cloud, Platform & Site Reliability | Fleet role 32/50 | Monthly budget: $250.00 USD (25000 cents)
+> Department: Cloud, Platform & Site Reliability | Fleet role 32/51 | Monthly budget: $250.00 USD (25000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/cache-streaming-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/cache-streaming-eng`
 > Source of truth: `roles-catalog/05_cloud_platform_and_sre.md` (Role 32). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -34,11 +34,21 @@
    - **Transport**: `stdio`
    - **Command**: `uvx mcp-server-redis`
    - **Configuration / Environment Variables**: `REDIS_URL=redis://redis:6379`.
+> **Wave C rework — Redis MCP infra-pending:** no `redis` service exists in any compose
+> file (only `searxng-redis` and `firecrawl-redis` sidecars, which this URL does not
+> address). Role-ready, infra-pending: add a pinned redis sidecar/service named
+> `redis` and keep this server, or delete this server block.
+> Tracked by the smoke dead-MCP allowlist gate.
 2. **Kafka MCP Server**:
    - **Package / Repo**: `kafka-mcp-server` (verified GitHub community)
    - **Transport**: `stdio`
    - **Command**: `uvx kafka-mcp-server`
    - **Configuration / Environment Variables**: `KAFKA_BROKERS=kafka:9092`.
+> **Wave C P1-2 — Kafka MCP infra-pending:** no `kafka` service exists in any compose
+> file, and `kafka-mcp-server` is not resolvable on PyPI either (pip 404, verified
+> 2026-10-17). Role-ready, infra-pending: add a pinned kafka sidecar + resolvable MCP
+> package and keep this server, or delete this server block.
+> Tracked by the smoke dead-MCP allowlist gate.
 
 ## 5. Skills
 

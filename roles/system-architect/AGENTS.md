@@ -1,6 +1,6 @@
 # System Architect (`system-architect`) — Agent Charter
 
-> Department: Executive & Product Management | Fleet role 04/50 | Monthly budget: $250.00 USD (25000 cents)
+> Department: Executive & Product Management | Fleet role 04/51 | Monthly budget: $250.00 USD (25000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/system-architect/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/system-architect`
 > Source of truth: `roles-catalog/01_executive_and_product_management.md` (Role 04). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

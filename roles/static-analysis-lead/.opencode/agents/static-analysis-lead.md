@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `static-analysis-lead` (fleet role 37/50).
+- Role ID: `static-analysis-lead` (fleet role 37/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $200.00 USD (20000 cents).
 - Reports to: `tpm-scrum-lead`.

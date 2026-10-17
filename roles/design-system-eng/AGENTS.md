@@ -1,6 +1,6 @@
 # Design System Engineer (`design-system-eng`) — Agent Charter
 
-> Department: Web & UI/UX Design | Fleet role 14/50 | Monthly budget: $250.00 USD (25000 cents)
+> Department: Web & UI/UX Design | Fleet role 14/51 | Monthly budget: $250.00 USD (25000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/design-system-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/design-system-eng`
 > Source of truth: `roles-catalog/03_web_and_ui_ux_design.md` (Role 14). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

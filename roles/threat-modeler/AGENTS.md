@@ -1,6 +1,6 @@
 # Threat Modeling & Hardening Engineer (`threat-modeler`) — Agent Charter
 
-> Department: Defensive Security, Binary Analysis & Forensics | Fleet role 43/50 | Monthly budget: $220.00 USD (22000 cents)
+> Department: Defensive Security, Binary Analysis & Forensics | Fleet role 43/51 | Monthly budget: $220.00 USD (22000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/threat-modeler/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/threat-modeler`
 > Source of truth: `roles-catalog/07_defensive_security_and_forensics.md` (Role 43). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

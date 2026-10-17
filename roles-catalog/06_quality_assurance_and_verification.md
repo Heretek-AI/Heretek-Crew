@@ -266,6 +266,10 @@ METHODOLOGY & HANDOFF:
    - **Transport**: `stdio`
    - **Command**: `uvx k6-mcp-server`
    - **Configuration / Environment Variables**: None.
+> **Wave C P1-2 — k6 MCP infra-pending:** no `k6` service exists in any compose file
+> (k6 runs as a CLI load injector, not a persistent sidecar). Role-ready, infra-pending:
+> the `k6` server block stays for operators who provide k6 locally; remove it if the
+> fleet standardizes on a pinned k6 sidecar. Tracked by the smoke dead-MCP allowlist gate.
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`

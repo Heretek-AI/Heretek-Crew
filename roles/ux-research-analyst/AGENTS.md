@@ -1,6 +1,6 @@
 # User Research & Feedback Analyst (`ux-research-analyst`) — Agent Charter
 
-> Department: Executive & Product Management | Fleet role 06/50 | Monthly budget: $120.00 USD (12000 cents)
+> Department: Executive & Product Management | Fleet role 06/51 | Monthly budget: $120.00 USD (12000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/ux-research-analyst/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/ux-research-analyst`
 > Source of truth: `roles-catalog/01_executive_and_product_management.md` (Role 06). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

@@ -1,6 +1,6 @@
 # Code Style & Static Analysis Lead (`static-analysis-lead`) — Agent Charter
 
-> Department: Quality Assurance & Verification | Fleet role 37/50 | Monthly budget: $200.00 USD (20000 cents)
+> Department: Quality Assurance & Verification | Fleet role 37/51 | Monthly budget: $200.00 USD (20000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/static-analysis-lead/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/static-analysis-lead`
 > Source of truth: `roles-catalog/06_quality_assurance_and_verification.md` (Role 37). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 

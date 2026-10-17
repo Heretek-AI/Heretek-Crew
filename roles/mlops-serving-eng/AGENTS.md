@@ -1,6 +1,6 @@
 # MLOps & Model Serving Engineer (`mlops-serving-eng`) — Agent Charter
 
-> Department: Data & AI Systems | Fleet role 47/50 | Monthly budget: $350.00 USD (35000 cents)
+> Department: Data & AI Systems | Fleet role 47/51 | Monthly budget: $350.00 USD (35000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/mlops-serving-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/mlops-serving-eng`
 > Source of truth: `roles-catalog/08_data_and_ai_systems.md` (Role 47). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -34,11 +34,19 @@
    - **Transport**: `stdio`
    - **Command**: `npx -y ollama-mcp`
    - **Configuration / Environment Variables**: `OLLAMA_HOST=http://ollama:11434`.
+> **Wave C P1-2 — Ollama MCP infra-pending:** no `ollama` service exists in any
+> compose file. Role-ready, infra-pending: add a pinned ollama sidecar and keep this
+> server, or delete this server block.
+> Tracked by the smoke dead-MCP allowlist gate.
 2. **Docker MCP Server**:
    - **Package / Repo**: `docker-mcp` (PyPI verified v0.2.0)
    - **Transport**: `stdio`
    - **Command**: `uvx docker-mcp`
    - **Configuration / Environment Variables**: None.
+> **Wave C P1-2 — Docker MCP infra-pending:** no `DOCKER_HOST` is wired into this
+> server block and no compose sidecar backs it. Role-ready, infra-pending (same terms
+> as k8s-orchestrator).
+> Tracked by the smoke dead-MCP allowlist gate.
    - **Wave 2 P0-2 containment:** list/get-logs reads only — container
      creation and compose deployment are denied (`docker_create*`,
      `docker_deploy*`, `docker_*` tail in `opencode.json`).

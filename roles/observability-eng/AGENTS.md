@@ -1,6 +1,6 @@
 # Observability & Telemetry Engineer (`observability-eng`) — Agent Charter
 
-> Department: Cloud, Platform & Site Reliability | Fleet role 30/50 | Monthly budget: $250.00 USD (25000 cents)
+> Department: Cloud, Platform & Site Reliability | Fleet role 30/51 | Monthly budget: $250.00 USD (25000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/observability-eng/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/observability-eng`
 > Source of truth: `roles-catalog/05_cloud_platform_and_sre.md` (Role 30). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
@@ -34,6 +34,10 @@
    - **Transport**: `stdio`
    - **Command**: `uvx prometheus-mcp-server`
    - **Configuration / Environment Variables**: `PROMETHEUS_URL=http://prometheus:9090`.
+> **Wave C P1-2 — Prometheus MCP infra-pending:** no `prometheus` service exists in any
+> compose file. Role-ready, infra-pending: add a pinned prometheus sidecar and keep this
+> server, or delete this server block.
+> Tracked by the smoke dead-MCP allowlist gate.
 2. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`

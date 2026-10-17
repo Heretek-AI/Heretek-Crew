@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `a11y-specialist` (fleet role 15/50).
+- Role ID: `a11y-specialist` (fleet role 15/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $180.00 USD (18000 cents).
 - Reports to: `tpm-scrum-lead`.

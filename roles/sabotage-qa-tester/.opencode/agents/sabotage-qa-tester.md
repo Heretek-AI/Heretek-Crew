@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `sabotage-qa-tester` (fleet role 36/50).
+- Role ID: `sabotage-qa-tester` (fleet role 36/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $250.00 USD (25000 cents).
 - Reports to: `tpm-scrum-lead`.

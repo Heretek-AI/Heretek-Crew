@@ -22,6 +22,10 @@
 #   @heretek-ai/opencode-harness .. 1.0.7
 #   opencode-mem ........ 2.31.3 (memory plugin referenced by fleet roles;
 #                         provides persistent Turso/libSQL-backed memory)
+#   @prevalentware/opencode-goal-plugin .. 0.1.64 (goal-tracking plugin
+#                         referenced by exec-director; npm dist-tag latest
+#                         verified 2026-10-17 — Wave C P0-5: installed here so
+#                         it resolves from the image, not ambient cache luck)
 #   caddy ............... 2.11.7-alpine (see docker-compose.yml)
 #   tailscale ........... v1.104.1 (see docker-compose.yml)
 
@@ -34,7 +38,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV OPENCODE_CLI_VERSION=2.0.32 \
     OPENCODE_CLIENT_VERSION=2.0.32 \
     OPENCODE_HARNESS_VERSION=1.0.7 \
-    OPENCODE_MEM_VERSION=2.31.3
+    OPENCODE_MEM_VERSION=2.31.3 \
+    OPENCODE_GOAL_PLUGIN_VERSION=0.1.64
 
 # Everything in this layer needs root; the runtime user is dropped to `node`
 # by the inherited official entrypoint (see USER note below).
@@ -56,8 +61,9 @@ RUN set -eux; \
         "@opencode/cli@${OPENCODE_CLI_VERSION}" \
         "@opencode/client@${OPENCODE_CLIENT_VERSION}" \
         "@heretek-ai/opencode-harness@${OPENCODE_HARNESS_VERSION}" \
-        "opencode-mem@${OPENCODE_MEM_VERSION}"; \
-    npm ls --global --depth=0 "@opencode/cli" "@opencode/client" "@heretek-ai/opencode-harness" "opencode-mem"; \
+        "opencode-mem@${OPENCODE_MEM_VERSION}" \
+        "@prevalentware/opencode-goal-plugin@${OPENCODE_GOAL_PLUGIN_VERSION}"; \
+    npm ls --global --depth=0 "@opencode/cli" "@opencode/client" "@heretek-ai/opencode-harness" "opencode-mem" "@prevalentware/opencode-goal-plugin"; \
     test -x /usr/local/bin/opencode || { echo "ERROR: /usr/local/bin/opencode missing after npm install" >&2; exit 1; }; \
     case "$(readlink /usr/local/bin/opencode)" in \
         *@opencode/cli*) ;; \

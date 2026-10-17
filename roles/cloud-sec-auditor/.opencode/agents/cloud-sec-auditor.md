@@ -24,7 +24,7 @@ METHODOLOGY & HANDOFF:
 
 ## Runtime Binding (Heretek-Crew Fleet)
 
-- Role ID: `cloud-sec-auditor` (fleet role 40/50).
+- Role ID: `cloud-sec-auditor` (fleet role 40/51).
 - Model: `anthropic/claude-sonnet-4-5`.
 - Monthly budget cap: $250.00 USD (25000 cents).
 - Reports to: `system-architect`.

@@ -1,6 +1,6 @@
 # Technical Product Manager / Scrum Lead (`tpm-scrum-lead`) — Agent Charter
 
-> Department: Executive & Product Management | Fleet role 03/50 | Monthly budget: $200.00 USD (20000 cents)
+> Department: Executive & Product Management | Fleet role 03/51 | Monthly budget: $200.00 USD (20000 cents)
 > Model: anthropic/claude-sonnet-4-5 | Runtime config: `/roles/tpm-scrum-lead/opencode/opencode.json` via `XDG_CONFIG_HOME=/roles/tpm-scrum-lead`
 > Source of truth: `roles-catalog/01_executive_and_product_management.md` (Role 03). Fleet wake model: on-demand via Paperclip assignment and @mention; recurring heartbeats exist only for `exec-director` (1800s) and `tpm-scrum-lead` (3600s).
 
