@@ -93,20 +93,25 @@ assert_args "passthrough: auth subcommand" "auth" "login"
 RUN_ARGS=(mcp --dir /tmp --variant high)
 assert_args "passthrough: flags untouched outside run" "mcp" "--dir" "/tmp" "--variant" "high"
 
-# 3. Strip --dir (space form).
+# 3. Space-form --dir with a following non-flag token (Wave B P1-9): the
+# token is AMBIGUOUS (path vs prompt) and is PRESERVED — only the flag is
+# dropped. A bogus path then errors loudly in the real binary instead of
+# the prompt being silently swallowed (Claim 2.1).
 RUN_ARGS=(run --format json --dir /tmp prompt)
-assert_args "strip: --dir <path>" "run" "--auto" "--format" "json" "prompt"
+assert_args "strip: --dir flag dropped, following token preserved (P1-9)" \
+    "run" "--auto" "--format" "json" "/tmp" "prompt"
 
 # 4. Strip --dir (equals form).
 RUN_ARGS=(run --format json --dir=/tmp prompt)
 assert_args "strip: --dir=<path>" "run" "--auto" "--format" "json" "prompt"
 
-# 5. Acceptance example, exact translation:
+# 5. Acceptance example, exact translation (Wave B P1-9: the ambiguous
+# --dir value /tmp is preserved in place, not swallowed):
 #    run --format json --dir /tmp --model opencode/gemini-3.8-flash --variant high "prompt"
-#    -> run --format json --model opencode/gemini-3.8-flash#high --auto "prompt"
+#    -> run --format json /tmp --model opencode/gemini-3.8-flash#high --auto "prompt"
 RUN_ARGS=(run --format json --dir /tmp --model opencode/gemini-3.8-flash --variant high prompt)
 assert_args "acceptance: variant merge + auto injection (exact order)" \
-    "run" "--format" "json" "--model" "opencode/gemini-3.8-flash#high" "--auto" "prompt"
+    "run" "--format" "json" "/tmp" "--model" "opencode/gemini-3.8-flash#high" "--auto" "prompt"
 
 # 6. Order independence: --variant before --model.
 RUN_ARGS=(run --variant high --model opencode/gemini-3.8-flash prompt)
@@ -148,11 +153,18 @@ RUN_ARGS=(run --model mymodel --variant= prompt)
 assert_args "merge: empty --variant= dropped, model untouched" \
     "run" "--model" "mymodel" "--auto" "prompt"
 
-# 8f. Duplicate --model: the LAST occurrence is the effective one and takes
-# the merge; the earlier flag passes through for the real binary to judge.
+# 8f. Duplicate --model: the FIRST occurrence is the effective one (the real
+# binary is first-wins — live-probed on v2.0.30 with two bogus providers,
+# space and equals forms) and takes the merge; later occurrences pass
+# through for the real binary to judge.
 RUN_ARGS=(run --model aaa --model bbb --variant high prompt)
-assert_args "merge: duplicate --model merges into last" \
-    "run" "--model" "aaa" "--model" "bbb#high" "--auto" "prompt"
+assert_args "merge: duplicate --model merges into first (first-wins)" \
+    "run" "--model" "aaa#high" "--auto" "--model" "bbb" "prompt"
+
+# 8f2. Duplicate --model in equals form: likewise first-wins.
+RUN_ARGS=(run --model=aaa --model=bbb --variant=high prompt)
+assert_args "merge: duplicate --model= merges into first (first-wins)" \
+    "run" "--model=aaa#high" "--auto" "--model=bbb" "prompt"
 
 # 8g. Mid-argv --dir with no value (next token is a flag): dropped on its
 # own, the following flag must survive.
@@ -202,6 +214,41 @@ assert_args "strip: bare trailing --dir" \
 RUN_ARGS=(run --dir --format json)
 assert_args "strip: --dir does not swallow next flag" \
     "run" "--auto" "--format" "json"
+
+# 15a0. Wave B P1-9: valueless --dir followed by a bare word is AMBIGUOUS
+# (path vs prompt — indistinguishable here). Fail closed toward prompt
+# preservation: drop ONLY the flag, keep the token. A bogus path then
+# errors loudly in the real binary; swallowing it would run prompt-less
+# with exit 0 (silent prompt loss).
+RUN_ARGS=(run --model m --dir prompt)
+assert_args "strip: ambiguous --dir preserves following token (P1-9)" \
+    "run" "--model" "m" "--auto" "prompt"
+
+# 15a1. Wave B P2-2b: empty-string --dir value is consumed and dropped —
+# no stray "" may leak into the positionals.
+RUN_ARGS=(run --model m --dir "" prompt)
+assert_args "strip: empty --dir value consumed, no stray positional (P2-2b)" \
+    "run" "--model" "m" "--auto" "prompt"
+
+# 15a2. Wave B P2-2b: empty-string --variant value is consumed and dropped —
+# the model is left untouched and no stray "" is forwarded.
+RUN_ARGS=(run --model mymodel --variant '' prompt)
+assert_args "merge: empty --variant value consumed, model untouched (P2-2b)" \
+    "run" "--model" "mymodel" "--auto" "prompt"
+
+# 15a3. Wave B P2-2a: attached short -mmodel is NOT parsed as -m + value —
+# it passes through untouched (the real binary rejects it with exit 1
+# "Missing value for flag --model", a loud fail-closed error), and the
+# variant is dropped since there is no --model to merge into.
+RUN_ARGS=(run -mmodel --variant high prompt)
+assert_args "passthrough: attached -mmodel untouched, variant dropped (P2-2a)" \
+    "run" "--auto" "-mmodel" "prompt"
+
+# 15a4. Wave B P2-2b: empty-string --model value is consumed (no stray "")
+# and the bare flag passes through so the real binary reports the error.
+RUN_ARGS=(run --model "" prompt)
+assert_args "passthrough: empty --model value consumed, bare flag kept (P2-2b)" \
+    "run" "--auto" "--model" "prompt"
 
 # 15a. Bare `--` ends rewriting: post--- tokens pass through byte-for-byte.
 RUN_ARGS=(run --model m -- --dir /tmp --variant high)

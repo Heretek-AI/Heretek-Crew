@@ -103,7 +103,76 @@ jobs:
           docker run --rm heretek-crew:verify tini --version
           docker run --rm heretek-crew:verify rg --version
           docker run --rm heretek-crew:verify python3 --version
+          # 5. Wave B P1-11 shim translation gate: fixture argv through
+          # /usr/local/bin/opencode must arrive at opencode-bin merged
+          # (--model#variant) with exactly one --auto and no --dir leak.
+          # A recorder stands in for opencode-bin via OPENCODE_REAL_BIN
+          # (honored by the shim); no model call is made.
+          echo "Running shim translation gate (fixture argv -> opencode-bin)..."
+          docker run --rm --entrypoint /bin/sh heretek-crew:verify -c '
+            set -euo pipefail
+            printf "%s\n" "#!/bin/sh" "printf \"%s\\n\" \"\$@\" > /tmp/shim-args" > /tmp/record-bin.sh
+            chmod +x /tmp/record-bin.sh
+            OPENCODE_REAL_BIN=/tmp/record-bin.sh /usr/local/bin/opencode run --format json --dir /tmp/ws --model opencode/gemini-3.8-flash --variant high "gate probe"
+            grep -qx -- "--auto" /tmp/shim-args
+            test "$(grep -c -- "--auto" /tmp/shim-args)" -eq 1
+            grep -qx "opencode/gemini-3.8-flash#high" /tmp/shim-args
+            if grep -qx -- "--dir" /tmp/shim-args; then echo "gate FAIL: shim leaked --dir" >&2; exit 1; fi
+            echo "shim translation gate PASSED"
+          '
+          # 6. Wave B P1-11 harness plugin-load gate: the pinned harness must
+          # initialize with an empty-string directory (the AUDIT P0-1
+          # fail-closed rootDir kill) instead of throwing. Sequencing note:
+          # this gate FAILs until the upstream harness fix lands and
+          # docker/Dockerfile bumps past the affected version — that failure
+          # is the gate working, not gate breakage. Re-pin the export lookup
+          # below when the harness module map changes.
+          echo "Running harness plugin-load gate..."
+          docker run --rm --entrypoint /bin/sh heretek-crew:verify -c '
+            set -euo pipefail
+            export HARNESS_MOD="$(npm root -g)/@heretek-ai/opencode-harness/dist/index.js"
+            test -f "${HARNESS_MOD}" || { echo "gate FAIL: harness dist missing at ${HARNESS_MOD}" >&2; exit 1; }
+            cat > /tmp/harness-gate.cjs <<NODE_EOF
+          const h = require(process.env.HARNESS_MOD);
+          const setup = h.setupOpenCodeV2Harness || (h.default && h.default.setup);
+          if (typeof setup !== "function") { console.error("gate FAIL: harness setup export not found; re-pin gate to the bumped harness"); process.exit(1); }
+          try { setup({ directory: "" }); }
+          catch (e) { console.error("gate FAIL: harness Dies on empty-string directory: " + (e && e.message)); process.exit(1); }
+          console.log("harness plugin-load gate PASSED");
+          NODE_EOF
+            node /tmp/harness-gate.cjs
+          '
           echo "Native image verification PASSED."
+
+      - name: Pre-publish arm64 Smoke (QEMU-emulated, before push)
+        run: |
+          set -euo pipefail
+          # Wave B P1-11 (Beta P2-12): the push claims linux/arm64, so arm64
+          # is smoked BEFORE the push step below. QEMU is set up above, which
+          # makes this feasible; if emulation is ever unavailable this step
+          # fails closed (no silent untested-arch push) — do not delete it,
+          # fix the runner instead.
+          echo "Building linux/arm64 verification image (QEMU-emulated)..."
+          BASE_IMG="${{ inputs.paperclip_base || 'ghcr.io/paperclipai/paperclip:sha-73659c6' }}"
+          docker buildx build \
+            --platform linux/arm64 \
+            --build-arg PAPERCLIP_BASE_IMAGE="${BASE_IMG}" \
+            -f docker/Dockerfile \
+            -t heretek-crew:verify-arm64 \
+            --load .
+          echo "Running arm64 smoke assertions..."
+          docker run --rm --platform linux/arm64 heretek-crew:verify-arm64 /usr/local/bin/opencode --version
+          docker run --rm --platform linux/arm64 heretek-crew:verify-arm64 /usr/local/bin/opencode-bin --version
+          docker run --rm --platform linux/arm64 --entrypoint /bin/sh heretek-crew:verify-arm64 -c '
+            set -euo pipefail
+            printf "%s\n" "#!/bin/sh" "printf \"%s\\n\" \"\$@\" > /tmp/shim-args" > /tmp/record-bin.sh
+            chmod +x /tmp/record-bin.sh
+            OPENCODE_REAL_BIN=/tmp/record-bin.sh /usr/local/bin/opencode run --model opencode/gemini-3.8-flash --variant high "arm64 probe"
+            grep -qx "opencode/gemini-3.8-flash#high" /tmp/shim-args
+            grep -qx -- "--auto" /tmp/shim-args
+            echo "arm64 shim smoke PASSED"
+          '
+          echo "arm64 smoke PASSED."
 
       - name: Build and Push Multi-Arch Image
         uses: docker/build-push-action@v6

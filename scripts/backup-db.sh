@@ -97,11 +97,18 @@ else
   OUTFILE="${BACKUP_DIR}/backup-${STAMP}.sql.gz"
   ENCRYPT="false"
 fi
-# Same-second rerun guard (P2-2): never silently overwrite. First collision
-# gets a -$RANDOM suffix (still timestamped, still sortable); a second
-# collision aborts fail-closed instead of clobbering an existing dump.
+# Same-second rerun guard (P2-2, Wave B P1-10): never silently overwrite.
+# First collision gets a -$RANDOM suffix (still timestamped, still sortable)
+# AND keeps the .age suffix when encrypted — an age-encrypted dump with a
+# plaintext .sql.gz name would be routed by restore-db.sh to gunzip and fail
+# ("not in gzip format"), i.e. unrestorable by the documented command. A
+# second collision aborts fail-closed instead of clobbering an existing dump.
 if [[ -e "${OUTFILE}" ]]; then
-  OUTFILE="${BACKUP_DIR}/backup-${STAMP}-${RANDOM}.sql.gz"
+  if [[ "${ENCRYPT}" == "true" ]]; then
+    OUTFILE="${BACKUP_DIR}/backup-${STAMP}-${RANDOM}.sql.gz.age"
+  else
+    OUTFILE="${BACKUP_DIR}/backup-${STAMP}-${RANDOM}.sql.gz"
+  fi
 fi
 if [[ -e "${OUTFILE}" ]]; then
   echo "error: refusing to overwrite existing dump ${OUTFILE} (fail-closed)" >&2

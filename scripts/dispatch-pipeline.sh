@@ -2,21 +2,26 @@
 #
 # scripts/dispatch-pipeline.sh — Worktree Provisioner + Pipeline Tracer for Heretek-Crew.
 #
-# SCOPE (Wave 4 P2-2 header correction): despite the historical
-# "Orchestrator" name, this script does NOT dispatch agent work to Paperclip
-# (phases 1/2/4/5 only log what a human should assign; there are no
-# Paperclip/harness API calls here). What it REALLY does:
-#   - in --dry-run: trace all 6 phases and print the payloads (a planning aid);
-#   - in execute mode: provision ONE isolated git worktree + task_plan.md
-#     (phase 3), then stop fail-closed at phase 6 (no auto-merge).
-# Call it a provisioner/tracer, not an end-to-end factory relay.
+# SCOPE (Wave B P0-4 re-scope): despite the historical "pipeline" name, this
+# script is a provisioner/tracer, NOT an end-to-end dispatcher:
+#   - it does NOT call the Paperclip API (no curl, no PAPERCLIP_URL, no
+#     /api/ — there is deliberately no ticket-transition code here, so it
+#     does NOT perform todo->in_progress->in_review->done transitions);
+#   - in --dry-run: it traces all 6 phases and prints the payloads (a
+#     planning aid for MANUAL assignment in Paperclip);
+#   - in execute mode: it provisions ONE isolated git worktree + task_plan.md
+#     (phase 3) and exits 0. Phases 1/2/4/5 describe MANUAL steps a human
+#     performs in Paperclip; phase 6 requires an explicit MANUAL merge
+#     (no auto-merge is ever performed — fail-closed).
+# Do not cite this script as executing agent work, assigning tickets, or
+# changing ticket state: it provisions the worktree and stops.
 #
-# Automates the end-to-end autonomous factory relay:
-#   1. PRD: Product Director generates product requirements and user stories.
-#   2. ARCH: System Architect generates ADR and interface contracts.
-#   3. DECOMPOSE: TPM / Scrum Lead creates ticket, provisions isolated worktree.
-#   4. DEV: Specialist engineer implements changes using opencode-harness.
-#   5. QA: e2e-browser-qa & Release QA Officer verify via local CI and browser tests.
+# Phases (agent work is MANUAL unless noted — only phase 3 executes):
+#   1. PRD: Product Director generates product requirements and user stories (manual).
+#   2. ARCH: System Architect generates ADR and interface contracts (manual).
+#   3. DECOMPOSE: TPM / Scrum Lead creates ticket, provisions isolated worktree (EXECUTED).
+#   4. DEV: Specialist engineer implements changes using opencode-harness (manual).
+#   5. QA: e2e-browser-qa & Release QA Officer verify via local CI and browser tests (manual).
 #   6. ARCHIVE-ONLY: no auto-merge is performed (fail-closed). The worktree is
 #      retained for explicit manual review + git merge; archiving runs only
 #      after a human merges (see Phase 6 body).
@@ -102,22 +107,26 @@ log_step() {
 
 WORKTREE_DIR="workspaces/tickets/${TICKET_ID}"
 
-# Phase 1: PRD Generation
-log_stage "1/6 PRD" "Product Director generates feature specification"
+# Phase 1: PRD Generation (MANUAL — this script performs no Paperclip call)
+log_stage "1/6 PRD" "Product Director generates feature specification (manual step)"
 log_step "Role: product-director (Department: Executive & Product Management)"
 log_step "Input Prompt: ${FEATURE_PROMPT}"
 if [ "${DRY_RUN}" = "true" ]; then
   log_step "[DRY-RUN] Emitted PRD task to Paperclip agent 'product-director'"
   log_step "[DRY-RUN] Output artifact expected: docs/prd/PRD-${TICKET_ID}.md"
+else
+  log_step "MANUAL step: assign the PRD task to 'product-director' in Paperclip (no API call performed by this script)"
 fi
 
-# Phase 2: Architecture & ADR
-log_stage "2/6 ARCH" "System Architect defines technical architecture & contracts"
+# Phase 2: Architecture & ADR (MANUAL — this script performs no Paperclip call)
+log_stage "2/6 ARCH" "System Architect defines technical architecture & contracts (manual step)"
 log_step "Role: system-architect (Department: Executive & Product Management)"
 log_step "Input Spec: docs/prd/PRD-${TICKET_ID}.md"
 if [ "${DRY_RUN}" = "true" ]; then
   log_step "[DRY-RUN] Emitted ADR task to Paperclip agent 'system-architect'"
   log_step "[DRY-RUN] Output artifact expected: docs/adr/ADR-${TICKET_ID}.md"
+else
+  log_step "MANUAL step: assign the ADR task to 'system-architect' in Paperclip (no API call performed by this script)"
 fi
 
 # Phase 3: Worktree Isolation & Sprint Planning
@@ -151,23 +160,26 @@ ${FEATURE_PROMPT}
 EOF
 fi
 
-# Phase 4: Implementation
-log_stage "4/6 DEV" "Specialist engineer implements feature in worktree"
+# Phase 4: Implementation (MANUAL — this script performs no Paperclip call)
+log_stage "4/6 DEV" "Specialist engineer implements feature in worktree (manual step)"
 log_step "Role: ${PRIMARY_ROLE} (Target Workspace: ${WORKTREE_DIR})"
 log_step "Runtime: OpenCode v2 + opencode-harness (FNV-1a hash edits, AST transforms)"
 if [ "${DRY_RUN}" = "true" ]; then
   log_step "[DRY-RUN] Emitted implementation task to Paperclip agent '${PRIMARY_ROLE}'"
   log_step "[DRY-RUN] Working directory: ${WORKTREE_DIR}"
+else
+  log_step "MANUAL step: assign the implementation task to '${PRIMARY_ROLE}' in Paperclip (no API call performed by this script)"
 fi
 
-# Phase 5: Local CI & QA Acceptance
-log_stage "5/6 QA" "Automated testing and QA sign-off gate"
+# Phase 5: Local CI & QA Acceptance (MANUAL — this script performs no CI call)
+log_stage "5/6 QA" "Automated testing and QA sign-off gate (manual step)"
 log_step "Roles: e2e-browser-qa (Automation) + release-qa-officer (Acceptance Gate)"
 if [ "${DRY_RUN}" = "true" ]; then
-  log_step "[DRY-RUN] Local CI Runner: docker compose --profile core --profile ci (act runner; core schedules the socket proxy) / scripts/smoke-test.sh"
-  log_step "[DRY-RUN] Triggered local-ci-runner container on 'heretek' network"
-  log_step "[DRY-RUN] Executed: bash scripts/smoke-test.sh --check-only"
+  log_step "[DRY-RUN] Local CI: run mutating jobs on the HOST via act (docker compose --profile core --profile ci); the local-ci-runner container is a read-only observer via the GET-only socket proxy"
+  log_step "[DRY-RUN] Executed on host: bash scripts/smoke-test.sh --check-only"
   log_step "[DRY-RUN] Acceptance verification: release-qa-officer signed off"
+else
+  log_step "MANUAL step: run QA on the host and record release-qa-officer sign-off (no CI call performed by this script)"
 fi
 
 # Phase 6: Archive ONLY (no merge performed — see below)
@@ -179,9 +191,11 @@ if [ "${DRY_RUN}" = "true" ]; then
   log_step "[DRY-RUN] Only after merge: bash scripts/worktree-manager.sh archive ${TICKET_ID} ${BASE_BRANCH}"
   log_step "[DRY-RUN] Saved patch diff, status log, and commit manifest to .worktrees/archive/"
 else
-  echo "error: auto-merge disabled (fail-closed): review ${WORKTREE_DIR} then run git merge explicitly" >&2
-  echo "worktree retained at ${WORKTREE_DIR}; archive only after merge: bash scripts/worktree-manager.sh archive \"${TICKET_ID}\" \"${BASE_BRANCH}\"" >&2
-  exit 1
+  # Execute mode success (Wave B P0-4): provisioning (phase 3) completed, so
+  # exit 0. The retained worktree + required manual merge is NOT a failure —
+  # only the merge itself stays manual (fail-closed: never auto-merged here).
+  log_step "Worktree provisioned at ${WORKTREE_DIR}; review it, then run git merge explicitly"
+  log_step "Only after merge: bash scripts/worktree-manager.sh archive \"${TICKET_ID}\" \"${BASE_BRANCH}\""
 fi
 
-log_stage "COMPLETE" "Pipeline trace finished for ticket ${TICKET_ID} (execute mode stops fail-closed at Phase 6: manual merge still required)"
+log_stage "COMPLETE" "Provisioner-tracer finished for ticket ${TICKET_ID} (execute mode provisions the worktree; implementation + merge stay manual)"

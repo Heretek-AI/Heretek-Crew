@@ -47,9 +47,14 @@
 #                    4. seed dry-run emits company + agent payloads:
 #                       seed-50-fleet.sh (1 company + 50 agents =
 #                       51 payloads, fleet total == cap with no WARNING)
-#                    5. shim translation: --dir stripped, --variant merged into
-#                       --model#variant, exactly one --auto, --session and
-#                       non-run subcommands pass through, `--` terminator kept
+#                    5. shim translation: --dir flag dropped (ambiguous
+#                       values preserved per P1-9), --variant merged into
+#                       first --model#variant (first-wins, P2-2c), exactly
+#                       one --auto, --session and non-run subcommands pass
+#                       through, `--` terminator kept, empty values dropped
+#                    5b. Wave B remediation gates (dispatch provisioner scope +
+#                       exit-0, backup .age preservation, restore CLI-wins +
+#                       bind + listing, worktree adoption/archive guards)
 #                    6. file-creation simulation (hello.txt with today's date)
 #                    7. session-resume support advertised by the opencode CLI
 #                       (skipped with a note when no opencode binary is present)
@@ -1066,8 +1071,8 @@ EOF
 chmod +x "${TMP}/fake-opencode"
 shim_run() { OPENCODE_REAL_BIN="${TMP}/fake-opencode" FAKE_OUT="${TMP}/shim.args" ./scripts/opencode-shim.sh "$@"; }
 if shim_run run --format json --dir /tmp/ws --model opencode/gemini-3.8-flash --variant high "Create hello.txt"; then
-  if diff -u <(printf 'run\n--format\njson\n--model\nopencode/gemini-3.8-flash#high\n--auto\nCreate hello.txt\n') "${TMP}/shim.args" >/dev/null; then
-    ok "run: --dir stripped, --variant merged to model#variant, --auto injected in order"
+  if diff -u <(printf 'run\n--format\njson\n/tmp/ws\n--model\nopencode/gemini-3.8-flash#high\n--auto\nCreate hello.txt\n') "${TMP}/shim.args" >/dev/null; then
+    ok "run: --dir flag dropped (value preserved, P1-9), --variant merged to model#variant, --auto injected in order"
   else
     bad "run translation mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
   fi
@@ -1100,10 +1105,131 @@ if shim_run run --model m -- --dir kept "p" \
 else
   bad "'--' terminator handling failed"
 fi
+# Wave B P1-9: ambiguous valueless --dir preserves the following token
+# (fail-closed toward prompt preservation — no silent prompt loss).
+if shim_run run --model m --dir prompt; then
+  if diff -u <(printf 'run\n--model\nm\n--auto\nprompt\n') "${TMP}/shim.args" >/dev/null; then
+    ok "run: ambiguous valueless --dir preserves following token (P1-9)"
+  else
+    bad "P1-9 --dir case mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
+  fi
+else
+  bad "shim P1-9 invocation failed"
+fi
+# Wave B P2-2b: empty-string --variant/--dir values are consumed and dropped
+# (no stray "" leaks into the positionals).
+if shim_run run --model m --variant '' prompt; then
+  if diff -u <(printf 'run\n--model\nm\n--auto\nprompt\n') "${TMP}/shim.args" >/dev/null; then
+    ok "run: empty --variant value consumed, model untouched (P2-2b)"
+  else
+    bad "P2-2b empty --variant mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
+  fi
+else
+  bad "shim P2-2b empty --variant invocation failed"
+fi
+if shim_run run --model m --dir "" prompt; then
+  if diff -u <(printf 'run\n--model\nm\n--auto\nprompt\n') "${TMP}/shim.args" >/dev/null; then
+    ok "run: empty --dir value consumed, no stray positional (P2-2b)"
+  else
+    bad "P2-2b empty --dir mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
+  fi
+else
+  bad "shim P2-2b empty --dir invocation failed"
+fi
+# Wave B P2-2c: duplicate --model is first-wins (live-probed against the
+# real binary) — the variant merges into the first occurrence.
+if shim_run run --model aaa --model bbb --variant high prompt; then
+  if diff -u <(printf 'run\n--model\naaa#high\n--auto\n--model\nbbb\nprompt\n') "${TMP}/shim.args" >/dev/null; then
+    ok "run: duplicate --model merges into first (first-wins, P2-2c)"
+  else
+    bad "P2-2c duplicate --model mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
+  fi
+else
+  bad "shim P2-2c duplicate --model invocation failed"
+fi
 if OPENCODE_REAL_BIN=/nonexistent ./scripts/opencode-shim.sh run "x" 2>/dev/null; then
   bad "shim with missing real binary should fail closed"
 else
   ok "shim fail-closed when real binary is missing"
+fi
+
+# --- 5b. Wave B remediation gates (dispatch/backup/restore/worktree) --------
+# Static pins for the Wave B fixes: provisioner-tracer scope + exit-0,
+# backup .age-suffix preservation, restore CLI-wins + bind + listing, and
+# worktree adoption/archive guards. Fail closed on any drift back.
+section "5b. Wave B remediation gates (dispatch/backup/restore/worktree)"
+# P0-4: dispatch is a provisioner-tracer — no Paperclip API surface in
+# EXECUTABLE lines (comment disclaimers naming curl/PAPERCLIP_URL//api/ are
+# expected and stripped here), an explicit header disclaimer, and no
+# nonzero exit past Phase 6 (execute mode exits 0 after phase-3
+# provisioning; the manual merge is retained but is not a failure).
+if ! grep -vE '^[[:space:]]*#' scripts/dispatch-pipeline.sh | grep -qE 'curl|PAPERCLIP_URL|/api/'; then
+  ok "dispatch performs no Paperclip API calls (provisioner-tracer scope)"
+else
+  bad "dispatch references Paperclip API surface (provisioner scope violation)"
+fi
+if grep -q 'does NOT call the Paperclip API' scripts/dispatch-pipeline.sh \
+  && grep -q 'does NOT perform todo' scripts/dispatch-pipeline.sh; then
+  ok "dispatch header disclaims Paperclip calls + ticket transitions"
+else
+  bad "dispatch header missing the provisioner-tracer disclaimer"
+fi
+if awk '/# Phase 6/{flag=1} flag && /^[[:space:]]*exit 1/{found=1} END{exit !found}' scripts/dispatch-pipeline.sh; then
+  bad "dispatch phase-6 still exits nonzero (execute mode must exit 0 after provisioning)"
+else
+  ok "dispatch execute mode exits 0 after provisioning (manual merge retained, fail-closed)"
+fi
+# P1-10: same-second collision must preserve the .age suffix — an
+# age-encrypted dump under a plaintext name is unrestorable by restore-db.sh.
+# The Wave B fix keeps the old unconditional bare reassign gone (2-space
+# indent, end-of-line anchored); RANDOM rewrites now live only in the
+# ENCRYPT-conditional branches.
+# shellcheck disable=SC2016 # literal ${STAMP}/${RANDOM} source-text match intended
+if grep -q '^  OUTFILE="${BACKUP_DIR}/backup-${STAMP}-${RANDOM}.sql.gz"$' scripts/backup-db.sh; then
+  bad "backup collision branch drops the .age suffix unconditionally (P1-10)"
+else
+  ok "backup unconditional bare-suffix reassign gone (P1-10)"
+fi
+# shellcheck disable=SC2016 # literal ${STAMP}/${RANDOM} source-text match intended
+if grep -q 'backup-${STAMP}-${RANDOM}.sql.gz.age' scripts/backup-db.sh; then
+  ok "backup collision branch keeps .age for encrypted dumps (P1-10)"
+else
+  bad "backup collision branch missing the .age-preserving path (P1-10)"
+fi
+# P2-3: explicit CLI --file/--yes must survive .env sourcing; the
+# FILE-required hint must list encrypted dumps; the terminate query must
+# bind (psql -v) instead of interpolating into single quotes.
+if grep -q 'CLI_FILE_GIVEN' scripts/restore-db.sh \
+  && grep -q 'CLI_YES_GIVEN' scripts/restore-db.sh; then
+  ok "restore snapshots CLI --file/--yes across .env sourcing (P2-3)"
+else
+  bad "restore lets .env override explicit CLI --file/--yes (P2-3)"
+fi
+if grep -q 'backup-\*.sql.gz.age' scripts/restore-db.sh; then
+  ok "restore available-dumps hint lists *.age dumps (P2-3)"
+else
+  bad "restore available-dumps hint omits *.age (P2-3)"
+fi
+if grep -q "datname=:'dbname'" scripts/restore-db.sh \
+  && ! grep -q "datname='\${POSTGRES_DB}'" scripts/restore-db.sh; then
+  ok "restore terminate query binds dbname via psql -v (P2-3)"
+else
+  bad "restore interpolates \${POSTGRES_DB} into SQL single quotes (P2-3)"
+fi
+# P2-4: create must verify porcelain registration before adopting a
+# pre-existing dir; archive must resolve HEAD up front and clean up partial
+# dirs instead of littering them.
+if grep -q 'worktree list --porcelain' scripts/worktree-manager.sh \
+  && grep -q 'refusing to adopt' scripts/worktree-manager.sh; then
+  ok "worktree create verifies registration before adopting (P2-4)"
+else
+  bad "worktree create adopts pre-existing dirs without verification (P2-4)"
+fi
+if grep -q 'removed partial' scripts/worktree-manager.sh \
+  && grep -q 'cannot resolve HEAD' scripts/worktree-manager.sh; then
+  ok "worktree archive guards HEAD + removes partial dirs (P2-4)"
+else
+  bad "worktree archive missing fail-closed guards (P2-4)"
 fi
 
 # --- 6. file creation simulation ---------------------------------------------

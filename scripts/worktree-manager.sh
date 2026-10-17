@@ -53,8 +53,23 @@ cmd_create() {
   local branch_name="ticket-${ticket_id}"
 
   if [ -d "${target_dir}" ]; then
-    echo "[worktree] Worktree already exists at ${target_dir}"
-    return 0
+    # Wave B P2-4: never adopt a foreign/stale directory. A pre-existing
+    # path is accepted ONLY when git reports it as a registered worktree on
+    # THIS ticket's branch (porcelain check binds dir AND branch of the same
+    # entry — either one elsewhere is not enough); anything else fails
+    # closed, since dispatch-pipeline would otherwise write task_plan.md
+    # into an unrelated directory.
+    abs_target="${REPO_ROOT}/${target_dir}"
+    if git worktree list --porcelain 2>/dev/null | awk -v dir="${abs_target}" -v want="refs/heads/${branch_name}" '
+      /^worktree / { cur = substr($0, 10) }
+      /^branch / { if (cur == dir && substr($0, 8) == want) found = 1 }
+      END { exit !found }
+    '; then
+      echo "[worktree] Worktree already exists at ${target_dir} (verified registered on branch ${branch_name})"
+      return 0
+    fi
+    echo "error: ${target_dir} exists but is not a registered worktree on branch ${branch_name} (fail-closed: refusing to adopt)" >&2
+    exit 1
   fi
 
   mkdir -p "${WORKTREE_ROOT}"
@@ -100,26 +115,39 @@ cmd_archive() {
     exit 1
   fi
 
+  # Resolve HEAD BEFORE creating the archive dir: a rev-parse failure must
+  # refuse the archive without littering a partial archive dir (Wave B P2-4,
+  # no trap needed — nothing is created before this point).
+  local head_commit
+  if ! head_commit="$(git -C "${target_dir}" rev-parse HEAD)"; then
+    echo "error: cannot resolve HEAD of ${target_dir}; refusing to archive (fail-closed)" >&2
+    exit 1
+  fi
+
   mkdir -p "${archive_dir}"
   echo "[worktree] Archiving ${target_dir} to ${archive_dir}..."
 
-  # Save diff against base branch, git status, and commit history.
-  # Fail-closed: failures here abort the archive (never masked) so a
-  # partial archive is never mistaken for a complete one.
-  git -C "${target_dir}" diff "${base_branch}" > "${archive_dir}/patch.diff"
-  git -C "${target_dir}" status --short > "${archive_dir}/status.log"
-  git -C "${target_dir}" log -n 20 --oneline > "${archive_dir}/commits.log"
-
-  # Write manifest
-  cat <<EOF > "${archive_dir}/manifest.json"
+  # Stage the evidence files as one guarded unit (Wave B P2-4 / Alpha P3-5):
+  # ANY failure removes the just-created archive dir instead of littering a
+  # partial archive that could be mistaken for a complete one.
+  if ! {
+    git -C "${target_dir}" diff "${base_branch}" > "${archive_dir}/patch.diff" &&
+    git -C "${target_dir}" status --short > "${archive_dir}/status.log" &&
+    git -C "${target_dir}" log -n 20 --oneline > "${archive_dir}/commits.log" &&
+    cat > "${archive_dir}/manifest.json" <<EOF
 {
   "ticketId": "${ticket_id}",
   "branch": "${branch_name}",
   "baseBranch": "${base_branch}",
   "archivedAt": "${timestamp}",
-  "headCommit": "$(git -C "${target_dir}" rev-parse HEAD)"
+  "headCommit": "${head_commit}"
 }
 EOF
+  }; then
+    rm -rf "${archive_dir}"
+    echo "error: archive evidence staging failed; removed partial ${archive_dir} (fail-closed)" >&2
+    exit 1
+  fi
 
   echo "[worktree] Detaching and removing worktree ${target_dir}..."
   # Fail-closed removal: never --force here. A dirty or locked worktree

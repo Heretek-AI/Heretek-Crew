@@ -259,7 +259,7 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 - `scripts/generate-50-roles.py`: Injected `"opencode-harness"` into `plugins` and `{ "action": "harness_*", "resource": "*", "effect": "allow" }` into `permissions` across all 50 roles. Provides FNV-1a hash-anchored edits (`file_hash_edit`), AST structural transforms, blast radius analysis, and doom-loop recovery circuit breakers.
 
 ### Multi-Agent Relay Pipeline Runner
-- `scripts/dispatch-pipeline.sh`: Automated assembly line coordinator executing 6-phase relay: PRD (`product-director`) $\rightarrow$ Architecture/ADR (`system-architect`) $\rightarrow$ Decompose/Worktree (`tpm-scrum-lead`) $\rightarrow$ Dev (`<specialist>`) $\rightarrow$ QA (`tester` & `release-qa-officer`) $\rightarrow$ Archive & Merge (`git-drift-coord`).
+- `scripts/dispatch-pipeline.sh`: Worktree Provisioner + Pipeline Tracer (Wave B P0-4 re-scope — NOT an end-to-end dispatcher: performs no Paperclip API calls and no ticket transitions; execute mode provisions ONE isolated worktree + `task_plan.md` in phase 3 and exits 0, with phases 1/2/4/5/6 as manual steps). Original 6-phase relay: PRD (`product-director`) $\rightarrow$ Architecture/ADR (`system-architect`) $\rightarrow$ Decompose/Worktree (`tpm-scrum-lead`) $\rightarrow$ Dev (`<specialist>`) $\rightarrow$ QA (`tester` & `release-qa-officer`) $\rightarrow$ Archive & Merge (`git-drift-coord`).
 
 ## Wave 6 Execution Log — GHCR Docker Publishing & Prebuilt Overrides (2026-10-16)
 

@@ -21,15 +21,33 @@
 #
 # Rewriting rules (applied ONLY to the `run` subcommand):
 #   1. Drop `--dir <path>` and `--dir=<path>`.
-#      A `--dir` whose following token looks like another flag (or is absent)
-#      is dropped on its own; the following flag is never swallowed.
+#      P1-9 AMBIGUITY (fail-closed toward prompt preservation): a `--dir`
+#      followed by a non-flag token may be a path OR the user's prompt —
+#      the two are indistinguishable here. Drop ONLY the flag and preserve
+#      the token: a bogus path then errors loudly in the real binary,
+#      whereas swallowing the token would run the request prompt-less with
+#      exit 0 (silent prompt loss, Claim 2.1 violation). Empty-string values
+#      (`--dir ""`) are consumed and dropped so no stray `""` leaks into
+#      the positionals (P2-2b). A `--dir` whose following token looks like
+#      another flag (or is absent) is dropped on its own; the following
+#      flag is never swallowed.
 #   2. Capture `--variant <v>` / `--variant=<v>` (space and equals forms) and
-#      merge it into `--model <m>` / `--model=<m>` (or the short `-m <m>` /
-#      `-m=<m>` aliases) as `<m>#<v>`, regardless of whether --model appears
-#      before or after --variant. A model that already carries a `#variant`
-#      suffix is left untouched. A --variant with no --model cannot be
-#      expressed in v2 and is dropped (passing it through would make the
-#      real binary exit 1).
+#      merge it into the FIRST `--model <m>` / `--model=<m>` (or the short
+#      `-m <m>` / `-m=<m>` aliases) as `<m>#<v>`, regardless of whether
+#      --model appears before or after --variant. A model that already
+#      carries a `#variant` suffix is left untouched. A --variant with no
+#      --model cannot be expressed in v2 and is dropped (passing it through
+#      would make the real binary exit 1). An empty `--variant ''` is
+#      consumed and dropped (P2-2b). Duplicate `--model` is FIRST-wins:
+#      live-probed against the real binary (v2.0.30; flag parsing stable
+#      across the 2.0.3x series — re-probe on any minor bump), which names
+#      the FIRST of two bogus providers in its error for both space and
+#      equals forms; the shim therefore merges into the FIRST occurrence
+#      and passes later ones through for the real binary to judge.
+#      Attached short `-mmodel` is NOT parsed as `-m model` (the real binary
+#      rejects it with exit 1 "Missing value for flag --model" — a loud,
+#      fail-closed error, so the shim passes it through untouched rather
+#      than risk swallowing a `-m...` prompt token).
 #   3. Ensure exactly one `--auto` (an explicit `--auto=<bool>` is respected
 #      and never duplicated). It is inserted immediately after the --model
 #      value when a model is present — preserving Paperclip's canonical order
@@ -140,8 +158,12 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
             ;;
         --dir)
             # v2 runs in the process cwd (already set by Paperclip): drop the
-            # flag and its path value — but never swallow a following flag.
-            if [[ -n "${next}" && "${next}" != -* ]]; then
+            # flag itself. P1-9: when the next token is a non-flag word it is
+            # PRESERVED (path-or-prompt ambiguity — a bogus path errors loudly
+            # downstream; a swallowed prompt would run prompt-less, exit 0).
+            # Empty-string values are consumed and dropped (P2-2b: no stray
+            # "" may leak into the positionals).
+            if [[ -z "${next}" && "$((i + 1))" -lt "${#args[@]}" ]]; then
                 i=$((i + 2))
             else
                 i=$((i + 1))
@@ -154,6 +176,10 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
             if [[ -n "${next}" && "${next}" != -* ]]; then
                 variant="${next}"
                 i=$((i + 2))
+            elif [[ -z "${next}" && "$((i + 1))" -lt "${#args[@]}" ]]; then
+                # Empty-string value: consume and drop (no variant to merge,
+                # no stray "" forwarded to the positionals).
+                i=$((i + 2))
             else
                 i=$((i + 1))
             fi
@@ -164,10 +190,22 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
             ;;
         --model|-m)
             if [[ -n "${next}" && "${next}" != -* ]]; then
-                model_value="${next}"
-                model_is_eq=0
-                out+=("${arg}" "${next}")
-                model_index=$((${#out[@]} - 1))
+                if [[ "${model_index}" -lt 0 ]]; then
+                    model_value="${next}"
+                    model_is_eq=0
+                    out+=("${arg}" "${next}")
+                    model_index=$((${#out[@]} - 1))
+                else
+                    # Duplicate --model: the real binary is FIRST-wins
+                    # (live-probed), so the first occurrence took the merge
+                    # above; later ones pass through for the binary to judge.
+                    out+=("${arg}" "${next}")
+                fi
+                i=$((i + 2))
+            elif [[ -z "${next}" && "$((i + 1))" -lt "${#args[@]}" ]]; then
+                # Empty-string value: consume it so no stray "" leaks, pass
+                # the bare flag so the real binary reports the missing value.
+                out+=("${arg}")
                 i=$((i + 2))
             else
                 # Broken invocation (`--model`/`-m` with no value): pass
@@ -177,11 +215,15 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
             fi
             ;;
         --model=*|-m=*)
-            model_value="${arg#*=}"
-            model_eq_prefix="${arg%%=*}"
-            model_is_eq=1
-            out+=("${arg}")
-            model_index=$((${#out[@]} - 1))
+            if [[ "${model_index}" -lt 0 ]]; then
+                model_value="${arg#*=}"
+                model_eq_prefix="${arg%%=*}"
+                model_is_eq=1
+                out+=("${arg}")
+                model_index=$((${#out[@]} - 1))
+            else
+                out+=("${arg}")
+            fi
             i=$((i + 1))
             ;;
         --auto | --auto=*)
@@ -196,8 +238,9 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
     esac
 done
 
-# Merge --variant into --model as model#variant (order-independent: the loop
-# above already collected both regardless of which came first).
+# Merge --variant into the FIRST --model as model#variant (order-independent:
+# the loop above already collected both regardless of which came first;
+# first-wins matches the real binary's duplicate semantics, live-probed).
 if [[ -n "${variant}" && -n "${model_value}" && "${model_index}" -ge 0 ]]; then
     if [[ "${model_value}" != *#* ]]; then
         merged="${model_value}#${variant}"
