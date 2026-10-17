@@ -1,0 +1,266 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
+  "permissions": [
+    {
+      "action": "fs:read",
+      "resource": "**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "docs/security/ai-redteam/**",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git status*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git diff*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "garak*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "pyrit*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "promptfoo*",
+      "effect": "allow"
+    },
+    {
+      "action": "codebase-memory_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "context7_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_blame",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_changelog_analyze",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_diff",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_log",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_reflog",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_show",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_status",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_wrapup_instructions",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "git_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "harness_file_hash_read",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_file_hash_edit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ast_structural_search",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ast_structural_rewrite",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_ui_geometry_audit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_repo_map",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_blast_radius",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_file_outline",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_symbol_references",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_rename_symbol",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_verify_scoped",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_architecture_audit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_checkpoint_create",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_checkpoint_rollback",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "skills": [
+    "/roles/ai-red-teamer/skills",
+    "/roles/ai-red-teamer/.opencode/skills"
+  ],
+  "plugins": [
+    "opencode-mem",
+    "@heretek-ai/opencode-harness"
+  ],
+  "mcp": {
+    "servers": {
+      "codebase-memory": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "codebase-memory-mcp@0.12.1"
+        ],
+        "timeout": 5000
+      },
+      "context7": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@upstash/context7-mcp@4.4.2"
+        ],
+        "timeout": 5000
+      },
+      "git": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@cyanheads/git-mcp-server@2.15.3"
+        ],
+        "timeout": 5000
+      }
+    }
+  }
+}

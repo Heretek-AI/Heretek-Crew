@@ -1,6 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
   "permissions": [
     {
       "action": "fs:read",
@@ -183,13 +189,54 @@
       "effect": "deny"
     },
     {
+      "action": "fs:read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
     }
   ],
   "skills": [
-    "/roles/k8s-orchestrator/skills"
+    "/roles/k8s-orchestrator/skills",
+    "/roles/k8s-orchestrator/.opencode/skills"
   ],
   "plugins": [
     "opencode-mem",
@@ -205,14 +252,16 @@
         ],
         "env": {
           "KUBECONFIG": "/paperclip/secrets/kubeconfig-readonly"
-        }
+        },
+        "timeout": 5000
       },
       "docker": {
         "type": "local",
         "command": [
           "uvx",
           "docker-mcp==0.2.0"
-        ]
+        ],
+        "timeout": 5000
       }
     }
   }

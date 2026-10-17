@@ -1,6 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
   "permissions": [
     {
       "action": "fs:read",
@@ -118,13 +124,54 @@
       "effect": "deny"
     },
     {
+      "action": "fs:read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
     }
   ],
   "skills": [
-    "/roles/appsec-engineer/skills"
+    "/roles/appsec-engineer/skills",
+    "/roles/appsec-engineer/.opencode/skills"
   ],
   "plugins": [
     "opencode-mem",
@@ -139,7 +186,8 @@
           "mcp",
           "--transport",
           "stdio"
-        ]
+        ],
+        "timeout": 5000
       },
       "codebase-memory": {
         "type": "local",
@@ -147,7 +195,8 @@
           "npx",
           "-y",
           "codebase-memory-mcp@0.12.1"
-        ]
+        ],
+        "timeout": 5000
       }
     }
   }

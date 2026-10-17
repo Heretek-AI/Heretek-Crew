@@ -48,6 +48,8 @@
 ## 5. Skills
 
 - `madr-architecture-decision` — Authors standardized, rigorous Architectural Decision Records (ADRs) analyzing trade-offs, options, and consequences. (procedure: `.opencode/skills/madr-architecture-decision/SKILL.md`)
+- `brainstorming` — Chunked specification elicitation. (procedure: `.opencode/skills/brainstorming/SKILL.md`)
+- `writing-plans` — Decomposing epics into test-gated task plans. (procedure: `.opencode/skills/writing-plans/SKILL.md`)
 
 ## 6. Plugins & Extensions
 
@@ -61,6 +63,8 @@
 4. **Verify with the allowed toolchain.** Run, at minimum: `git status*`, `git diff*`. Every command must exit cleanly; a failing verification blocks the handoff.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `exec-director` via Paperclip; flag blockers immediately instead of stalling.
+- Execute implementation steps under the vendored procedure skill(s) (e.g. `.opencode/skills/test-driven-development/SKILL.md`); no production code without a watched-fail test. TDD violations are deleted, not adapted.
+- If any required tool is denied, stop and hand off via assignment — do not attempt to bypass permissions (fail closed).
 
 ## 8. Non-Negotiables & Zero-Stub Policy
 

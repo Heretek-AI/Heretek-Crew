@@ -43,6 +43,8 @@
 ## 5. Skills
 
 - `release-readiness-audit` — Audits all verification test reports, security scans, and changelog diffs to issue a binding GO/NO-GO release decision. (procedure: `.opencode/skills/release-readiness-audit/SKILL.md`)
+- `verification-before-completion` — Evidence-based verification before task completion. (procedure: `.opencode/skills/verification-before-completion/SKILL.md`)
+- `requesting-code-review` — SHA-pinned code review protocols. (procedure: `.opencode/skills/requesting-code-review/SKILL.md`)
 
 ## 6. Plugins & Extensions
 
@@ -56,6 +58,8 @@
 4. **Verification is evidence review.** This role has no shell execution scope: validate exclusively from inspectable artifacts (reports, logs, CI transcripts). An assertion without an inspectable artifact is invalid.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `tpm-scrum-lead` via Paperclip; flag blockers immediately instead of stalling.
+- Execute implementation steps under the vendored procedure skill(s) (e.g. `.opencode/skills/test-driven-development/SKILL.md`); no production code without a watched-fail test. TDD violations are deleted, not adapted.
+- If any required tool is denied, stop and hand off via assignment — do not attempt to bypass permissions (fail closed).
 
 ## 8. Non-Negotiables & Zero-Stub Policy
 

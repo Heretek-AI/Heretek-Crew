@@ -3,7 +3,7 @@
 # smoke-test.sh — end-to-end compatibility & smoke test for Heretek-Crew.
 #
 # Usage:
-#   ./scripts/smoke-test.sh [--check-only] [--help]
+#   ./scripts/smoke-test.sh [--check-only] [--dry-run] [--help]
 #
 # Modes:
 #   --check-only   Static checks only; needs NO live server, NO docker daemon,
@@ -21,7 +21,8 @@
 #                       AGENTS.md and .opencode/agents/<role>.md per
 #                       role — single fleet dialect (Wave 3 P1-11: the 6
 #                       legacy prototype roles were deleted as superseded;
-#                       `ls roles/` = 50); plus 3b. static denied-tool probe
+#                       `ls roles/` matches the roles-catalog/ Role count
+#                       (51 incl. ai-red-teamer)); plus 3b. static denied-tool probe
 #                       (no bare allow-all anywhere + terminal shell deny,
 #                       dba/k8s MCP-boundary shell
 #                       denies intact, harness manifest == per-tool allows
@@ -30,7 +31,17 @@
 #                       denied by the reference matcher, seed sets
 #                       dangerouslySkipPermissions False, socket proxy
 #                       denies POST/BUILD/EXEC, fs:write glob-specificity
-#                       (no unanchored *substring* allows))
+#                       (no unanchored *substring* allows)); plus 3c. skills
+#                       path resolution (every configured
+#                       /roles/<id>/skills + /roles/<id>/.opencode/skills
+#                       entry resolves to roles/<id>/.opencode/skills via
+#                       the relative roles/<id>/skills symlink, with at
+#                       least one <skill>/SKILL.md on disk)
+#                    3d. spec-driven development gate
+#                       (scripts/spec-gate.sh --check-only: spec corpora
+#                       present, code<->spec delta covered, task plans carry
+#                       checkboxes + acceptance criteria, per-role spec
+#                       charters complete, fleet hardening invariants hold)
 #                    4. seed dry-run emits company + agent payloads:
 #                       seed-50-fleet.sh (1 company + 50 agents =
 #                       51 payloads, fleet total == cap with no WARNING)
@@ -40,6 +51,9 @@
 #                    6. file-creation simulation (hello.txt with today's date)
 #                    7. session-resume support advertised by the opencode CLI
 #                       (skipped with a note when no opencode binary is present)
+#   --dry-run      Alias for --check-only (static checks only; no live
+#                  calls, no state changes — the static suite writes only
+#                  to scratch mktemp files).
 #   (live)         All static checks PLUS, against a running stack:
 #                    8. PostgreSQL health (pg_isready via `docker compose exec`)
 #                    9. Paperclip web server responds at $PAPERCLIP_URL
@@ -86,9 +100,11 @@ HEALTH_TIMEOUT_SEC="${HEALTH_TIMEOUT_SEC:-30}"
 RUN_TIMEOUT_SEC="${RUN_TIMEOUT_SEC:-600}"
 
 MODE="live"
+DRY_RUN="false"
 for arg in "$@"; do
   case "${arg}" in
     --check-only) MODE="check-only" ;;
+    --dry-run) MODE="check-only"; DRY_RUN="true" ;;
     --help|-h)
       sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -113,6 +129,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
 echo "smoke-test mode=${MODE} url=${PAPERCLIP_URL}"
+if [[ "${DRY_RUN}" == "true" ]]; then
+  echo "dry-run: static checks only (no live calls, no state changes)"
+fi
 
 # --- 1. required files -------------------------------------------------------
 section "1. required files"
@@ -123,6 +142,7 @@ REQUIRED_FILES=(
   scripts/opencode-shim.sh scripts/seed-50-fleet.sh
   scripts/generate-50-roles.py scripts/worktree-manager.sh scripts/dispatch-pipeline.sh
   scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh
+  scripts/spec-gate.sh
 )
 for f in "${REQUIRED_FILES[@]}"; do
   if [[ -f "${f}" ]]; then ok "${f} exists"; else bad "${f} MISSING"; fi
@@ -132,7 +152,8 @@ done
 # hardcoded legacy list remains; §3 below discovers roles dynamically.
 for s in scripts/opencode-shim.sh scripts/seed-50-fleet.sh \
          scripts/worktree-manager.sh scripts/dispatch-pipeline.sh \
-         scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh; do
+         scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh \
+         scripts/spec-gate.sh; do
   if [[ -x "${s}" ]]; then ok "${s} executable"; else bad "${s} NOT executable"; fi
 done
 
@@ -229,8 +250,9 @@ else
 fi
 
 # --- 3. role configs valid + pins -------------------------------------------
-# Dynamically discovers every role directory under roles/ (the 50-agent
-# fleet — never a hardcoded list), then per role asserts: valid v2
+# Dynamically discovers every role directory under roles/ (the fleet —
+# 51 roles incl. ai-red-teamer — never a hardcoded list), then per role
+# asserts: valid v2
 # opencode.json (provider/model, non-empty permissions with a fail-closed
 # deny tail, non-empty rules where present), exact-pinned MCP commands
 # (npx pkg@x.y.z / uvx pkg==x.y.z in the fleet `mcp.servers` shape; sole
@@ -302,13 +324,17 @@ if [[ "${ROLE_COUNT}" -eq 0 ]]; then
 else
   ok "discovered ${ROLE_COUNT} role directories under roles/"
 fi
-# Wave 3 rework (QA gate gap): the fleet is exactly 50 roles — a re-added
-# legacy dir (51) or a missing role (49) must FAIL closed here, not pass
+# Wave 3 rework (QA gate gap), expanded Phase A Task 6: the fleet size is
+# NOT hardcoded here — it is derived from the authoritative fleet spec
+# (roles-catalog/ `## Role N` headers). A re-added legacy dir, a missing
+# role, or an unregistered role dir must FAIL closed here, not pass
 # with a human-enforced `ls` criterion.
-if [[ "${ROLE_COUNT}" -ne 50 ]]; then
-  bad "expected exactly 50 fleet role directories under roles/, found ${ROLE_COUNT}"
+EXPECTED_FLEET="$(grep -rhoE '^## Role [0-9]+' roles-catalog/*.md 2>/dev/null | wc -l)"
+EXPECTED_FLEET="$(printf '%s' "${EXPECTED_FLEET}" | tr -d ' ')"
+if [[ "${ROLE_COUNT}" -ne "${EXPECTED_FLEET}" ]]; then
+  bad "fleet role drift: ${ROLE_COUNT} role directorie(s) under roles/ vs ${EXPECTED_FLEET} registered '## Role N' header(s) in roles-catalog/ (expected 51 incl. ai-red-teamer)"
 else
-  ok "fleet role count is exactly 50 (ls roles/ = 50)"
+  ok "fleet role count matches the fleet spec (${ROLE_COUNT} roles/ == ${EXPECTED_FLEET} roles-catalog/ headers)"
 fi
 if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)' \
     roles/*/opencode/opencode.json 2>/dev/null | grep -q .; then
@@ -454,16 +480,16 @@ fi
 # P1-4/P1-6 auth: requirepass on both redises, authed healthchecks, authed URLs (fail-closed, no bare redis://).
 if grep -c -- '--requirepass' docker-compose.sidecars.yml | grep -qx '2' \
   && grep -q 'redis-cli -a' docker-compose.sidecars.yml \
-  && grep -q 'SEARXNG_REDIS_URL: "redis://:${REDIS_PASSWORD:?' docker-compose.sidecars.yml \
-  && grep -q 'REDIS_URL: "redis://:${REDIS_PASSWORD:?' docker-compose.sidecars.yml \
+  && grep -q "SEARXNG_REDIS_URL: \"redis://:\${REDIS_PASSWORD:?" docker-compose.sidecars.yml \
+  && grep -q "REDIS_URL: \"redis://:\${REDIS_PASSWORD:?" docker-compose.sidecars.yml \
   && ! grep -qE 'redis://(searxng-redis|firecrawl-redis):6379' docker-compose.sidecars.yml; then
   ok "redis auth wired: requirepass x2 + authed healthchecks + authed SEARXNG/REDIS URLs (no bare redis://)"
 else
   bad "redis auth REGRESSED: requirepass/healthcheck/authed-URL wiring incomplete"
 fi
 # P1-10/P1-6 auth: qdrant API key enforced + MCP client sends it.
-if grep -q 'QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY:?' docker-compose.sidecars.yml \
-  && grep -q '"QDRANT_API_KEY": "${QDRANT_API_KEY}"' roles/vector-rag-spec/opencode/opencode.json; then
+if grep -q "QDRANT__SERVICE__API_KEY: \"\${QDRANT_API_KEY:?" docker-compose.sidecars.yml \
+  && grep -q "\"QDRANT_API_KEY\": \"\${QDRANT_API_KEY}\"" roles/vector-rag-spec/opencode/opencode.json; then
   ok "qdrant auth wired: QDRANT__SERVICE__API_KEY enforced + vector-rag-spec MCP sends QDRANT_API_KEY"
 else
   bad "qdrant auth REGRESSED: server key or MCP client key wiring missing"
@@ -560,7 +586,7 @@ if bad_roles:
     sys.exit("bare allow-all in: %s" % ", ".join(bad_roles))
 if nodeny:
     sys.exit("missing terminal shell deny tail in: %s" % ", ".join(nodeny))
-print("50 roles: enumerated allows + terminal shell deny, no allow-all")
+print("fleet roles: enumerated allows + terminal shell deny, no allow-all")
 ' >"${TMP}/deny.out" 2>"${TMP}/deny.err"; then
   ok "fleet opencode.json deny by default ($(cat "${TMP}/deny.out"))"
 else
@@ -636,7 +662,7 @@ for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
         problems.append("%s: harness allows without the harness plugin" % role)
 if problems:
     sys.exit("; ".join(problems))
-print("50 roles allow exactly the 14-tool manifest + deny tail")
+print("fleet roles allow exactly the 14-tool manifest + deny tail")
 ' >"${TMP}/harness.out" 2>"${TMP}/harness.err"; then
   ok "harness manifest enforced ($(cat "${TMP}/harness.out"))"
 else
@@ -801,6 +827,104 @@ else
   bad "negative prefix probe FAILED: $(head -c 300 "${TMP}/negprobe.err")"
 fi
 
+# --- 3c. skills path resolution (Phase A T1, §10.5) ---------------------------
+# Load-bearing skills discovery: every role that configures `skills` in
+# opencode.json must list BOTH the container-mount form
+# (/roles/<id>/skills) and the XDG form (/roles/<id>/.opencode/skills).
+# Both must resolve to roles/<id>/.opencode/skills on disk — bridged by the
+# relative roles/<id>/skills -> .opencode/skills symlink so the mapping
+# survives container mounts — and the canonical dir must hold at least one
+# <skill>/SKILL.md. Fail closed: a missing entry, dangling link, or
+# skill-less configured dir is a FAIL, never a silent green.
+section "3c. role skills path resolution"
+for roledir in roles/*/; do
+  [[ -d "${roledir}" ]] || continue
+  role="$(basename "${roledir}")"
+  f="roles/${role}/opencode/opencode.json"
+  if ! SKILLS_STATE="$(ROLE="${role}" FILE="${f}" python3 -c '
+import json, os, sys
+role = os.environ["ROLE"]
+doc = json.load(open(os.environ["FILE"]))
+skills = doc.get("skills")
+if not skills:
+    print("UNCONFIGURED")
+    sys.exit(0)
+if not isinstance(skills, list):
+    sys.exit("skills is not a list: %r" % (skills,))
+want = ["/roles/%s/skills" % role, "/roles/%s/.opencode/skills" % role]
+missing = [w for w in want if w not in skills]
+if missing:
+    sys.exit("skills array missing entries %s (got %r)" % (missing, skills))
+print("CONFIGURED")
+' 2>"${TMP}/skills-err-${role}")"; then
+    bad "${f} skills INVALID: $(head -c 200 "${TMP}/skills-err-${role}")"
+    continue
+  fi
+  if [[ "${SKILLS_STATE}" == "UNCONFIGURED" ]]; then
+    if [[ -d "roles/${role}/.opencode/skills" ]]; then
+      bad "roles/${role}/.opencode/skills exists on disk but ${f} configures no skills (undiscoverable dir)"
+    else
+      skip "roles/${role} configures no skills and ships none"
+    fi
+    continue
+  fi
+  ok "${f} skills lists both /roles/${role}/skills and /roles/${role}/.opencode/skills"
+  canon="roles/${role}/.opencode/skills"
+  link="roles/${role}/skills"
+  if [[ ! -d "${canon}" ]]; then
+    bad "${canon}/ MISSING on disk (skills configured but canonical dir absent)"
+    continue
+  fi
+  if [[ -L "${link}" ]]; then
+    target="$(readlink "${link}")"
+    if [[ "${target}" == ".opencode/skills" ]]; then
+      ok "roles/${role}/skills -> .opencode/skills (relative symlink, mount-safe)"
+    else
+      bad "roles/${role}/skills symlink points at '${target}' (want relative '.opencode/skills')"
+    fi
+  elif [[ -d "${link}" ]]; then
+    ok "roles/${role}/skills is a real directory (accepted; relative symlink preferred)"
+  else
+    bad "roles/${role}/skills MISSING (want relative symlink -> .opencode/skills)"
+  fi
+  for sp in "/roles/${role}/skills" "/roles/${role}/.opencode/skills"; do
+    rel="${sp#/roles/"${role}"}"
+    disk="roles/${role}${rel}"
+    if [[ ! -d "${disk}" ]]; then
+      bad "configured skill path ${sp} does not resolve on disk (want ${disk}/)"
+      continue
+    fi
+    if resolved="$(cd "${disk}" || exit 1; pwd -P)" \
+      && canonical="$(cd "${canon}" || exit 1; pwd -P)" \
+      && [[ "${resolved}" == "${canonical}" ]]; then
+      ok "configured skill path ${sp} resolves to roles/${role}/.opencode/skills"
+    else
+      bad "configured skill path ${sp} resolves off the canonical dir (got '${resolved:-unresolvable}')"
+    fi
+  done
+  if find "${canon}" -mindepth 2 -maxdepth 2 -name 'SKILL.md' -print -quit 2>/dev/null | grep -q .; then
+    skill_count="$(find "${canon}" -mindepth 2 -maxdepth 2 -name 'SKILL.md' -print 2>/dev/null | wc -l)"
+    skill_count="$(printf '%s' "${skill_count}" | tr -d ' ')"
+    ok "roles/${role}/.opencode/skills holds ${skill_count} SKILL.md file(s)"
+  else
+    bad "roles/${role}/.opencode/skills holds no <skill>/SKILL.md (skills configured but nothing discoverable)"
+  fi
+done
+
+# --- 3d. spec-driven development gate (Phase A T5) ---------------------------
+# CI SDD gate: code<->spec delta coverage, task-plan checkboxes +
+# acceptance criteria, per-role spec completeness, and fleet hardening
+# invariants. Delegated to scripts/spec-gate.sh --check-only (deterministic:
+# no network, no docker, no secrets); any gate FAIL propagates via bad().
+section "3d. spec-driven development gate (spec-gate.sh)"
+if bash scripts/spec-gate.sh --check-only >"${TMP}/specgate.out" 2>&1; then
+  ok "spec-gate.sh --check-only passed"
+else
+  bad "spec-gate.sh --check-only FAILED"
+fi
+grep -E '\[(PASS|FAIL|INFO)\]|SPEC-GATE RESULT' "${TMP}/specgate.out" 2>/dev/null \
+  | while IFS= read -r line; do printf '  [INFO spec-gate] %s\n' "${line}"; done || true
+
 # --- 4. seed dry-run ---------------------------------------------------------
 # Wave 3 P1-11: scripts/seed-company.sh was deleted with the 6 legacy
 # prototype roles it seeded (superseded by the 50-fleet). Only the fleet
@@ -958,7 +1082,7 @@ import json, sys
 doc = json.load(open(sys.argv[1]))
 items = doc.get("agents", doc) if isinstance(doc, dict) else doc
 # Wave 3 rework: prefer fleet display names (the live API returns the
-# seed-50 `name` = role_display_name strings verbatim; legacy
+# seed-50 "name" = role_display_name strings verbatim; legacy
 # seed-company names "Programmer"/"PM" no longer exist). Any-agent
 # fallback below keeps the flow alive if the fleet is reseeded.
 names = {"TypeScript / Node Fullstack Engineer", "End-to-End Browser Automation Engineer"}

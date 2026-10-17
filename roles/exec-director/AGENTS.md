@@ -44,6 +44,7 @@
 ## 5. Skills
 
 - `executive-okr-decomposition` — Decomposes high-level strategic company objectives into departmental OKRs and delegates milestone tracking to Product and Architecture leads. (procedure: `.opencode/skills/executive-okr-decomposition/SKILL.md`)
+- `dispatching-parallel-agents` — Subagent worktree fan-out. (procedure: `.opencode/skills/dispatching-parallel-agents/SKILL.md`)
 
 ## 6. Plugins & Extensions
 
@@ -58,6 +59,8 @@
 4. **Verify with the allowed toolchain.** Run, at minimum: `git status*`, `git log*`. Every command must exit cleanly; a failing verification blocks the handoff.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Publish the decision.** Record the outcome as a durable artifact and dispatch follow-up directives downward to `product-director` and `system-architect`.
+- Execute implementation steps under the vendored procedure skill(s) (e.g. `.opencode/skills/test-driven-development/SKILL.md`); no production code without a watched-fail test. TDD violations are deleted, not adapted.
+- If any required tool is denied, stop and hand off via assignment — do not attempt to bypass permissions (fail closed).
 
 ## 8. Non-Negotiables & Zero-Stub Policy
 

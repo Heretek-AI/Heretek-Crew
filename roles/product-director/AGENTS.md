@@ -43,6 +43,8 @@
 ## 5. Skills
 
 - `epic-roadmap-authoring` — Translates executive strategic objectives into structured, phased Product Requirement Documents and GitHub epics. (procedure: `.opencode/skills/epic-roadmap-authoring/SKILL.md`)
+- `brainstorming` — Chunked specification elicitation. (procedure: `.opencode/skills/brainstorming/SKILL.md`)
+- `writing-plans` — Decomposing epics into test-gated task plans. (procedure: `.opencode/skills/writing-plans/SKILL.md`)
 
 ## 6. Plugins & Extensions
 
@@ -56,6 +58,8 @@
 4. **Verification is evidence review.** This role has no shell execution scope: validate exclusively from inspectable artifacts (reports, logs, CI transcripts). An assertion without an inspectable artifact is invalid.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `exec-director` via Paperclip; flag blockers immediately instead of stalling.
+- Execute implementation steps under the vendored procedure skill(s) (e.g. `.opencode/skills/test-driven-development/SKILL.md`); no production code without a watched-fail test. TDD violations are deleted, not adapted.
+- If any required tool is denied, stop and hand off via assignment — do not attempt to bypass permissions (fail closed).
 
 ## 8. Non-Negotiables & Zero-Stub Policy
 

@@ -1,6 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
   "permissions": [
     {
       "action": "fs:read",
@@ -148,13 +154,54 @@
       "effect": "deny"
     },
     {
+      "action": "fs:read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
     }
   ],
   "skills": [
-    "/roles/brand-copy-spec/skills"
+    "/roles/brand-copy-spec/skills",
+    "/roles/brand-copy-spec/.opencode/skills"
   ],
   "plugins": [
     "opencode-mem",
@@ -168,7 +215,8 @@
           "npx",
           "-y",
           "@cyanheads/git-mcp-server@2.15.3"
-        ]
+        ],
+        "timeout": 5000
       }
     }
   }

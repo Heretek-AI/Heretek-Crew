@@ -1,6 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
   "permissions": [
     {
       "action": "fs:read",
@@ -128,13 +134,54 @@
       "effect": "deny"
     },
     {
+      "action": "fs:read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
       "action": "shell",
       "resource": "*",
       "effect": "deny"
     }
   ],
   "skills": [
-    "/roles/fe-perf-eng/skills"
+    "/roles/fe-perf-eng/skills",
+    "/roles/fe-perf-eng/.opencode/skills"
   ],
   "plugins": [
     "opencode-mem",
@@ -148,7 +195,8 @@
           "npx",
           "-y",
           "chrome-devtools-mcp@1.11.0"
-        ]
+        ],
+        "timeout": 5000
       },
       "playwright": {
         "type": "local",
@@ -156,7 +204,8 @@
           "npx",
           "-y",
           "@executeautomation/playwright-mcp-server@1.0.12"
-        ]
+        ],
+        "timeout": 5000
       }
     }
   }

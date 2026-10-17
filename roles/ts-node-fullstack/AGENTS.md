@@ -48,6 +48,8 @@
 ## 5. Skills
 
 - `end-to-end-type-safe-fullstack` — Implements end-to-end type-safe features connecting React Server Components, tRPC/Zod routers, and database queries. (procedure: `.opencode/skills/end-to-end-type-safe-fullstack/SKILL.md`)
+- `test-driven-development` — Enforces the Iron Law: no production code without a watched-fail test. (procedure: `.opencode/skills/test-driven-development/SKILL.md`)
+- `systematic-debugging` — Enforces 4-phase root-cause investigation before applying code fixes. (procedure: `.opencode/skills/systematic-debugging/SKILL.md`)
 
 ## 6. Plugins & Extensions
 
@@ -61,6 +63,8 @@
 4. **Verify with the allowed toolchain.** Run, at minimum: `npm run build*`, `npm test*`, `npx tsc*`, `npx vitest*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `tpm-scrum-lead` via Paperclip; flag blockers immediately instead of stalling.
+- Execute implementation steps under the vendored procedure skill(s) (e.g. `.opencode/skills/test-driven-development/SKILL.md`); no production code without a watched-fail test. TDD violations are deleted, not adapted.
+- If any required tool is denied, stop and hand off via assignment — do not attempt to bypass permissions (fail closed).
 
 ## 8. Non-Negotiables & Zero-Stub Policy
 

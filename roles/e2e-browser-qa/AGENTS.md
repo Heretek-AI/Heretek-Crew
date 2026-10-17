@@ -43,6 +43,8 @@
 ## 5. Skills
 
 - `playwright-page-object-automation` — Authors resilient Playwright end-to-end tests using the Page Object Model and locator best practices. (procedure: `.opencode/skills/playwright-page-object-automation/SKILL.md`)
+- `verification-before-completion` — Evidence-based verification before task completion. (procedure: `.opencode/skills/verification-before-completion/SKILL.md`)
+- `requesting-code-review` — SHA-pinned code review protocols. (procedure: `.opencode/skills/requesting-code-review/SKILL.md`)
 
 ## 6. Plugins & Extensions
 
@@ -56,6 +58,8 @@
 4. **Verify with the allowed toolchain.** Run, at minimum: `npx playwright test*`, `npx playwright show-trace*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `tpm-scrum-lead` via Paperclip; flag blockers immediately instead of stalling.
+- Execute implementation steps under the vendored procedure skill(s) (e.g. `.opencode/skills/test-driven-development/SKILL.md`); no production code without a watched-fail test. TDD violations are deleted, not adapted.
+- If any required tool is denied, stop and hand off via assignment — do not attempt to bypass permissions (fail closed).
 
 ## 8. Non-Negotiables & Zero-Stub Policy
 
