@@ -12,6 +12,7 @@ workspaces/*
 .worktrees/*
 !.worktrees/.gitkeep
 *.log
+references/
 
 .DS_Store
 node_modules/
