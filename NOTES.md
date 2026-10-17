@@ -301,5 +301,42 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
   - **LTG-7**: Script Workflow & Event Automation (Windmill + loopback n8n).
   - **LTG-8**: Fleet Expansion — 4 Remaining Cyber & Resilience Roles (R2–R5).
 
+## Wave 9 Execution Log — Phase A Research Expansion Merge (2026-10-17)
+
+### Full Triad Protocol Execution (Commit `fb7bdbb`)
+- All 7 tasks from `PROMPT_INTEGRATE_RESEARCH_EXPANSION.md` were executed sequentially via the Triad Protocol (Programmer $\rightarrow$ QA $\rightarrow$ Drift Guard, all VERDICT: PASS), rebased, and fast-forward merged to `main` at `fb7bdbb`.
+- **Task 1 (Skills Path Discrepancy)**:
+  - 50 relative symlinks created: `roles/*/skills -> .opencode/skills`.
+  - Configs updated to declare both `/roles/<id>/skills` and `/roles/<id>/.opencode/skills`.
+  - Smoke test §3c added verifying dual paths and non-empty `SKILL.md` presence across all roles.
+- **Task 2 (Superpowers TDD Vending)**:
+  - Vendored 26 SHA-identical `SKILL.md` files from `obra/superpowers` across 14 specialist roles:
+    - 6 implementers: `test-driven-development` (Iron Law) + `systematic-debugging`.
+    - 2 product/arch: `brainstorming` + `writing-plans`.
+    - 4 QA roles: `verification-before-completion` + `requesting-code-review`.
+    - 2 orchestrators: `dispatching-parallel-agents`.
+  - Updated §5 and §7 across 14 `AGENTS.md` charters mandating the TDD Red-Green-Refactor clause.
+- **Task 3 (Fleet Config Hardening)**:
+  - Applied `small_model: anthropic/claude-haiku-4-5`, context compaction (`prune: true`, `reserved: 10000`), MCP timeouts (`5000ms`), and explicit `.env` read denials across all 51 role configurations. Terminal `shell * deny` tails preserved on all 51 files.
+- **Task 4 (Pilot Agent Frontmatter Uplift)**:
+  - Uplifted 5 anchor roles (`appsec-engineer`, `system-architect`, `python-backend-spec`, `tpm-scrum-lead`, `exec-director`) with standardized YAML frontmatter, `PROACTIVELY` triggers, execution contracts, and structured output schemas.
+- **Task 5 (Spec-Driven Development Gate)**:
+  - Created `scripts/spec-gate.sh` (13 KB, S1–S5 check suites) validating specification deltas, tasks, and acceptance criteria.
+  - Wired into `scripts/smoke-test.sh` §3d (487 static assertions passing).
+- **Task 6 (First AI Red-Teamer Role Scaffolding)**:
+  - Created `roles/ai-red-teamer/` (Role 51) with 43-permission hardened config, `AGENTS.md` charter, and 5 vendored AI security skills (`detecting-ai-model-prompt-injection-attacks`, `detecting-indirect-prompt-injection`, `testing-prompt-injection-in-rag-pipelines`, `testing-for-system-prompt-leakage`, `auditing-mcp-servers-for-tool-poisoning`).
+  - Catalog registered in `roles-catalog/07_defensive_security_and_forensics.md`.
+- **Task 7 (Verification Gate)**:
+  - `scripts/test-shim.sh`: 39/39 passing (exit 0).
+  - `scripts/spec-gate.sh --check-only`: 7/7 passing (exit 0).
+  - `scripts/smoke-test.sh --check-only`: 495 passed, 0 failed, 3 skipped (exit 0).
+  - `shellcheck scripts/*.sh`: 0 warnings (exit 0).
+
+### Tracked Non-Blocking Residuals
+1. **Exact-Count Manifest**: Smoke test currently asserts $\ge 1$ `SKILL.md` per role; consider generating an exact-count manifest in a follow-up.
+2. **Seeder Payload 52**: Seeder currently generates 51 payloads (1 company + 50 agents); `ai-red-teamer` requires a 52nd payload and budget cap bump ($12,700.00 $\rightarrow$ updated cap) upon live deployment.
+3. **Prefix Enforcer Limits**: Chained command continuations (`garak;payload`) and MCP namespace write bypasses remain tracked defense-in-depth limitations per `AGENTS.md` §4.
+4. **Phase-A Spec Fallback**: `spec-gate.sh` S2 contains a standing Phase-A fallback passing changes while `PROMPT_*.md` and `RESEARCH_*.md` exist; retire/narrow post-Phase A.
+
 
 
