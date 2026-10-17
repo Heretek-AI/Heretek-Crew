@@ -26,6 +26,8 @@
 #                       (no bare allow-all anywhere + terminal shell deny,
 #                       dba/k8s MCP-boundary shell
 #                       denies intact, harness manifest == per-tool allows
+#                       (14 full / 10 read-only + 4 mutating denies),
+#                       read-only set drift pin, fs:read deny-first order,
 #                       with no wildcard, MCP namespaces scoped to read
 #                       verbs + deny tails, negative prefix-chain probes
 #                       denied by the reference matcher, seed sets
@@ -74,9 +76,11 @@
 # statically. HARNESS_MANIFEST in §3b pins the 14 tools registered by
 # @heretek-ai/opencode-harness@1.0.7 (enumerated empirically via
 # `npm pack` + dist/index.js EXTENDED_HARNESS_TOOL_NAMES — the live
-# setupOpenCodeV2Harness path registers all 14): every role that declares
-# the harness plugin must allow exactly that set (per-tool allows, no
-# `harness_*` allow) and carry a `harness_*` deny tail. A bump of the
+# setupOpenCodeV2Harness path registers all 14): every full-privilege
+# role that declares the harness plugin must allow exactly that set
+# (per-tool allows, no `harness_*` allow) and carry a `harness_*` deny
+# tail, while read-only-charter roles (Wave A P0-2) allow only the 10
+# non-mutating tools plus 4 explicit mutating-tool denies. A bump of the
 # harness version requires re-enumeration + manifest update here.
 # Live tool-registration (the runtime actually exposing those tools to an
 # agent run) is still asserted only by a live agent run invoking a harness
@@ -631,14 +635,29 @@ fi
 # registry tarball @heretek-ai/opencode-harness@1.0.7 (dist/index.js
 # EXTENDED_HARNESS_TOOL_NAMES — the live setupOpenCodeV2Harness path
 # registers all 14): any role declaring the harness plugin must allow
-# exactly this set (per-tool allows, NEVER a `harness_*` allow) and end
-# the namespace with a `harness_*` deny tail (future manifest additions
-# stay denied until explicitly allowed here). Roles without the plugin
-# must carry no harness allows at all.
+# exactly the manifest set for its class (per-tool allows, NEVER a
+# `harness_*` allow) and end the namespace with a `harness_*` deny tail
+# (future manifest additions stay denied until explicitly allowed here).
+# Roles without the plugin must carry no harness allows at all.
+# Wave A P0-2: read-only-charter roles (READONLY below — every role whose
+# fs:write allows are confined to report-output scopes docs/**, sbom/**,
+# deploy/security/**) allow only the 10 non-mutating tools and must DENY
+# the 4 file-mutating tools (file_hash_edit, ast_structural_rewrite,
+# rename_symbol, checkpoint_rollback); full-privilege roles allow all 14.
+# NOTE: whether the runtime enforcer honors these static denies needs a
+# live allow/deny matrix, blocked on AUDIT P0-1 (harness rootDir
+# empty-string kill — upstream npm, not in repo). Static shape is the
+# in-repo gate; live enforcement stays tracked, never claimed.
 HARNESS_MANIFEST="file_hash_read file_hash_edit ast_structural_search ast_structural_rewrite ui_geometry_audit repo_map blast_radius file_outline symbol_references rename_symbol verify_scoped architecture_audit checkpoint_create checkpoint_rollback"
-if HARNESS_MANIFEST="${HARNESS_MANIFEST}" python3 -c '
+HARNESS_READONLY_MANIFEST="file_hash_read ast_structural_search ui_geometry_audit repo_map blast_radius file_outline symbol_references verify_scoped architecture_audit checkpoint_create"
+HARNESS_MUTATING="file_hash_edit ast_structural_rewrite rename_symbol checkpoint_rollback"
+HARNESS_READONLY_ROLES="ai-red-teamer appsec-engineer binary-reverse-eng cloud-sec-auditor compliance-auditor exec-director firmware-sec-analyst git-drift-coord product-director release-qa-officer sre-incident-eng system-architect tech-docs-lead threat-modeler tpm-scrum-lead ux-research-analyst"
+if HARNESS_MANIFEST="${HARNESS_MANIFEST}" HARNESS_READONLY_MANIFEST="${HARNESS_READONLY_MANIFEST}" HARNESS_MUTATING="${HARNESS_MUTATING}" HARNESS_READONLY_ROLES="${HARNESS_READONLY_ROLES}" python3 -c '
 import glob, json, os, sys
 manifest = os.environ["HARNESS_MANIFEST"].split()
+ro_manifest = os.environ["HARNESS_READONLY_MANIFEST"].split()
+mutating = os.environ["HARNESS_MUTATING"].split()
+readonly = set(os.environ["HARNESS_READONLY_ROLES"].split())
 problems = []
 for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
     role = f.split("/")[1]
@@ -654,19 +673,95 @@ for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
            for p in perms):
         problems.append("%s: bare harness_* allow (must be per-tool)" % role)
     elif has_plugin:
-        if allows != sorted(manifest):
-            problems.append("%s: harness allows != manifest (got %s)" % (role, allows))
+        if role in readonly:
+            if allows != sorted(ro_manifest):
+                problems.append("%s: read-only harness allows != 10-tool manifest (got %s)" % (role, allows))
+            for t in mutating:
+                if not any(p.get("action") == "harness_" + t and p.get("effect") == "deny" for p in perms):
+                    problems.append("%s: missing harness_%s deny" % (role, t))
+        else:
+            if allows != sorted(manifest):
+                problems.append("%s: harness allows != manifest (got %s)" % (role, allows))
         if not deny_tail:
             problems.append("%s: missing harness_* deny tail" % role)
     elif allows:
         problems.append("%s: harness allows without the harness plugin" % role)
 if problems:
     sys.exit("; ".join(problems))
-print("fleet roles allow exactly the 14-tool manifest + deny tail")
+print("fleet roles allow their class manifest (14 full / 10 read-only) + deny tails")
 ' >"${TMP}/harness.out" 2>"${TMP}/harness.err"; then
   ok "harness manifest enforced ($(cat "${TMP}/harness.out"))"
 else
   bad "harness manifest VIOLATION: $(head -c 400 "${TMP}/harness.err")"
+fi
+# Wave A P0-2: read-only set drift pin + mutating-tool ban. The on-disk
+# set of roles whose fs:write allows are confined to report-output scopes
+# (docs/**, sbom/**, deploy/security/**) must equal HARNESS_READONLY_ROLES
+# exactly — drift in EITHER direction fails (a role silently gaining a
+# code-write scope must update the set, not silently regain edit
+# primitives; a role narrowed to reports must join it). And every such
+# role MUST NOT allow the 4 mutating harness tools (fail-closed).
+if HARNESS_MUTATING="${HARNESS_MUTATING}" HARNESS_READONLY_ROLES="${HARNESS_READONLY_ROLES}" python3 -c '
+import glob, json, os, sys
+mutating = {"harness_" + t for t in os.environ["HARNESS_MUTATING"].split()}
+readonly = set(os.environ["HARNESS_READONLY_ROLES"].split())
+prefixes = ("docs/", "sbom/", "deploy/security/")
+problems = []
+on_disk = set()
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    perms = json.load(open(f)).get("permissions", [])
+    confined = True
+    for p in perms:
+        if p.get("action") == "fs:write" and p.get("effect") == "allow":
+            res = str(p.get("resource", ""))
+            if res == "*" or not res.startswith(prefixes):
+                confined = False
+    if confined:
+        on_disk.add(role)
+    allow = {p["action"] for p in perms if p.get("effect") == "allow"}
+    if confined and (allow & mutating):
+        problems.append("%s: read-only role allows mutating harness tools %s" % (role, sorted(allow & mutating)))
+if on_disk != readonly:
+    problems.append("read-only set drift: on-disk=%s expected=%s" % (sorted(on_disk), sorted(readonly)))
+if problems:
+    sys.exit("; ".join(problems))
+print("read-only set == 16 pinned roles; zero mutating harness allows among them")
+' >"${TMP}/readonly.out" 2>"${TMP}/readonly.err"; then
+  ok "read-only harness strip enforced ($(cat "${TMP}/readonly.out"))"
+else
+  bad "read-only harness strip VIOLATION: $(head -c 400 "${TMP}/readonly.err")"
+fi
+# Wave A P1-7: fs:read deny-first ordering gate. In EVERY role file, no
+# fs:read allow may precede an fs:read deny — the .env denies must sort
+# above any fs:read allow so they hold under first-match-wins AND under
+# deny-override/most-specific-wins (fail-closed under both semantics).
+# fs:write ordering is deliberately out of scope here (scoped allows then
+# * deny is already correct and is covered by the glob-specificity lint).
+if python3 -c '
+import glob, json, sys
+problems = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    perms = json.load(open(f)).get("permissions", [])
+    first_allow = None
+    last_deny = None
+    for i, p in enumerate(perms):
+        if p.get("action") == "fs:read" and p.get("effect") == "allow" and first_allow is None:
+            first_allow = i
+        if p.get("action") == "fs:read" and p.get("effect") == "deny":
+            last_deny = i
+    if last_deny is None:
+        problems.append("%s: no fs:read deny entries (.env denies required)" % role)
+    elif first_allow is not None and first_allow < last_deny:
+        problems.append("%s: fs:read allow at index %d precedes fs:read deny at index %d" % (role, first_allow, last_deny))
+if problems:
+    sys.exit("; ".join(problems))
+print("all roles: fs:read denies precede any fs:read allow")
+' >"${TMP}/readorder.out" 2>"${TMP}/readorder.err"; then
+  ok "fs:read deny-first ordering ($(cat "${TMP}/readorder.out"))"
+else
+  bad "fs:read ordering VIOLATION: $(head -c 400 "${TMP}/readorder.err")"
 fi
 # Wave 2 P0-2: MCP namespace scoping. No bare-namespace allow may remain
 # for kubernetes/docker/postgres/aws/git/filesystem (harness covered

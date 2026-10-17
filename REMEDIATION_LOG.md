@@ -1016,3 +1016,65 @@ new role line; `git status` shows modifications only, no commits.
 - Fail-closed kept: `:?` secrets, authed healthchecks, guard exit 1, lint `die()`/FAIL, age opt-in that aborts rather than falling back to plaintext, no `|| true`/`TODO`/dummy returns, no floating tags, deny tails 50/50, no secrets in repo.
 - Honest non-closures (tracked, not faked): minio digest (quay 401 re-proven), piston vendoring (GHCR 401, release step documented), full per-category segmentation (boot-risk, minimal viable shipped), live verifications (`make up` matrix, jaeger-v2 first boot, redis-auth client interop under real traffic, age backup against a live DB, `--session` live ticket flow).
 - No commits, no merges, no subagents used.
+
+---
+
+# Wave A Remediation Log — P0-2 read-only harness strip + P1-7 fs:read deny-first (P2-1 claim note)
+
+**Worktree:** `/home/john/Projects/Heretek-Crew` (no worktree — `git status` was clean; branch `main`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` P0-2/P1-7 + P2-1 fragment
+**Status:** complete, verified empirically. Changes left UNCOMMITTED for QA/Drift-Guard.
+Full report: `docs/reports/wave-a-implementation.md`.
+
+## P0-2: 16 read-only roles stripped of 4 mutating harness tools (51 files)
+
+- Predicate: every `fs:write` allow confined to report-output scopes (`docs/**`,
+  `sbom/**`, `deploy/security/**` seccomp profiles — declarative policy outputs).
+  Yields 16 roles incl. all 6 mandated (`exec-director`, `product-director`,
+  `threat-modeler`, `compliance-auditor`, `tech-docs-lead`, `ux-research-analyst`);
+  `threat-modeler` ("Never writes application code") + `compliance-auditor`
+  (delegates code changes) qualify despite non-`docs/` scopes. All other 35
+  roles write tests/source/schemas/migrations/configs/assets → keep 14.
+- Each of the 16: 4 allows removed, 4 exact denies added (audit JSON verbatim)
+  after the `harness_*` deny tail; 10 read-only allows + tails preserved.
+- `scripts/generate-50-roles.py`: `HARNESS_MUTATING_TOOLS`,
+  `READONLY_HARNESS_STRIPPED` (16, explicit + self-checking `die` on drift),
+  `strip_mutating_harness_tools()` (idempotent) in `normalize_config`.
+  `ai-red-teamer` transformed by hand with the identical imported functions
+  (generator covers catalog Roles 01–50 only).
+
+## P1-7: fs:read denies first in 51/51 files
+
+- The 4 `.env` read-denies moved to permissions indices 0–3 in every role file
+  (fail-closed under first-match AND deny-override). `fs:write` ordering untouched.
+- Generator: `FS_READ_ENV_DENIES` + `order_fs_read_denies_first()` (ENSURES the
+  canonical denies — the catalog fences predate them — then orders deny-first).
+
+## P2-1 fragment + smoke gates
+
+- No in-repo file states the inverted `{harness_*, allow}` claim (prompt-only
+  text); smoke header NOTE rewritten to the true shape + P0-1-blocked live-matrix
+  note (no live enforcement claimed; P0-1 `dist/index.js` untouched — upstream npm).
+- `smoke-test.sh`: manifest gate branched (14 full / 10 read-only + 4 denies,
+  deny-tail preserved) + 2 new fail-closed gates (read-only set drift pin +
+  mutating-tool ban; fs:read ordering).
+
+## Test results
+
+- `smoke-test.sh --check-only` → **497 passed, 0 failed, 3 skipped**
+  (stashed-HEAD baseline 495/0/3 → +2 new gates, zero regressions).
+- `shellcheck` clean; `test-shim.sh` 39/0; `spec-gate.sh` 7/0; JSON valid 51/51;
+  `grep -L deny` → 0; `ls roles/` = 51; tails/`small_model`/`compaction`/`timeout`
+  asserted programmatically on all 51.
+- Watched-fail probes: injected mutating allow → both gates FAIL (exit 1);
+  reordered fs:read → ordering gate FAILs (exit 1); both restored byte-identical.
+- Generator parity: scratch regen reproduces harness + fs:read sections exactly
+  for all 51 roles (scratch-only EXPECTED_IDS patch for Role 51; see report §6).
+
+## Pre-existing issues found (not introduced — separate waves)
+
+- Generator dies at HEAD: catalog holds Role 51 but EXPECTED_IDS lists 50
+  (`role set mismatch`, proven via `git show HEAD:` copy) — P1-4 decision.
+- Catalog lacks all `.env` denies (fs:read AND fs:write) present on disk;
+  ai-red-teamer `git_*` read verbs likewise hand-only — catalog-sync wave.
+- No commits, no merges, no subagents used.

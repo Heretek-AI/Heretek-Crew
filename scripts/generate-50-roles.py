@@ -131,6 +131,63 @@ PG_DENIES = ["postgres_*"]
 # profile — see cloud-platform-eng / cloud-sec-auditor charters).
 AWS_READ = ["aws_list*", "aws_select*"]
 AWS_DENIES = ["aws_run*", "aws_*"]
+# Wave A (AUDIT P0-2): read-only-charter roles must not hold file-mutating
+# harness tools. The 4 tools below are write primitives declared with
+# resource "*" — the fs:write * deny does NOT cover the harness_*
+# namespace (independent literals; the enforcer lives in upstream npm,
+# unverifiable here), so any role holding them can rewrite arbitrary
+# files with no shell involved. Strip them from every read-only-charter
+# role and replace with explicit denies (fail-closed under both
+# first-match and deny-override semantics).
+HARNESS_MUTATING_TOOLS = [
+    "harness_file_hash_edit",
+    "harness_ast_structural_rewrite",
+    "harness_rename_symbol",
+    "harness_checkpoint_rollback",
+]
+# fs:write allow scopes a read-only-charter role may carry (report
+# outputs only): docs/** prose, sbom/** generated SBOM reports, and
+# deploy/security/** declarative seccomp profiles. threat-modeler
+# ("Never writes application code") and compliance-auditor ("Delegates
+# dependency replacements to dependency-patcher") are read-only-charter
+# despite those two non-docs scopes. Membership is explicit AND
+# self-checking: strip_mutating_harness_tools() dies if a listed role
+# gains any other fs:write allow, and the smoke gate asserts the on-disk
+# predicate set matches this list exactly (drift either way fails).
+READONLY_WRITE_PREFIXES = ("docs/", "sbom/", "deploy/security/")
+READONLY_HARNESS_STRIPPED = frozenset(
+    [
+        "ai-red-teamer",
+        "appsec-engineer",
+        "binary-reverse-eng",
+        "cloud-sec-auditor",
+        "compliance-auditor",
+        "exec-director",
+        "firmware-sec-analyst",
+        "git-drift-coord",
+        "product-director",
+        "release-qa-officer",
+        "sre-incident-eng",
+        "system-architect",
+        "tech-docs-lead",
+        "threat-modeler",
+        "tpm-scrum-lead",
+        "ux-research-analyst",
+    ]
+)
+# NOTE: ai-red-teamer is a member above but is NOT covered by this
+# generator (EXPECTED_IDS = catalog Roles 01-50 only; ai-red-teamer has
+# no catalog block). Its on-disk file carries the identical transform
+# applied by hand (see the Wave A stage report); if it ever gains a
+# catalog block, add it to EXPECTED_IDS and the generator will enforce
+# the strip automatically (the smoke gate already covers all 51 on disk).
+# Canonical secret-hygiene fs:read denies (Wave A P1-7; AGENTS.md §4).
+FS_READ_ENV_DENIES = [
+    {"action": "fs:read", "resource": ".env", "effect": "deny"},
+    {"action": "fs:read", "resource": "*.env.*", "effect": "deny"},
+    {"action": "fs:read", "resource": "**/.env", "effect": "deny"},
+    {"action": "fs:read", "resource": "**/*.env.*", "effect": "deny"},
+]
 
 
 def _allow(action):
@@ -139,6 +196,108 @@ def _allow(action):
 
 def _deny(action):
     return {"action": action, "resource": "*", "effect": "deny"}
+
+
+def is_readonly_charter(perms):
+    """True when every fs:write allow is confined to report-output scopes.
+
+    Denies (any effect != allow) never count; a bare `fs:write *` allow
+    (none exists fleet-wide) returns False. Used to pin the
+    READONLY_HARNESS_STRIPPED set against charter drift.
+    """
+    for p in perms:
+        if not isinstance(p, dict):
+            continue
+        if p.get("action") != "fs:write" or p.get("effect") != "allow":
+            continue
+        res = str(p.get("resource", ""))
+        if res == "*" or not res.startswith(READONLY_WRITE_PREFIXES):
+            return False
+    return True
+
+
+def strip_mutating_harness_tools(role_id, perms):
+    """Remove the 4 mutating harness allows; add the 4 denies (Wave A P0-2).
+
+    Idempotent: pre-existing mutating allows AND denies are both removed,
+    then exactly 4 denies are inserted immediately after the harness_*
+    deny tail (namespace grouping preserved). Non-member roles pass
+    through untouched. Member roles holding a non-report fs:write allow
+    die loudly (charter drift must update READONLY_HARNESS_STRIPPED, not
+    silently regain edit primitives). A missing harness_* deny tail also
+    dies (no anchor for the inserted denies).
+    """
+    if role_id not in READONLY_HARNESS_STRIPPED:
+        return perms
+    if not is_readonly_charter(perms):
+        die(
+            "role '%s' is listed in READONLY_HARNESS_STRIPPED but holds "
+            "a non-report fs:write allow (charter drift — update the set)" % role_id
+        )
+    stripped = [
+        p
+        for p in perms
+        if not (isinstance(p, dict) and p.get("action") in HARNESS_MUTATING_TOOLS)
+    ]
+    out = []
+    inserted = False
+    for p in stripped:
+        out.append(p)
+        if (
+            not inserted
+            and isinstance(p, dict)
+            and p.get("action") == "harness_*"
+            and p.get("effect") == "deny"
+        ):
+            out.extend(
+                {"action": t, "resource": "*", "effect": "deny"}
+                for t in HARNESS_MUTATING_TOOLS
+            )
+            inserted = True
+    if not inserted:
+        die(
+            "role '%s' has no harness_* deny tail to anchor "
+            "mutating-tool denies" % role_id
+        )
+    return out
+
+
+def order_fs_read_denies_first(perms):
+    """Ensure the canonical .env fs:read denies, ordered before any allow.
+
+    Fail-closed under both enforcer semantics: first-match-wins sees the
+    .env denies before `**` can match; deny-override/most-specific-wins
+    is unaffected. The catalog fences predate these entries (they were
+    added to the on-disk files by hand), so generation ENSURES the
+    canonical four here instead of assuming them — regeneration then
+    reproduces the on-disk invariant instead of dropping it. Any
+    additional pre-existing fs:read denies are kept (deduped) after the
+    canonical four. Stable otherwise: every other entry keeps its
+    relative order.
+    """
+    canonical = [dict(p) for p in FS_READ_ENV_DENIES]
+    seen = {(p["action"], p["resource"], p["effect"]) for p in canonical}
+    extra_denies = []
+    for p in perms:
+        if (
+            isinstance(p, dict)
+            and p.get("action") == "fs:read"
+            and p.get("effect") == "deny"
+        ):
+            key = (p.get("action"), p.get("resource"), p.get("effect"))
+            if key not in seen:
+                seen.add(key)
+                extra_denies.append(p)
+    rest = [
+        p
+        for p in perms
+        if not (
+            isinstance(p, dict)
+            and p.get("action") == "fs:read"
+            and p.get("effect") == "deny"
+        )
+    ]
+    return canonical + extra_denies + rest
 
 
 def scope_mcp_permissions(role_id, perms):
@@ -582,6 +741,14 @@ def normalize_config(role):
         )
     else:
         perms = scope_mcp_permissions(role_id, perms)
+    # Wave A P0-2: read-only-charter roles lose the 4 mutating harness
+    # tools (allows replaced with denies).
+    perms = strip_mutating_harness_tools(role_id, perms)
+    # Wave A P1-7: fs:read denies sort above any fs:read allow
+    # (fail-closed under both first-match and deny-override semantics).
+    # fs:write ordering is deliberately untouched (scoped allows then *
+    # deny is already correct).
+    perms = order_fs_read_denies_first(perms)
     perms.append(dict(DENY_ALL_SHELL))
     cfg["permissions"] = perms
 

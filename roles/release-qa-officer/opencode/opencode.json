@@ -10,6 +10,26 @@
   "permissions": [
     {
       "action": "fs:read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
       "resource": "**",
       "effect": "allow"
     },
@@ -79,17 +99,7 @@
       "effect": "allow"
     },
     {
-      "action": "harness_file_hash_edit",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
       "action": "harness_ast_structural_search",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "harness_ast_structural_rewrite",
       "resource": "*",
       "effect": "allow"
     },
@@ -119,11 +129,6 @@
       "effect": "allow"
     },
     {
-      "action": "harness_rename_symbol",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
       "action": "harness_verify_scoped",
       "resource": "*",
       "effect": "allow"
@@ -139,33 +144,28 @@
       "effect": "allow"
     },
     {
-      "action": "harness_checkpoint_rollback",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
       "action": "harness_*",
       "resource": "*",
       "effect": "deny"
     },
     {
-      "action": "fs:read",
-      "resource": ".env",
+      "action": "harness_file_hash_edit",
+      "resource": "*",
       "effect": "deny"
     },
     {
-      "action": "fs:read",
-      "resource": "*.env.*",
+      "action": "harness_ast_structural_rewrite",
+      "resource": "*",
       "effect": "deny"
     },
     {
-      "action": "fs:read",
-      "resource": "**/.env",
+      "action": "harness_rename_symbol",
+      "resource": "*",
       "effect": "deny"
     },
     {
-      "action": "fs:read",
-      "resource": "**/*.env.*",
+      "action": "harness_checkpoint_rollback",
+      "resource": "*",
       "effect": "deny"
     },
     {

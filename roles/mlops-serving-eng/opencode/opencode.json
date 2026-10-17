@@ -10,6 +10,26 @@
   "permissions": [
     {
       "action": "fs:read",
+      "resource": ".env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/.env",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.env.*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
       "resource": "**",
       "effect": "allow"
     },
@@ -141,26 +161,6 @@
     {
       "action": "harness_*",
       "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "fs:read",
-      "resource": ".env",
-      "effect": "deny"
-    },
-    {
-      "action": "fs:read",
-      "resource": "*.env.*",
-      "effect": "deny"
-    },
-    {
-      "action": "fs:read",
-      "resource": "**/.env",
-      "effect": "deny"
-    },
-    {
-      "action": "fs:read",
-      "resource": "**/*.env.*",
       "effect": "deny"
     },
     {
