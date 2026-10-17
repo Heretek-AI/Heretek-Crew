@@ -389,8 +389,9 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 
 ### Verified facts (Wave D)
 - Pins: `@opencode/cli@2.0.32` + `@opencode/client@2.0.32` (unchanged),
-  harness `1.0.7` (exact, load-broken per P0-1), `test-shim.sh` 46/46
-  (P3-1 `stat -L` device+inode fallback + regression test),
+  harness `1.0.7` (exact, load-broken per P0-1), `test-shim.sh` 57/57
+  (P3-1 `stat -L` device+inode fallback + regression test; P0-1
+  --dir consume-iff-on-disk-dir + 3 new translation cases),
   `smoke-test.sh --check-only` green (see stage report for the count),
   `shellcheck` zero warnings, seed-50 dry-run 52 payloads / cap == sum /
   empty stderr, `docker compose config` exit 0 on all profile selections

@@ -21,16 +21,19 @@
 #
 # Rewriting rules (applied ONLY to the `run` subcommand):
 #   1. Drop `--dir <path>` and `--dir=<path>`.
-#      P1-9 AMBIGUITY (fail-closed toward prompt preservation): a `--dir`
-#      followed by a non-flag token may be a path OR the user's prompt —
-#      the two are indistinguishable here. Drop ONLY the flag and preserve
-#      the token: a bogus path then errors loudly in the real binary,
-#      whereas swallowing the token would run the request prompt-less with
-#      exit 0 (silent prompt loss, Claim 2.1 violation). Empty-string values
-#      (`--dir ""`) are consumed and dropped so no stray `""` leaks into
-#      the positionals (P2-2b). A `--dir` whose following token looks like
-#      another flag (or is absent) is dropped on its own; the following
-#      flag is never swallowed.
+#      P0-1 (fail-closed toward prompt preservation): Paperclip feeds the
+#      prompt via stdin and appends `--dir <cwd>` unconditionally
+#      (upstream execute.ts:629-630), so the token after space-form
+#      `--dir` is ALWAYS the workspace cwd — never user prompt text.
+#      Consume the token iff it is an absolute on-disk directory (the
+#      Paperclip case); otherwise PRESERVE it (a non-dir token after a
+#      hand-typed `--dir` may be prompt text — swallowing it would run
+#      the request prompt-less with exit 0, Claim 2.1 violation, while
+#      a bogus path errors loudly in the real binary). Empty-string
+#      values (`--dir ""`) are consumed and dropped so no stray `""`
+#      leaks into the positionals (P2-2b). A `--dir` whose following
+#      token looks like another flag (or is absent) is dropped on its
+#      own; the following flag is never swallowed.
 #   2. Capture `--variant <v>` / `--variant=<v>` (space and equals forms) and
 #      merge it into the FIRST `--model <m>` / `--model=<m>` (or the short
 #      `-m <m>` / `-m=<m>` aliases) as `<m>#<v>`, regardless of whether
@@ -200,12 +203,16 @@ while [[ "${i}" -lt "${#args[@]}" ]]; do
             ;;
         --dir)
             # v2 runs in the process cwd (already set by Paperclip): drop the
-            # flag itself. P1-9: when the next token is a non-flag word it is
-            # PRESERVED (path-or-prompt ambiguity — a bogus path errors loudly
-            # downstream; a swallowed prompt would run prompt-less, exit 0).
-            # Empty-string values are consumed and dropped (P2-2b: no stray
-            # "" may leak into the positionals).
+            # flag itself. P0-1: the token after space-form --dir is the
+            # Paperclip-appended cwd (prompt arrives via stdin, never as a
+            # --dir value), so consume it iff it is an absolute on-disk
+            # directory. A non-directory token is PRESERVED (hand-typed
+            # --dir with prompt text — swallowing it would run prompt-less,
+            # exit 0). Empty-string values are consumed and dropped (P2-2b:
+            # no stray "" may leak into the positionals).
             if [[ -z "${next}" && "$((i + 1))" -lt "${#args[@]}" ]]; then
+                i=$((i + 2))
+            elif [[ "${next}" == /* && -d "${next}" ]]; then
                 i=$((i + 2))
             else
                 i=$((i + 1))

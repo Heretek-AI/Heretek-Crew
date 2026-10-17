@@ -29,18 +29,11 @@
 
 ## 4. MCP Servers & Tool Access
 
-1. **ClickHouse MCP Server**:
-   - **Package / Repo**: `ClickHouse/mcp-clickhouse` (`mcp-clickhouse` verified PyPI / GitHub)
-   - **Transport**: `stdio`
-   - **Command**: `uvx mcp-clickhouse`
-   - **Configuration / Environment Variables**:
-     - `CLICKHOUSE_URL`: `http://clickhouse:8123`
-> **Wave C P1-2 — ClickHouse MCP infra-pending:** no `clickhouse` service exists in any
-> compose file. Role-ready, infra-pending: add a pinned clickhouse sidecar and keep this
-> server, or delete this server block.
-> Tracked by the smoke dead-MCP allowlist gate.
-     - Read-only analytics credentials.
-2. **Codebase Memory MCP Server**:
+> **P2-8 (2026-10-17) — ClickHouse MCP REMOVED:** no `clickhouse` service exists in
+> any compose file, so the dead server block + `clickhouse_*` allow were deleted from
+> `opencode.json` (fail-closed over connection-refused-at-runtime). Re-add both (pinned
+> package + profile-gated sidecar) if ClickHouse infra ever lands.
+1. **Codebase Memory MCP Server**:
    - **Package / Repo**: `codebase-memory-mcp` (PyPI verified v0.12.0)
    - **Transport**: `stdio`
    - **Command**: `codebase-memory-mcp`

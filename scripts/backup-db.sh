@@ -3,19 +3,27 @@
 # backup-db.sh — timestamped PostgreSQL backup for the Heretek-Crew stack.
 #
 # Usage:
-#   ./scripts/backup-db.sh [--help]
+#   ./scripts/backup-db.sh [--plaintext-ok] [--help]
 #
 # What it does:
-#   1. Loads repo .env (if present) for POSTGRES_USER / POSTGRES_DB.
+#   1. Loads repo .env (if present) for POSTGRES_USER / POSTGRES_DB /
+#      BACKUP_DIR / BACKUP_RETENTION_COUNT / BACKUP_AGE_RECIPIENT /
+#      BACKUP_PLAINTEXT_OK (P3-1: header synced with the sourcing block
+#      below — every consumed key is named here, no silent inputs).
 #   2. Fail-closed gate: requires `docker compose` and a healthy `postgres`
 #      service (pg_isready inside the container). Refuses to write an empty
 #      dump instead of silently succeeding.
-#   3. Streams `pg_dump` out of the container through gzip into
+#   3. Fail-closed encryption gate (P2-13): refuses plaintext dumps unless
+#      BACKUP_AGE_RECIPIENT names an age public key (age1...) or the
+#      operator passes explicit --plaintext-ok (in-env override:
+#      BACKUP_PLAINTEXT_OK=1). An unset recipient without the explicit
+#      opt-in aborts BEFORE any dump bytes are written.
+#   4. Streams `pg_dump` out of the container through gzip into
 #      backups/backup-YYYYMMDD-HHMMSS.sql.gz (never `latest`, never unversioned
 #      overwrite — every backup is timestamped; a same-second rerun gets a
 #      -$RANDOM suffix instead of overwriting, and a second collision aborts
 #      fail-closed rather than clobbering).
-#   4. Verifies the dump file is non-empty, then enforces retention: keeps the
+#   5. Verifies the dump file is non-empty, then enforces retention: keeps the
 #      newest $BACKUP_RETENTION_COUNT dumps, deletes older ones (NUL-delimited
 #      mtime sort — safe against whitespace/newlines in filenames).
 #
@@ -24,15 +32,17 @@
 #   POSTGRES_DB .............. default: paperclip
 #   BACKUP_DIR ............... default: backups
 #   BACKUP_RETENTION_COUNT ... default: 14 (0 disables pruning)
-#   BACKUP_AGE_RECIPIENT ..... default: unset (= plaintext dumps). When set to
-#      an age public key (age1...), the gzip stream is encrypted with
-#      `age -r` and the dump lands as backup-*.sql.gz.age. Fail-closed:
-#      if the variable is set but the `age` binary is missing, the backup
-#      aborts instead of writing plaintext. Restore with
-#      FILE=backups/<name>.sql.gz.age ./scripts/restore-db.sh (needs
-#      BACKUP_AGE_IDENTITY pointing at the matching identity file).
+#   BACKUP_AGE_RECIPIENT ..... REQUIRED unless --plaintext-ok (P2-13
+#      fail-closed): an age public key (age1...) — the gzip stream is
+#      encrypted with `age -r` and the dump lands as
+#      backup-*.sql.gz.age. If the variable is set but the `age` binary
+#      is missing, the backup aborts instead of writing plaintext.
+#      Restore with FILE=backups/<name>.sql.gz.age ./scripts/restore-db.sh
+#      (needs BACKUP_AGE_IDENTITY pointing at the matching identity file).
 #      gpg is NOT shelled out to (one tool, one format); age is the
 #      documented at-rest mechanism (see P2-12).
+#   BACKUP_PLAINTEXT_OK ...... set to 1 (or pass --plaintext-ok) to
+#      explicitly allow an unencrypted dump (operator opt-in only).
 #
 # No secrets are baked or echoed: credentials stay inside the container's
 # environment; only the dump bytes cross the pipe.
@@ -44,6 +54,9 @@ cd "${REPO_ROOT}"
 
 for arg in "$@"; do
   case "${arg}" in
+    # P2-13: explicit plaintext opt-in (operator acknowledges an
+    # unencrypted dump; equivalent to BACKUP_PLAINTEXT_OK=1).
+    --plaintext-ok) BACKUP_PLAINTEXT_OK_CLI="1" ;;
     --help|-h)
       sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -58,6 +71,13 @@ done
 if [[ -f .env ]]; then
   set -a
   # shellcheck disable=SC1091
+  # NOTE (P3-1): `source` executes .env as shell. Only POSTGRES_USER /
+  # POSTGRES_DB / BACKUP_DIR / BACKUP_RETENTION_COUNT /
+  # BACKUP_AGE_RECIPIENT / BACKUP_PLAINTEXT_OK are consumed below (see
+  # header step 1); a restricted dotenv parser for just those keys would
+  # shrink this surface (tracked — behavior-preserving minimal path keeps
+  # `source` here). CLI --plaintext-ok can only ever OPT IN (OR logic in
+  # the P2-13 gate) — it can never weaken a .env-provided recipient.
   source ./.env
   set +a
 fi
@@ -67,6 +87,15 @@ POSTGRES_DB="${POSTGRES_DB:-paperclip}"
 BACKUP_DIR="${BACKUP_DIR:-backups}"
 BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-14}"
 BACKUP_AGE_RECIPIENT="${BACKUP_AGE_RECIPIENT:-}"
+# P2-13 fail-closed encryption gate: plaintext dumps require explicit
+# operator opt-in (--plaintext-ok or BACKUP_PLAINTEXT_OK=1). An unset
+# recipient without opt-in aborts BEFORE any dump bytes are written —
+# backups never silently land unencrypted.
+if [[ -z "${BACKUP_AGE_RECIPIENT}" && "${BACKUP_PLAINTEXT_OK_CLI:-}" != "1" && "${BACKUP_PLAINTEXT_OK:-0}" != "1" ]]; then
+  echo "error: BACKUP_AGE_RECIPIENT is unset and --plaintext-ok was not passed (fail-closed: refusing plaintext dump)" >&2
+  echo "hint: set BACKUP_AGE_RECIPIENT=age1... for encrypted backups, or pass --plaintext-ok to explicitly allow plaintext" >&2
+  exit 1
+fi
 
 command -v docker >/dev/null 2>&1 || { echo "error: docker is required" >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "error: 'docker compose' plugin is required" >&2; exit 1; }
@@ -121,7 +150,7 @@ if [[ "${ENCRYPT}" == "true" ]]; then
     --no-owner --clean --if-exists \
     | gzip -c | age -r "${BACKUP_AGE_RECIPIENT}" > "${OUTFILE}"
 else
-  echo "[backup] note: BACKUP_AGE_RECIPIENT unset — writing a PLAINTEXT dump (set it for age-encrypted at-rest backups)"
+  echo "[backup] PLAINTEXT dump explicitly opted in (--plaintext-ok): ${OUTFILE} is UNENCRYPTED at rest"
   docker compose exec -T postgres pg_dump -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
     --no-owner --clean --if-exists \
     | gzip -c > "${OUTFILE}"

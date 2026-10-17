@@ -1499,3 +1499,110 @@ registry Docker-Content-Digest headers, nothing invented offline).
   password-file, hound/piston/minio vendoring, dead-MCP build-vs-delete,
   full round-trip + harness + canary + scrub live runs (all need `make up`).
 - No commits, no merges, no subagents used.
+
+---
+
+# Audit Remediation Pass — P0 + P1 (+P2/P3) (branch `fix/audit-remediation-p0-p1`)
+
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` (superseding 13:05 report)
+**Scope:** P0-1..P0-9, P1-1..P1-15, P2-1/2/4/5/6/7/8/10/11/13/14, P3-1/2/4/5.
+Deferred-by-design (log-only, no code change): P1-2, P1-4, P1-7, P1-11/12/13 (topology),
+P1-14, P2-3/9/15/16, P2-14, P3-5/6/7/8/10/11/12, P0-2/3/4/6 (upstream/design-blocked).
+**Status:** implemented + statically verified. Changes UNCOMMITTED for QA/Drift-Guard.
+
+## P0 — Critical
+
+### P0-1 Shim `--dir` preserve injects workspace path (FIXED)
+- Files: `scripts/opencode-shim.sh:22-33` (rule-1 comment), `:201-214` (consume iff absolute on-disk dir); `scripts/test-shim.sh` §3/§5/§5a/§5b/§5c/§15a0; `scripts/smoke-test.sh` §5 (consume + preserve cases, header comment).
+- Proof: `OPENCODE_REAL_BIN=/tmp/rec.sh bash scripts/opencode-shim.sh run --format json --dir /tmp/ws --model opencode/gemini --variant high "hello"` (with `/tmp/ws` existing) → `run --format json --model opencode/gemini#high --auto hello` — NO stray `/tmp/ws`. Non-existent/relative/non-dir tokens still preserved (fail-closed toward prompt preservation).
+- Tests: `bash scripts/test-shim.sh` → **57 passed, 0 failed** (54 + 3 new P0-1 cases); smoke §5 asserts both consume and preserve paths.
+
+### P0-2 Harness 1.0.7 `rootDir must be non-empty` (UPSTREAM-BLOCKED, logged)
+- No pin change: bumping without a fixed successor would float the fleet onto an unverified single-vendor release (5 versions in 22h). Treats all `harness_*` allows as dead config until upstream ships `pick()`-fixed successor; then bump pin + re-run live tool-visibility gate (§10b). Blocker entry recorded here, not claimed fixed.
+
+### P0-3 DATABASE_URL survival unproven (LIVE-CANARY-BLOCKED, static gates kept)
+- Sanitize layer EXISTS (correct citations `execute.ts:55-65`, `server-utils.ts:3513-3531`); `DATABASE_URL`/provider keys NOT in either block-list → survival unproven. Static in-repo gates (seed `adapterConfig.env` allowlist assert, §10b skip) unchanged and green. Live canary command added to smoke §4 comment: in a live agent turn `printenv | grep -c DATABASE_URL` MUST be `0`; if ≥1, scrub server env + rotate secrets. Needs `make up` + seeded fleet.
+
+### P0-4 dangerouslySkipPermissions default TRUE (UPSTREAM-BLOCKED, logged)
+- Correct lines `runtime-config.ts:110,153,207`. Seeded agents carry `False` (smoke asserts zero `True` remains); any UI/API-created agent without the flag gets full allow. Fix belongs upstream (flip default to `false`); in-repo action: forbid manual creation, audit `list-agents | jq '.[] | select(.adapterConfig.dangerouslySkipPermissions != false)'`. Needs live stack.
+
+### P0-5 Prefix-match shell allows bypassable (DESIGN-ACCEPTED, static gates kept)
+- `fnmatch` triple-True confirmed by audit; enforcer semantics unpinned upstream. Static gates already present and green: §3b negative prefix-chain probes (reference matcher denies `git status; id`, `npm test && id`, `curl -s http://x; id`; every shell allow verified single-command prefix) + AGENTS.md §4 advisory-only note. Live probes (`git status; id`, `git status$(id)`, `git status||id`, `npm test -- --unknown-flag` through an agent turn) still required — need `make up`.
+
+### P0-6 Piston shared-net unauth RCE (DESIGN-BLOCKED, logged)
+- No topology break: `:2000` expose-only on shared net with exact-host advisory curl pins. Structural fix (shared-secret sidecar proxy on isolated net, profile-gating, never co-schedule qa/devsec with untrusted) is a product/hardening decision requiring live reachability verification — recorded here, not claimed fixed.
+
+### P0-7 android-mobile-spec MCP typo (FIXED)
+- `roles/android-mobile-spec/opencode/opencode.json:297` `@mobile-next/mobile-mcp@0.1.2` → `@mobilenext/mobile-mcp@1.0.11` (`npm view` → `1.0.11`; old scope E404). Synced `AGENTS.md:33,53`, `README.md:270`, `roles-catalog/04_specialized_language_engineers.md:905`, `ROLE_CATALOG_50.md:93`.
+- Proof: `grep -rn "mobile-next" roles/` → clean (only historical `AUDIT_REPORT_FINDINGS.md` + scaffold prompt retain the old string intentionally); `python3 -c json.load` valid.
+
+### P0-8 Five dead MCP backends (FIXED via deletion, P2-8)
+- Deleted dead server blocks + tool allows (no unpinned replacement services invented): `analytics-metrics-eng` (clickhouse + `clickhouse_*`), `cache-streaming-eng` (redis + kafka + `redis_*`/`kafka_*`; servers now `{}`), `mlops-serving-eng` (ollama + `ollama_*`; docker MCP kept), `observability-eng` + `sre-incident-eng` (prometheus + `prometheus_*` each). Per-role `AGENTS.md` §4 notes rewritten from infra-pending to REMOVED. Residual fs path scopes (`migrations/clickhouse/**`, `deploy/kafka/**`, `deploy/prometheus/**`) kept — harmless directory scopes, no live backend. Smoke dead-MCP allowlist now pins only `("load-stress-tester","k6")`.
+- Proof: `grep -rn "CLICKHOUSE_URL|KAFKA_BROKERS|OLLAMA_HOST|PROMETHEUS_URL|clickhouse_*|kafka_*|ollama_*|prometheus_*|redis_*" roles/*/opencode/opencode.json` → zero hits; 51/51 JSON valid; deny tails intact.
+
+### P0-9 35 roles hold mutating harness allows (FIXED fleet-wide)
+- Flipped `harness_file_hash_edit` / `harness_ast_structural_rewrite` / `harness_rename_symbol` / `harness_checkpoint_rollback` from allow→deny in all 35 residual roles (exact-block replace, formatting preserved), mirroring the exec-director deny pattern. Read-only tool allows + `harness_*` deny tails untouched.
+- Proof: per-role loop → **0 roles with allow / 51 roles with deny** (was 35/16); 51/51 JSON valid; shell deny-tail last in 51/51.
+- Smoke §3b gates rewritten to the remediated expectation (prior gates encoded the vulnerable 14-tool state): manifest gate now requires the 10-tool read-only manifest + 4 explicit mutating denies + `harness_*` tail in ALL 51 plugin roles; mutating ban is fleet-wide while the fs:write-confinement drift pin stays at its 16-role set (`FS_READONLY_ROLES`). Both gates PASS.
+
+## P1 — High
+
+- **P1-1 Firecrawl `/health` 404 (FIXED):** `sidecars:241` → `wget -qO- http://127.0.0.1:3002/e2e-test || exit 1` (upstream routes `/`, `/v0/health/*`, `/e2e-test`; no `/health`).
+- **P1-2 Prebuilt `:1.0.0` unpublished (HUMAN ACTION, no code change):** needs `git tag v1.0.0 && git push origin v1.0.0` by a human with push rights + digest replacement. Not publishable from here.
+- **P1-3 socket-proxy 2y stale (FIXED):** `:0.3.0` → `:0.5.0` (Hub tag verified live 2026-10-17; env contract CONTAINERS/IMAGES/INFO/VERSION/POST/BUILD/EXEC/VOLUMES/NETWORKS/AUTH unchanged). Re-run GET-only deny probe on first core-profile boot.
+- **P1-4 MinIO undeployable (BLOCKED, pin kept):** `quay.io/minio/minio:RELEASE.2024-11-07…` retained exact (quay anonymous manifest 401, no credentials in env — digest unresolvable from here). Replacement plan: evaluate `localstack/localstack:<tag>@sha256:<digest>` at the next bump cycle (AGPL exit included); do NOT swap blind without a resolved digest.
+- **P1-5 Paperclip base unreproducible (FIXED):** `docker/Dockerfile:21` placeholder → `PAPERCLIP_SOURCE_COMMIT=73659c6b27c1d97226f2da9ca39f256eefddac66` (verified `git -C /tmp/paperclip rev-parse HEAD` → same). Smoke asserts 40-hex recorded + placeholder absent (PASS).
+- **P1-6 Hound archived rationale false (FIXED):** `etsy/hound` RENAMED to `hound-search/hound` (`archived: false`, pushed 2026-09-10) — corrected in `SUPPORTING_SERVICES.md` tracked-decision note + `sidecars:446-460` comment. Migration to livegrep/zoekt stays OPTIONAL quarterly.
+- **P1-7 Piston digest-of-latest (VENDOR NOTE, no blind bump):** upstream publishes only `latest`; in-repo pin is digest-of-latest `sha256:2f66…` (no `:latest` tag used — policy-compliant). Vendor plan stands: maintainer builds piston from a pinned release tag, pushes `ghcr.io/heretek-ai/piston:<semver>`, replaces digest after `docker manifest inspect`. Needs network + push rights; not doable from here.
+- **P1-8 Ghidra :1337 / Radare2 :9090 unauth (GUARD COMMENT, no topology break):** added P1-8 guard block at Category C header (expose-only, isolated `heretek-devsec`, no untrusted co-scheduling until shared-secret proxy). Secret-proxy fronting is the tracked structural plan.
+- **P1-9 harness_* wildcard order (VERIFIED, no change needed):** post-P0-9, all harness entries fleet-wide are read-allows + denies (same-effect denies: wildcard-before-specifics in the 16 original deny roles; specifics-before-wildcard in the 35 flipped roles). No allow is shadowed under either first-match or deny-override semantics — the §3b manifest gate (10 allows + 4 denies + tail, 51/51 PASS) pins this.
+- **P1-10 threat-modeler over-broad (FIXED, minimal diff):** dropped `fs:write deploy/security/**` (threat models stay under `docs/security/threat-models/**`); `github_*` allow → `github_get_*` + `github_search_*` + `github_list_*` allows + `github_*` deny (server is `@modelcontextprotocol/server-github@2025.4.8`). Shell deny-tail preserved; `AGENTS.md` write-confinement step synced. Compliance-auditor `github_*` noted but untouched (minimal diff per scope).
+- **P1-11 Caddy 0.0.0.0:80/443 (COMMENT, no topology change):** extended `docker-compose.yml` exposure note with the compose-level `test $EXPOSURE = private && exec caddy…` plan — deferred (caddy has no shell entrypoint hook without an image change); `make proxy-up` guard + note stay the gate.
+- **P1-12 Superuser DATABASE_URL inspect-readable (COMMENT, no topology change):** password-file/secret plan already documented at `docker-compose.yml:104-112` (URL assembled from fail-closed `:?` guards; agent access via `POSTGRES_READONLY_URL` only; seed payloads asserted key-free). Rotation to Docker secrets stays tracked.
+- **P1-13 GET-recon open whole net (COMMENT, no topology change):** dedicated `heretek-ci` net / source-allowlist plan already documented at `sidecars:531-536` (live network move deferred pending `make up` reachability verification). POST/BUILD/EXEC=0 posture untouched.
+- **P1-14 Offensive shell allows (NOTE, no broad removal):** installer/offensive-harness allows (garak/pyrit/promptfoo, npm/cargo/go, piston curl) are role-essential surfaces — removing them breaks the roles. Remediation is approval-gated installs + ephemeral sandboxes at runtime (tracked); npm ci-only migration owned by dependency-patcher on the quarterly cycle.
+- **P1-15 restore-db.sh `--file` mismatch (FIXED):** arg loop converted `for`→`while` with `shift`; accepts `--file path` (missing/flag value → exit 2) alongside `--file=*`. Proof: `--file backups/x.sql.gz` → exit 1 file-gate (`dump file not found`), NOT parse exit 2; bare `--file` → exit 2; `--bogus` → exit 2. Smoke §5b asserts both (PASS).
+
+## P2 / P3
+
+- **P2-1 stale budget comment (FIXED):** `seed-50-fleet.sh:337` → `Sum = 1300000 cents ($13,000.00 USD)` (matches `:45/:99/:113` + dry-run `total 1300000 == cap`).
+- **P2-2 dispatch-pipeline no ticket validation (FIXED):** `require_ticket_id` (`^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`, mirrors worktree-manager.sh:39-45) enforced post-parse. Proof: `../evil`, `/tmp/wt-abs` → exit 2; `tkt-123` + default timestamp id → exit 0.
+- **P2-3 unverified probes (DEFERRED):** first-boot `docker ps/logs` verification needs `make up`; no blind bumps from here.
+- **P2-4 searxng (BUMPED, verified):** digest `13de…` (tag 2025.12.19) → `sha256:79180616…` (tag `2026.10.17-2a6fc07be`, newest Hub tag, skopeo-resolved live).
+- **P2-5 firecrawl 2.11 (SKIPPED, blocker):** GHCR tags list contains NO `2.11*` (latest `2.10.x`) — nothing verified to bump to; pin stays `2.10.19@5044…`.
+- **P2-6 browserless + litellm (BUMPED, verified):** `ghcr.io/browserless/chromium:v2.24.2` → `v2.26.0@sha256:8990…` (tag verified in GHCR list incl. v2.26.1; digest skopeo-resolved); `ghcr.io/berriai/litellm@eb14…` (main-v1.54.0) → `:main-v1.60.0@sha256:56ad…` (tag in GHCR list; digest skopeo-resolved). **mitmproxy NOT bumped:** 11.0.2→12.x is a major-proxy behavior change gated on the quarterly cycle + first-boot healthcheck re-verify (needs `make up`); file rationale stands.
+- **P2-7 phantom wirings (FIXED in docs):** `docker/` ships only `Dockerfile` — deleted 4 phantom volume lines from `SUPPORTING_SERVICES.md` blocks (searxng `settings.yml`, hound `config.json`, wiremock `mappings/`, litellm `config.yaml`) with P2-7 removal notes + real-impact annotations (limiter/formats, repo-index, runtime `__admin/mappings`, DB-stored models); crawl4ai block marked STATUS specified-but-NOT-composed (served by firecrawl). Decision: delete-doc-block over vendor+mount (vendoring unreviewed configs invents behavior). §11 mirrored excerpts untouched (explicitly illustrative per authoritative-source note).
+- **P2-8 dead MCP envs (FIXED — see P0-8).** Per-role choice logged: delete dead env refs + allows (no services invented). `load-stress-tester/k6` kept (CLI tool, not a dead backend).
+- **P2-9 jaeger v2 env (DEFERRED):** `COLLECTOR_OTLP_ENABLED` harmless-if-ignored; needs first-boot `docker logs jaeger` (needs `make up`).
+- **P2-10 playwright (FIXED):** `firecrawl-playwright` `MAX_CONCURRENT_PAGES` 10→5 + `shm_size: 1gb` (key already used by browserless — valid).
+- **P2-11 mocks lag (SKIPPED per quarterly plan):** mailpit v1.21.8 / wiremock 3.10.0-alpine bumps stay on the dependency-patcher quarterly cycle (file comments); mitmproxy first is blocked by the P2-6 major-bump rationale above.
+- **P2-12 XDG provenance (FIXED static part):** Dockerfile commit recorded (P1-5) + 40-hex smoke assert; `printenv` canary stays live-gated (P0-3).
+- **P2-13 backup plaintext default (FIXED fail-closed):** `backup-db.sh` requires `BACKUP_AGE_RECIPIENT` unless `--plaintext-ok` / `BACKUP_PLAINTEXT_OK=1` (gate before any dump bytes; CLI opt-in is OR-logic so it can never weaken a `.env` recipient). `.env.example` documents both knobs (commented placeholders, no secrets). Smoke §5b asserts refusal (exit 1 + message) and opt-in pass-through; live round-trip passes `--plaintext-ok` explicitly.
+- **P2-14 fs:read `**` (ACCEPTED RISK, no mass change):** scoping 51 `fs:read **` allows to per-role dirs would break cross-role reads (catalog/codebase navigation) with no live enforcement matrix to validate against; secret paths stay deny-first (smoke §3b deny-first gate green under both semantics). Revisit with the live allow/deny matrix.
+- **P2-15 firecrawl USE_DB_AUTH=false (KEEP, documented):** loopback-only `:3002` binding contains it; flipping needs a firecrawl user/secret bootstrap that does not exist upstream (would fail closed at boot). Smoke §3a pins the loopback publish.
+- **P2-16 privileged android + tailscale caps (KEEP):** profile-gated (`mobile`/`tailscale`, never default) + Makefile co-scheduling guard — accepted, no change.
+- **P3-1 backup .env wording (SYNCED):** header step 1 now names every consumed key; sourcing site carries the P3-1 restricted-parser note.
+- **P3-2 NOTES counts (FIXED):** `46/46` → `57/57` (54 audit-era + 3 new P0-1 cases; verified `test-shim.sh` tail).
+- **P3-3 grep count artifact:** §3a/§3b counts are exact-match pins with drift-fail semantics (fail-closed on change), not brittle artifacts — kept.
+- **P3-4 gotenberg (BUMPED, verified):** `8.37.0` → `8.38.1` (Hub tag verified live).
+- **P3-5 node:24 minor float (LOG ONLY):** digest unknown offline — resolving `node:24.x-trixie-slim@sha256:` needs skopeo against the build host's arch matrix at build time; recorded for the Dockerfile owner, no invented digest.
+- **P3-6 redis 7.4 LTS / P3-7 act-22.04 EOL-2027 / P3-8 android pin / P3-9 dba GRANT shape / P3-10 loopback mocks / P3-11 mitmproxy block_global / P3-12 rootless `id -u==1000`:** no change per audit (deliberate/calendar/live-gated); live items need `make build` + `make up`.
+
+## Verification (this pass)
+
+- `bash scripts/test-shim.sh` → **57 passed, 0 failed**.
+- `bash scripts/smoke-test.sh --check-only` → **555 passed, 0 failed** (exit 0; skips are live-gated).
+- `shellcheck scripts/*.sh` → zero NEW warnings (3 pre-existing SC2016 infos in smoke-test.sh, identical on clean tree via stash comparison).
+- `POSTGRES_READONLY_URL=… GITHUB_TOKEN=… KUBECONFIG_READONLY_PATH=… bash scripts/seed-50-fleet.sh --dry-run` → exit 0, 52 payloads, `total 1300000 == cap`, empty stderr.
+- `python3 json.load` over all 51 edited `opencode.json` → valid; shell deny-tail last in 51/51.
+- `docker compose config` (dummy secrets): merged + `core+ci`, `core+qa-testing`, `web-research+devsec`, `proxy`, `tailscale` profiles → exit 0. Single `--profile qa-testing`/`ci` fail on `local-ci-runner → docker-socket-proxy` dependency — PRE-EXISTING (clean tree identical; documented invocation always pairs `core`).
+- `make test` (full smoke, stack down) → 548 passed, 3 failed, 4 skipped — the 3 failures are live-only (`postgres not healthy`, `paperclip not running`, `:3100` unreachable; no `make up` in this env), unrelated to this diff.
+- Registry proofs (live 2026-10-17): `npm view @mobilenext/mobile-mcp version` → `1.0.11`; GHCR tag lists (firecrawl: no 2.11; browserless: v2.26.0+v2.26.1; litellm: main-v1.60.0); `skopeo inspect` digests for searxng/browserless/litellm/gotenberg/socket-proxy-0.5.0; Hub `gotenberg:8.38.1` count=9, `mitmproxy:12.2.3` exists (deliberately not taken), `tecnativa/docker-socket-proxy:0.5.0` count=1.
+
+## Product decisions requiring human call (explicit)
+
+1. Piston vendoring (`ghcr.io/heretek-ai/piston:<semver>`) + `:2000` secret-proxy fronting (P0-6/P1-7).
+2. MinIO→localstack replacement incl. AGPL exit (P1-4).
+3. Publishing `ghcr.io/heretek-ai/heretek-crew:1.0.0` (`git tag v1.0.0 && git push`, P1-2).
+4. Upstream fixes: harness `pick()` successor pin (P0-2), `dangerouslySkipPermissions` default false (P0-4), shell-enforcer argv semantics + live matrix (P0-5), child-env scrub block-list (P0-3).
+5. Live runs needing `make up`: XDG/canary, harness visibility, UID==1000, jaeger/playwright/radare2/hound/ghidra first-boot probes, round-trip, 4 prefix-bypass probes.

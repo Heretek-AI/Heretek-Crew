@@ -79,16 +79,6 @@
       "effect": "allow"
     },
     {
-      "action": "redis_*",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "kafka_*",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
       "action": "harness_file_hash_read",
       "resource": "*",
       "effect": "allow"
@@ -96,7 +86,7 @@
     {
       "action": "harness_file_hash_edit",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ast_structural_search",
@@ -106,7 +96,7 @@
     {
       "action": "harness_ast_structural_rewrite",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ui_geometry_audit",
@@ -136,7 +126,7 @@
     {
       "action": "harness_rename_symbol",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_verify_scoped",
@@ -156,7 +146,7 @@
     {
       "action": "harness_checkpoint_rollback",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_*",
@@ -198,29 +188,6 @@
     "@heretek-ai/opencode-harness"
   ],
   "mcp": {
-    "servers": {
-      "redis": {
-        "type": "local",
-        "command": [
-          "uvx",
-          "mcp-server-redis==0.1.1"
-        ],
-        "env": {
-          "REDIS_URL": "redis://redis:6379"
-        },
-        "timeout": 5000
-      },
-      "kafka": {
-        "type": "local",
-        "command": [
-          "uvx",
-          "kafka-mcp-server==0.1.1"
-        ],
-        "env": {
-          "KAFKA_BROKERS": "kafka:9092"
-        },
-        "timeout": 5000
-      }
-    }
+    "servers": {}
   }
 }

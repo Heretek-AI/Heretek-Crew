@@ -181,7 +181,7 @@
     {
       "action": "harness_file_hash_edit",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ast_structural_search",
@@ -191,7 +191,7 @@
     {
       "action": "harness_ast_structural_rewrite",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ui_geometry_audit",
@@ -221,7 +221,7 @@
     {
       "action": "harness_rename_symbol",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_verify_scoped",
@@ -241,7 +241,7 @@
     {
       "action": "harness_checkpoint_rollback",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_*",

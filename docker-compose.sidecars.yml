@@ -34,9 +34,9 @@ services:
     mem_limit: 256m
 
   searxng:
-    # Pinned by digest 2026-10-17 (skopeo inspect; tag 2025.12.19-8bf600cc6 = newest Hub tag).
-    # Old tag 2024.10.16-ac56c663b was pruned upstream (Hub 404).
-    image: searxng/searxng@sha256:13de9d465bd2d9da6a6718f2a57d96e6e5fa3b8aba3c0bec077a5b7e5f24e4e9
+    # Pinned by digest 2026-10-17 (skopeo inspect; tag 2026.10.17-2a6fc07be = newest Hub tag).
+    # Old digest 13de9d46… (tag 2025.12.19-8bf600cc6) superseded.
+    image: searxng/searxng@sha256:79180616c984f39524f6f27f19625a46f82c8ad4aa6a2e553db52b14e1b4a768
     profiles: ["web-research"]
     restart: unless-stopped
     depends_on:
@@ -156,10 +156,16 @@ services:
     restart: unless-stopped
     environment:
       PORT: "3000"
-      MAX_CONCURRENT_PAGES: "10"
+      # P2-10 (2026-10-17): 10 -> 5 concurrent pages (memory-bounded scrape
+      # microservice; pair with shm_size below — Chromium without /dev/shm
+      # crashes under parallel page load).
+      MAX_CONCURRENT_PAGES: "5"
       BLOCK_MEDIA: "true"
     expose:
       - "3000"
+    # P2-10: Chromium requires /dev/shm (same key as the browserless
+    # service above; valid compose key).
+    shm_size: "1gb"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
       interval: 15s
@@ -238,7 +244,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/health || exit 1"]
+      # P1-1: upstream Firecrawl serves /e2e-test (no /health route —
+      # /health 404s → perpetual unhealthy). Probes the e2e-test route.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/e2e-test || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -249,9 +257,10 @@ services:
     mem_limit: 2g
 
   gotenberg:
-    # Pinned 2026-10-17: 8.37.0 >= 8.33.0 fixes CVE-2026-42596 (SSRF 9.4, fixed
+    # Pinned 2026-10-17: 8.38.1 >= 8.33.0 fixes CVE-2026-42596 (SSRF 9.4, fixed
     # 8.32.0), CVE-2026-44829 (traversal, fixed 8.33.0), CVE-2026-42592 (SSRF).
-    image: gotenberg/gotenberg:8.37.0
+    # P3-4 (bumped 2026-10-17): 8.37.0 -> 8.38.1 (Hub tag verified live).
+    image: gotenberg/gotenberg:8.38.1
     profiles: ["web-research", "qa-testing"]
     restart: unless-stopped
     expose:
@@ -279,7 +288,10 @@ services:
   # CATEGORY B: RESILIENT & STEALTH BROWSER AUTOMATION
   # ============================================================================
   browserless:
-    image: ghcr.io/browserless/chromium:v2.24.2
+    # P2-6 (bumped 2026-10-17): v2.24.2 -> v2.26.0@sha256:8990… (GHCR tag
+    # verified live + registry digest pinned as tag@digest; the digest
+    # wins, the tag is human-readable provenance).
+    image: ghcr.io/browserless/chromium:v2.26.0@sha256:899026f6995003a35989dc32e240711735ac17069a9d476376081bcc20b24da9
     profiles: ["web-research", "qa-testing"]
     restart: unless-stopped
     expose:
@@ -346,6 +358,11 @@ services:
   # PROFILE GATING (P1-6): enable --profile devsec only for trusted
   # analysis work (samples mount read-only). Never co-schedule with
   # untrusted workloads on the same heretek network.
+  # P1-8 GUARD (unauthenticated services): ghidra :1337 serves with no
+  # upstream auth env and radare2 :9090 /cmd/ is unauthenticated RCE by
+  # design — both stay expose-only (no host ports), isolated on
+  # heretek-devsec, never co-scheduled with untrusted workloads, until
+  # the shared-secret sidecar proxy lands (tracked hardening item).
   # ============================================================================
   ghidra:
     # Wave E Stage 4 P2-5 (bumped live 2026-10-17): `blacktop/ghidra:11.2`
@@ -443,13 +460,14 @@ services:
   hound:
     # Pinned by digest 2026-10-17 (skopeo inspect; tag 0.6.0 verified live on GHCR).
     # Upstream publishes 0.6.0 without the 'v' prefix (v0.6.0 was GHCR 404).
-    # Wave C P1-14 TRACKED DECISION (hound is archived upstream): etsy/hound
-    # is archived/inactive — no future CVE fixes; the digest above freezes
-    # dead code. Options, in preference order: (a) migrate to a maintained
+    # Wave C P1-14 TRACKED DECISION (corrected P1-6: hound is RENAMED,
+    # not archived — etsy/hound redirects to hound-search/hound,
+    # archived=false, pushed 2026-09-10): single-maintainer index with
+    # slow release cadence, so the digest above stays exact (no floating
+    # tag). Options, in preference order: (a) migrate to a maintained
     # trigram index (livegrep, zoekt) with a pinned image + this service's
     # volume/API contract re-verified; (b) vendor hound-search/hound at a
-    # fleet tag and self-build from the archived source. Until either
-    # lands, the exact digest pin stays (no floating tag) and hound stays
+    # fleet tag and self-build from source. Until either lands, hound stays
     # on expose-only + loopback publish (blast radius: read-only index).
     # Wave D P2-8 host-port remap: the HOST side moves 6080 -> 6081
     # (container :6080 unchanged, so the healthcheck below still probes
@@ -505,7 +523,12 @@ services:
   # CATEGORY E: ISOLATED EXECUTION SANDBOXES
   # ============================================================================
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.3.0
+    # P1-3 (bumped 2026-10-17): tecnativa/docker-socket-proxy:0.3.0
+    # (2024-09-09) -> :0.5.0 (Hub tag verified live 2026-10-17). Env
+    # contract unchanged (CONTAINERS/IMAGES/INFO/VERSION/POST/BUILD/
+    # EXEC/VOLUMES/NETWORKS/AUTH keys retained upstream); re-run the
+    # GET-only deny probe on first core-profile boot.
+    image: tecnativa/docker-socket-proxy:0.5.0
     profiles: ["core", "devsec"]
     restart: unless-stopped
     expose:
@@ -680,9 +703,10 @@ services:
   # CATEGORY G: LLM GATEWAYS & CACHING
   # ============================================================================
   litellm:
-    # Pinned by digest 2026-10-17 (skopeo inspect; tag main-v1.54.0 verified live on GHCR).
-    # Upstream publishes main-vX.Y.Z, not vX.Y.Z (v1.54.0 was GHCR 404).
-    image: ghcr.io/berriai/litellm@sha256:eb14f07d08318e638459eecc811fc3b30282f6b2397df3a98150a7d6ffd3f6d5
+    # Pinned by digest 2026-10-17 (skopeo inspect; tag main-v1.60.0 verified live on GHCR).
+    # Upstream publishes main-vX.Y.Z, not vX.Y.Z (v1.60.0 was GHCR 404).
+    # P2-6 (bumped 2026-10-17): main-v1.54.0@eb14… -> main-v1.60.0@56ad….
+    image: ghcr.io/berriai/litellm:main-v1.60.0@sha256:56ada8241cc25e109b18b3f9a8fe4fff7688c7fa2014836cc6ba993ac839833d
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:

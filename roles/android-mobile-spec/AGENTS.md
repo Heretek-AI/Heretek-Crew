@@ -30,7 +30,7 @@
 ## 4. MCP Servers & Tool Access
 
 1. **Mobile MCP Server (Android/ADB)**:
-   - **Package / Repo**: `mobile-next/mobile-mcp` (npm verified `mobile-mcp`)
+   - **Package / Repo**: `mobilenext/mobile-mcp` (`npm view @mobilenext/mobile-mcp version` → `1.0.11`, 2026-10-14; the `@mobile-next/` scope 404s)
    - **Transport**: `stdio`
    - **Command**: `npx -y mobile-mcp`
    - **Configuration / Environment Variables**:
@@ -50,7 +50,7 @@
 
 ### Mandated integration endpoints (do not downgrade)
 
-- Primary MCP: mobile-next/mobile-mcp via `npx -y @mobile-next/mobile-mcp@0.1.2` (device discovery, UI hierarchy dump, tap/swipe, text input, screenshots, adb shell).
+- Primary MCP: mobilenext/mobile-mcp via `npx -y @mobilenext/mobile-mcp@1.0.11` (device discovery, UI hierarchy dump, tap/swipe, text input, screenshots, adb shell).
 - Emulator: budtmo/docker-android over ADB at 127.0.0.1:5555 (in-compose address `docker-android:5555`; env ADB_HOST=docker-android ADB_PORT=5555).
 - Automated UI exploration: google/artemis (`artemis explore --apk <debug.apk> --timeout 180s`).
 

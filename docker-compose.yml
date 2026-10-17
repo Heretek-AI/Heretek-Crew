@@ -222,7 +222,7 @@ services:
     # control, replace this one-liner with a mounted Caddyfile (more
     # auditable); the single-host one-liner stays until that need arises.
     command: ["reverse-proxy", "--from", "${PROXY_DOMAIN:-localhost}", "--to", "paperclip:3100"]
-    # EXPOSURE NOTE (P1-6): unlike every other service in this stack
+    # EXPOSURE NOTE (P1-6, P1-11): unlike every other service in this stack
     # (loopback-bound or internal-only), the proxy profile binds 80/443 on
     # ALL interfaces. Enable --profile proxy only with
     # PAPERCLIP_DEPLOYMENT_EXPOSURE=private (default above) plus real
@@ -231,7 +231,11 @@ services:
     # proxy-up` (Makefile guard-proxy) refuses --profile proxy unless
     # PAPERCLIP_DEPLOYMENT_EXPOSURE=private AND BETTER_AUTH_SECRET is a
     # real (non-placeholder) secret. Do not bypass the guard with raw
-    # `docker compose --profile proxy up`.
+    # `docker compose --profile proxy up`. Tracked hardening (P1-11):
+    # a compose-level fail-closed gate (`test $EXPOSURE = private &&
+    # exec caddy…`) would move enforcement out of the Makefile alone —
+    # deferred: caddy has no shell entrypoint hook for the test without
+    # an image change, so the Makefile guard + this note stay the gate.
     ports:
       - "80:80"
       - "443:443"

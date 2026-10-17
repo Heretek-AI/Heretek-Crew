@@ -334,7 +334,7 @@ role_model() {
 }
 
 # Exact integer cents from roles-catalog/ROLE_CATALOG_50.md (authoritative).
-# Comments show the USD face value. Sum = 1270000 cents ($12,700.00 USD).
+# Comments show the USD face value. Sum = 1300000 cents ($13,000.00 USD).
 role_budget_cents() {
   case "$1" in
     exec-director) printf '25000' ;; # $250.00 USD

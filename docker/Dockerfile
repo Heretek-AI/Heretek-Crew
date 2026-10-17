@@ -16,13 +16,13 @@
 #
 # Wave D P1-8 Paperclip source pin (tracked, honest): the base is a LOCAL
 # build with no registry digest, so the reproducible pin is the upstream
-# SOURCE COMMIT it was built from. Record it before building:
-#   git -C /tmp/paperclip rev-parse HEAD   # paste below + into NOTES.md
-# PAPERCLIP_SOURCE_COMMIT=<paste-40-char-sha-here> (unrecorded until the
-# maintainer runs the command above on the build host — `docker inspect`
-# cannot recover it after the fact). Until recorded, Claim 3.1 (XDG /
+# SOURCE COMMIT it was built from. Verified 2026-10-17:
+#   git -C /tmp/paperclip rev-parse HEAD -> 73659c6b27c1d97226f2da9ca39f256eefddac66
+# PAPERCLIP_SOURCE_COMMIT=73659c6b27c1d97226f2da9ca39f256eefddac66 (recorded;
+# assert 40-hex in smoke-test.sh §10 live gate note). `docker inspect`
+# cannot recover it after the fact. Claim 3.1 (XDG /
 # OPENCODE_DISABLE_PROJECT_CONFIG enforcement inside
-# prepareOpenCodeRuntimeConfig) is config-advice, live-unverified: the
+# prepareOpenCodeRuntimeConfig) remains config-advice, live-unverified: the
 # canary live test (plant canary opencode.json + .opencode/ in a scratch
 # workspace, run one agent turn, assert the canary was ignored) still
 # needs a live stack (see smoke-test.sh §10 live gate note).

@@ -46,11 +46,21 @@ ASSUME_YES="${RESTORE_YES:-0}"
 # operator's --file/--yes with stale .env values.
 CLI_FILE_GIVEN="false"
 CLI_YES_GIVEN="false"
-for arg in "$@"; do
+while [[ $# -gt 0 ]]; do
+  arg="$1"
   case "${arg}" in
-    --file=*) FILE="${arg#--file=}"; CLI_FILE_GIVEN="true" ;;
-    --file) echo "error: --file requires '=path' form" >&2; exit 2 ;;
-    --yes|-y) ASSUME_YES="1"; CLI_YES_GIVEN="true" ;;
+    --file=*) FILE="${arg#--file=}"; CLI_FILE_GIVEN="true"; shift ;;
+    # P1-15: accept the space form `--file path` (usage header documents
+    # it). A missing value fails closed with exit 2 instead of consuming
+    # the next flag as a path.
+    --file)
+      shift
+      if [[ $# -eq 0 || "${1:-}" == -* ]]; then
+        echo "error: --file requires a path ('--file <path>' or '--file=<path>')" >&2
+        exit 2
+      fi
+      FILE="$1"; CLI_FILE_GIVEN="true"; shift ;;
+    --yes|-y) ASSUME_YES="1"; CLI_YES_GIVEN="true"; shift ;;
     --help|-h)
       sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0

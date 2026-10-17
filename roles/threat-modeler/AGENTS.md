@@ -52,7 +52,7 @@
 
 1. **Triage the assignment.** Read the Paperclip ticket end to end, restate the objective and its acceptance criteria in the run transcript, and locate prior art via the codebase knowledge graph before asserting anything about repository structure.
 2. **Execute the role skill.** Follow `.opencode/skills/<skill>/SKILL.md` step by step; do not skip verification sub-steps.
-3. **Confine every write.** Filesystem writes are permitted only under: `deploy/security/**`, `docs/security/threat-models/**`. Anything outside these scopes is rejected by the role permissions — fail closed, do not work around the denial.
+3. **Confine every write.** Filesystem writes are permitted only under: `docs/security/threat-models/**` (P1-10: the former `deploy/security/**` write scope was dropped — deploy changes go through a privileged role). Anything outside this scope is rejected by the role permissions — fail closed, do not work around the denial.
 4. **Verification is evidence review.** This role has no shell execution scope: validate exclusively from inspectable artifacts (reports, logs, CI transcripts). An assertion without an inspectable artifact is invalid.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `system-architect` via Paperclip; flag blockers immediately instead of stalling.

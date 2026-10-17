@@ -89,11 +89,6 @@
       "effect": "allow"
     },
     {
-      "action": "prometheus_*",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
       "action": "codebase-memory_*",
       "resource": "*",
       "effect": "allow"
@@ -106,7 +101,7 @@
     {
       "action": "harness_file_hash_edit",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ast_structural_search",
@@ -116,7 +111,7 @@
     {
       "action": "harness_ast_structural_rewrite",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ui_geometry_audit",
@@ -146,7 +141,7 @@
     {
       "action": "harness_rename_symbol",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_verify_scoped",
@@ -166,7 +161,7 @@
     {
       "action": "harness_checkpoint_rollback",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_*",
@@ -209,17 +204,6 @@
   ],
   "mcp": {
     "servers": {
-      "prometheus": {
-        "type": "local",
-        "command": [
-          "uvx",
-          "prometheus-mcp-server==1.6.2"
-        ],
-        "env": {
-          "PROMETHEUS_URL": "http://prometheus:9090"
-        },
-        "timeout": 5000
-      },
       "codebase-memory": {
         "type": "local",
         "command": [

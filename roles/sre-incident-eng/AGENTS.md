@@ -29,16 +29,10 @@
 
 ## 4. MCP Servers & Tool Access
 
-1. **Prometheus MCP Server**:
-   - **Package / Repo**: `pab1it0/prometheus-mcp-server` (verified PyPI / GitHub)
-   - **Transport**: `stdio`
-   - **Command**: `uvx prometheus-mcp-server`
-   - **Configuration / Environment Variables**: `PROMETHEUS_URL=http://prometheus:9090`.
-> **Wave C P1-2 — Prometheus MCP infra-pending:** no `prometheus` service exists in any
-> compose file. Role-ready, infra-pending: add a pinned prometheus sidecar and keep this
-> server, or delete this server block.
-> Tracked by the smoke dead-MCP allowlist gate.
-2. **Git MCP Server**:
+> **P2-8 (2026-10-17) — Prometheus MCP REMOVED:** no `prometheus` service exists in
+> any compose file, so the dead server block + `prometheus_*` allow were deleted from
+> `opencode.json`. Re-add (pinned package + profile-gated sidecar) if infra lands.
+1. **Git MCP Server**:
    - **Package / Repo**: `@cyanheads/git-mcp-server` (npm verified v2.15.3)
    - **Transport**: `stdio`
    - **Command**: `npx -y @cyanheads/git-mcp-server`

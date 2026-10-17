@@ -90,7 +90,7 @@ flowchart TD
 | `cpp-lowlevel-eng` | C++ Systems & Low-Level Engineer | Specialized Language Engineers | `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | `cmake`, `ninja`, ASan/UBSan, CTest | $350.00 |
 | `java-kotlin-eng` | Java / Kotlin Enterprise Engineer | Specialized Language Engineers | `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | Spring Boot 3 Virtual Threads, Gradle | $300.00 |
 | `ios-mobile-spec` | Mobile iOS Specialist | Specialized Language Engineers | `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | SwiftUI, Swift 6 concurrency, SwiftLint | $300.00 |
-| `android-mobile-spec` | Mobile Android Specialist | Specialized Language Engineers | `mobile-mcp` (`mobile-next`), `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | Jetpack Compose, `docker-android` ADB, `google/artemis`, Gradle | $300.00 |
+| `android-mobile-spec` | Mobile Android Specialist | Specialized Language Engineers | `mobile-mcp` (`mobilenext`), `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | Jetpack Compose, `docker-android` ADB, `google/artemis`, Gradle | $300.00 |
 | `cloud-platform-eng` | Cloud Platform Engineer | Cloud, Platform & Site Reliability | `aws-mcp` (`awslabs/mcp`), `codebase-memory-mcp`, `@cyanheads/git-mcp-server` | `tofu validate`, `tofu plan`, `tflint` | $300.00 |
 | `k8s-orchestrator` | Kubernetes & Container Orchestrator | Cloud, Platform & Site Reliability | `mcp-server-kubernetes`, `docker-mcp` | `helm lint`, `kubeconform`, network policy | $280.00 |
 | `sre-incident-eng` | Site Reliability Engineer (SRE) | Cloud, Platform & Site Reliability | `prometheus-mcp-server`, `@cyanheads/git-mcp-server` | PromQL diagnostics, post-mortem write | $300.00 |

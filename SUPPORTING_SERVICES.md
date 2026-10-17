@@ -290,6 +290,10 @@ flowchart TB
 ---
 
 ### Service A.2: Crawl4AI
+> **STATUS (P2-7): specified but NOT composed.** No `crawl4ai:` service exists in
+> `docker-compose.sidecars.yml` — the compose block below is illustrative only
+> (web crawling is served by the composed `firecrawl` stack). Add a pinned
+> `unclecode/crawl4ai` sidecar if a lightweight crawl path is ever needed.
 * **Service Identity**: Crawl4AI (`unclecode/crawl4ai`)
 * **Repository**: [https://github.com/unclecode/crawl4ai](https://github.com/unclecode/crawl4ai)
 * **Image Tag**: `unclecode/crawl4ai:0.9.4`
@@ -393,8 +397,12 @@ flowchart TB
       SEARXNG_BASE_URL: "http://searxng:8080/"
       SEARXNG_REDIS_URL: "redis://searxng-redis:6379/0"
       SEARXNG_SECRET: "${SEARXNG_SECRET:?SEARXNG_SECRET must be set in .env}"
-    volumes:
-      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+> **P2-7 (2026-10-17) — phantom mount REMOVED from this block:** an earlier
+> revision showed `./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro`
+> here, but `docker/` ships no such file and the composed service mounts
+> nothing — searxng runs on image defaults + env (BASE_URL/REDIS_URL/SECRET).
+> Vendor a real `settings.yml` and add the compose mount if limiter/format
+> tuning is ever needed; until then this block matches compose exactly.
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
       interval: 10s
@@ -432,7 +440,9 @@ flowchart TB
 
 #### Security, Sandboxing & Resource Footprint
 * **Resource Profile**: Idle: 65MB RAM, 0.01 CPU. Peak: 450MB RAM, 0.8 CPU.
-* **Security Configuration**: Set `server.limiter: false` in `settings.yml` since incoming traffic originates solely from the internal `heretek` network, and enable `search.formats: [html, json]`.
+* **Security Configuration**: incoming traffic originates solely from the internal
+  `heretek` network (P2-7: limiter/format tuning would live in a vendored
+  `settings.yml`, which does not exist — defaults apply; real impact noted).
 
 ---
 
@@ -822,8 +832,12 @@ In `opencode.json`:
       - "6080"
     ports:
       - "127.0.0.1:6081:6080"
+> **P2-7 (2026-10-17) — phantom mount REMOVED from this block:** an earlier
+> revision showed `./docker/hound/config.json:/data/config.json:ro` here, but
+> `docker/` ships no such file and the composed service mounts only
+> `./workspaces:ro` + `hound-data`. Vendor a real `config.json` and add the
+> compose mount if repo-index customization is ever needed.
     volumes:
-      - ./docker/hound/config.json:/data/config.json:ro
       - ./workspaces:/workspaces:ro
       - hound-data:/data
     healthcheck:
@@ -842,15 +856,18 @@ In `opencode.json`:
 curl -s "http://hound:6080/api/v1/search?q=class.*Handler&files=*.ts&repos=*" | jq .
 ```
 
-#### Tracked Decision — Archived Upstream (Wave C P1-14)
-`etsy/hound` (now `hound-search/hound`) is archived/inactive: no future
-CVE fixes, and the digest pin above freezes dead code. Decision, in
+#### Tracked Decision — Upstream Rename, NOT Archival (Wave C P1-14, corrected P1-6)
+`etsy/hound` was RENAMED to `hound-search/hound` — not archived
+(`archived: false`, pushed 2026-09-10 per GitHub API; the old
+`etsy/hound` path redirects). The image pin above already tracks the
+new namespace (`ghcr.io/hound-search/hound`). Residual risk stands:
+single-maintainer index with slow release cadence, so the digest pin
+stays exact (no floating tag) and hound remains expose-only with a
+loopback publish (blast radius: read-only index). Options, in
 preference order: **(a)** migrate to a maintained trigram index
 (`livegrep`, `zoekt`) with a pinned image and this service's
-volume/API contract re-verified; **(b)** vendor hound at a fleet tag and
-self-build from the archived source. Until either lands, the exact
-digest pin stays (no floating tag) and hound remains expose-only with a
-loopback publish (blast radius: read-only index). Wave D P2-8: the HOST
+volume/API contract re-verified; **(b)** vendor hound-search/hound at a
+fleet tag and self-build from source. Wave D P2-8: the HOST
 side moved `6080` -> `6081` (container `:6080` unchanged) so hound no
 longer shares a host port with `docker-android`'s noVNC (`:6080` in the
 mutually-exclusive `mobile` profile) — the Makefile co-scheduling guard
@@ -1105,8 +1122,12 @@ Until then the exact upstream digest pin stays — never `:latest`.
       - "4000"
     ports:
       - "127.0.0.1:4000:4000" # Admin dashboard
-    volumes:
-      - ./docker/litellm/config.yaml:/app/config.yaml:ro
+> **P2-7 (2026-10-17) — phantom mount REMOVED from this block:** an earlier
+> revision showed `./docker/litellm/config.yaml:/app/config.yaml:ro` here,
+> but `docker/` ships no such file and the composed service mounts nothing —
+> litellm runs on env (MASTER_KEY/DATABASE_URL) with DB-stored models
+> (`STORE_MODEL_IN_DB=True`). Vendor a real `config.yaml` and add the
+> compose mount if file-based model routing is ever needed.
     environment:
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env}"
       DATABASE_URL: "postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-paperclip}"
@@ -1123,7 +1144,7 @@ Until then the exact upstream digest pin stays — never `:latest`.
     mem_limit: 1.5g
 ```
 
-#### Sample Configuration (`docker/litellm/config.yaml`):
+#### Sample Configuration (ILLUSTRATIVE — not mounted, P2-7):
 ```yaml
 model_list:
   - model_name: claude-3-7-sonnet
@@ -1279,8 +1300,12 @@ curl -s "http://mailpit:8025/api/v1/messages" | jq '.messages[0] | {To, Subject,
       - "8080"
     ports:
       - "127.0.0.1:8089:8080"
-    volumes:
-      - ./docker/wiremock/mappings:/home/wiremock/mappings
+> **P2-7 (2026-10-17) — phantom mount REMOVED from this block:** an earlier
+> revision showed `./docker/wiremock/mappings:/home/wiremock/mappings` here,
+> but `docker/` ships no such directory and the composed service mounts
+> nothing — stubs are pushed at runtime via the `__admin/mappings` API.
+> Vendor a `mappings/` tree and add the compose mount if checked-in stubs
+> are ever needed.
     command: ["--verbose", "--global-response-templating"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/__admin/health || exit 1"]

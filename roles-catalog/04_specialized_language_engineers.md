@@ -902,7 +902,7 @@ METHODOLOGY & HANDOFF:
 
 ### 3. Active & Maintained MCP Servers
 1. **Mobile MCP Server (Android/ADB)**:
-   - **Package / Repo**: `mobile-next/mobile-mcp` (npm verified `mobile-mcp`)
+   - **Package / Repo**: `mobilenext/mobile-mcp` (`npm view @mobilenext/mobile-mcp version` → `1.0.11`; the `@mobile-next/` scope 404s)
    - **Transport**: `stdio`
    - **Command**: `npx -y mobile-mcp`
    - **Configuration / Environment Variables**:

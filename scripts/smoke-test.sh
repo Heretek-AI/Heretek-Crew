@@ -50,8 +50,9 @@
 #                    4. seed dry-run emits company + agent payloads:
 #                       seed-50-fleet.sh (1 company + 51 agents =
 #                       52 payloads, fleet total == cap with no WARNING)
-#                    5. shim translation: --dir flag dropped (ambiguous
-#                       values preserved per P1-9), --variant merged into
+#                    5. shim translation: --dir flag dropped (on-disk
+#                       dirs consumed per P0-1, non-dirs preserved),
+#                       --variant merged into
 #                       first --model#variant (first-wins, P2-2c), exactly
 #                       one --auto, --session and non-run subcommands pass
 #                       through, `--` terminator kept, empty values dropped
@@ -81,15 +82,15 @@
 #   HEALTH_TIMEOUT_SEC (default 30 here), RUN_TIMEOUT_SEC (default 600).
 #
 # NOTE (P1-7 / Wave 2 P0-3): the harness tool manifest IS verified
-# statically. HARNESS_MANIFEST in §3b pins the 14 tools registered by
-# @heretek-ai/opencode-harness@1.0.7 (enumerated empirically via
-# `npm pack` + dist/index.js EXTENDED_HARNESS_TOOL_NAMES — the live
-# setupOpenCodeV2Harness path registers all 14): every full-privilege
-# role that declares the harness plugin must allow exactly that set
-# (per-tool allows, no `harness_*` allow) and carry a `harness_*` deny
-# tail, while read-only-charter roles (Wave A P0-2) allow only the 10
-# non-mutating tools plus 4 explicit mutating-tool denies. A bump of the
-# harness version requires re-enumeration + manifest update here.
+# statically. HARNESS_READONLY_MANIFEST in §3b pins the 10 non-mutating
+# tools registered by @heretek-ai/opencode-harness@1.0.7 (enumerated
+# empirically via `npm pack` + dist/index.js EXTENDED_HARNESS_TOOL_NAMES
+# — the live setupOpenCodeV2Harness path registers all 14): every role
+# that declares the harness plugin must allow exactly that 10-tool set
+# (per-tool allows, no `harness_*` allow), must DENY the 4 mutating
+# tools (P0-9: zero mutating harness allows fleet-wide), and must carry
+# a `harness_*` deny tail. A bump of the harness version requires
+# re-enumeration + manifest update here.
 # Wave D P0-1 root cause (NOT fixed in-repo — dist/index.js is upstream
 # npm): host @opencode/cli@2.0.32 supplies an empty-string directory, and
 # `inferredRoot = ctx?.directory ?? ... ?? process.cwd()` never skips ""
@@ -421,9 +422,8 @@ fi
 #   mcp-server-duckdb 1.1.0 — all == pinned.
 # Residual (tracked, honest): kafka-mcp-server is NOT resolvable on PyPI
 # (pip 404, verified 2026-10-17) AND its kafka sidecar does not exist —
-# doubly dead, kept as role-ready/infra-pending under the dead-MCP
-# allowlist gate below (delete the server block when the role is next
-# touched, or provide sidecar + resolvable package).
+# doubly dead, so the kafka MCP server + kafka_* allow were DELETED from
+# cache-streaming-eng (P2-8, 2026-10-17) rather than kept infra-pending.
 if ROLE_PIN_TMP="${TMP}" python3 -c '
 import glob, json, os, sys
 
@@ -462,26 +462,21 @@ print("all npx (pkg@ver) + uvx (pkg==ver) pinned, zero exceptions")
 else
   bad "unpinned MCP package(s): $(head -c 400 "${TMP}/pins.err")"
 fi
-# Wave C P1-2 dead-wiring allowlist: five MCP declarations reference
-# sidecars absent from every compose file. They are kept as
-# role-ready/infra-pending by product decision (catalog §3 notes) — this
-# gate pins that decision: the flagged set must EQUAL the allowlist
-# exactly. A new dead server, or a pending server gaining infra without
-# leaving the list, FAILs. (Wave D P1-6/P3-5: the two docker-MCP blocks
-# LEFT this list — they now declare DOCKER_HOST explicitly and talk to
-# the GET-only socket proxy as read-only observers; see the
-# docker-host gate below.)
+# Wave C P1-2 dead-wiring allowlist (P2-8 remediated 2026-10-17: the five
+# dead MCP servers — ollama, prometheus ×2, redis, kafka, clickhouse —
+# plus their tool allows were DELETED from the role configs instead of
+# being kept infra-pending; no unpinned replacement services invented).
+# This gate pins the residual decision: the flagged set must EQUAL the
+# allowlist exactly. A new dead server, or a pending server gaining
+# infra without leaving the list, FAILs. (Wave D P1-6/P3-5: the two
+# docker-MCP blocks LEFT this list — they now declare DOCKER_HOST
+# explicitly and talk to the GET-only socket proxy as read-only
+# observers; see the docker-host gate below.)
 if python3 -c '
 import glob, json, sys
 
 # (role, server) pairs whose backing infra is knowingly absent.
 EXPECTED_DEAD = {
-    ("mlops-serving-eng", "ollama"),      # no ollama sidecar
-    ("observability-eng", "prometheus"),   # no prometheus sidecar
-    ("sre-incident-eng", "prometheus"),    # no prometheus sidecar
-    ("cache-streaming-eng", "redis"),      # no redis service in any compose file
-    ("cache-streaming-eng", "kafka"),      # no kafka sidecar (+ PyPI 404)
-    ("analytics-metrics-eng", "clickhouse"),  # no clickhouse sidecar
     ("load-stress-tester", "k6"),          # no k6 sidecar (CLI tool)
 }
 ABSENT_HOSTS = ("://ollama", "://prometheus", "kafka:", "://clickhouse", "://redis:")
@@ -592,6 +587,16 @@ if grep -q 'UID 1000' docker/Dockerfile && grep -q 'gosu node' docker/Dockerfile
   ok "non-root runtime documented (node UID 1000 via gosu)"
 else
   bad "non-root runtime note missing from docker/Dockerfile"
+fi
+# P1-5: the Paperclip source pin must be a recorded 40-hex commit (no
+# <paste-…> placeholder). Trivial static assert; live equality with the
+# build host (`git -C /tmp/paperclip rev-parse HEAD`) stays a build-time
+# operator check (see docker/Dockerfile pin comment).
+if grep -Eq 'PAPERCLIP_SOURCE_COMMIT=[0-9a-f]{40}' docker/Dockerfile \
+  && ! grep -q 'paste-40-char-sha-here\|<paste-' docker/Dockerfile; then
+  ok "Paperclip source pin recorded ($(grep -Eo 'PAPERCLIP_SOURCE_COMMIT=[0-9a-f]{40}' docker/Dockerfile | head -n 1))"
+else
+  bad "Paperclip source pin placeholder still present in docker/Dockerfile (P1-5)"
 fi
 
 # --- 3a. Wave 4 image pins + service auth (P1-4, P1-10, P1-6, P1-12) -----------
@@ -1002,32 +1007,27 @@ fi
 # Wave 2 P0-3: harness tool manifest assertion. Manifest pinned from the
 # registry tarball @heretek-ai/opencode-harness@1.0.7 (dist/index.js
 # EXTENDED_HARNESS_TOOL_NAMES — the live setupOpenCodeV2Harness path
-# registers all 14): any role declaring the harness plugin must allow
-# exactly the manifest set for its class (per-tool allows, NEVER a
-# `harness_*` allow) and end the namespace with a `harness_*` deny tail
-# (future manifest additions stay denied until explicitly allowed here).
-# Roles without the plugin must carry no harness allows at all.
-# Wave A P0-2: read-only-charter roles (READONLY below — every role whose
-# fs:write allows are confined to report-output scopes docs/**, sbom/**,
-# deploy/security/**) allow only the 10 non-mutating tools and must DENY
-# the 4 file-mutating tools (file_hash_edit, ast_structural_rewrite,
-# rename_symbol, checkpoint_rollback); full-privilege roles allow all 14.
+# registers all 14): every role declaring the harness plugin must allow
+# exactly the 10 non-mutating tools (per-tool allows, NEVER a
+# `harness_*` allow), must DENY the 4 file-mutating tools
+# (file_hash_edit, ast_structural_rewrite, rename_symbol,
+# checkpoint_rollback — P0-9 remediation: zero roles hold mutating
+# harness allows fleet-wide), and must end the namespace with a
+# `harness_*` deny tail (future manifest additions stay denied until
+# explicitly allowed here). Roles without the plugin must carry no
+# harness allows at all.
 # NOTE: whether the runtime enforcer honors these static denies needs a
 # live allow/deny matrix, blocked on AUDIT P0-1 (harness rootDir
 # empty-string kill — upstream npm, not in repo; fixture +
 # live-only gate: scripts/fixtures/harness-probe-opencode.json + §10b).
 # Static shape is the in-repo gate; live enforcement stays tracked,
 # never claimed.
-HARNESS_MANIFEST="file_hash_read file_hash_edit ast_structural_search ast_structural_rewrite ui_geometry_audit repo_map blast_radius file_outline symbol_references rename_symbol verify_scoped architecture_audit checkpoint_create checkpoint_rollback"
 HARNESS_READONLY_MANIFEST="file_hash_read ast_structural_search ui_geometry_audit repo_map blast_radius file_outline symbol_references verify_scoped architecture_audit checkpoint_create"
 HARNESS_MUTATING="file_hash_edit ast_structural_rewrite rename_symbol checkpoint_rollback"
-HARNESS_READONLY_ROLES="ai-red-teamer appsec-engineer binary-reverse-eng cloud-sec-auditor compliance-auditor exec-director firmware-sec-analyst git-drift-coord product-director release-qa-officer sre-incident-eng system-architect tech-docs-lead threat-modeler tpm-scrum-lead ux-research-analyst"
-if HARNESS_MANIFEST="${HARNESS_MANIFEST}" HARNESS_READONLY_MANIFEST="${HARNESS_READONLY_MANIFEST}" HARNESS_MUTATING="${HARNESS_MUTATING}" HARNESS_READONLY_ROLES="${HARNESS_READONLY_ROLES}" python3 -c '
+if HARNESS_READONLY_MANIFEST="${HARNESS_READONLY_MANIFEST}" HARNESS_MUTATING="${HARNESS_MUTATING}" python3 -c '
 import glob, json, os, sys
-manifest = os.environ["HARNESS_MANIFEST"].split()
 ro_manifest = os.environ["HARNESS_READONLY_MANIFEST"].split()
 mutating = os.environ["HARNESS_MUTATING"].split()
-readonly = set(os.environ["HARNESS_READONLY_ROLES"].split())
 problems = []
 for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
     role = f.split("/")[1]
@@ -1043,38 +1043,39 @@ for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
            for p in perms):
         problems.append("%s: bare harness_* allow (must be per-tool)" % role)
     elif has_plugin:
-        if role in readonly:
-            if allows != sorted(ro_manifest):
-                problems.append("%s: read-only harness allows != 10-tool manifest (got %s)" % (role, allows))
-            for t in mutating:
-                if not any(p.get("action") == "harness_" + t and p.get("effect") == "deny" for p in perms):
-                    problems.append("%s: missing harness_%s deny" % (role, t))
-        else:
-            if allows != sorted(manifest):
-                problems.append("%s: harness allows != manifest (got %s)" % (role, allows))
+        # P0-9: EVERY plugin role is read-only for harness — the 10-tool
+        # non-mutating manifest plus explicit denies for the 4 mutating
+        # tools (zero mutating allows fleet-wide).
+        if allows != sorted(ro_manifest):
+            problems.append("%s: harness allows != 10-tool read-only manifest (got %s)" % (role, allows))
+        for t in mutating:
+            if not any(p.get("action") == "harness_" + t and p.get("effect") == "deny" for p in perms):
+                problems.append("%s: missing harness_%s deny" % (role, t))
         if not deny_tail:
             problems.append("%s: missing harness_* deny tail" % role)
     elif allows:
         problems.append("%s: harness allows without the harness plugin" % role)
 if problems:
     sys.exit("; ".join(problems))
-print("fleet roles allow their class manifest (14 full / 10 read-only) + deny tails")
+print("51/51 plugin roles allow the 10-tool read-only manifest + 4 mutating denies + deny tails")
 ' >"${TMP}/harness.out" 2>"${TMP}/harness.err"; then
   ok "harness manifest enforced ($(cat "${TMP}/harness.out"))"
 else
   bad "harness manifest VIOLATION: $(head -c 400 "${TMP}/harness.err")"
 fi
-# Wave A P0-2: read-only set drift pin + mutating-tool ban. The on-disk
-# set of roles whose fs:write allows are confined to report-output scopes
-# (docs/**, sbom/**, deploy/security/**) must equal HARNESS_READONLY_ROLES
-# exactly — drift in EITHER direction fails (a role silently gaining a
-# code-write scope must update the set, not silently regain edit
-# primitives; a role narrowed to reports must join it). And every such
-# role MUST NOT allow the 4 mutating harness tools (fail-closed).
-if HARNESS_MUTATING="${HARNESS_MUTATING}" HARNESS_READONLY_ROLES="${HARNESS_READONLY_ROLES}" python3 -c '
+# Wave A P0-2: read-only set drift pin + fleet-wide mutating-tool ban.
+# The on-disk set of roles whose fs:write allows are confined to
+# report-output scopes (docs/**, sbom/**, deploy/security/**) must equal
+# FS_READONLY_ROLES exactly — drift in EITHER direction fails (a role
+# silently gaining a code-write scope must update the set, not silently
+# regain edit primitives; a role narrowed to reports must join it).
+# And NO role fleet-wide may allow the 4 mutating harness tools
+# (P0-9: fail-closed — the ban is no longer confined to the 16).
+FS_READONLY_ROLES="ai-red-teamer appsec-engineer binary-reverse-eng cloud-sec-auditor compliance-auditor exec-director firmware-sec-analyst git-drift-coord product-director release-qa-officer sre-incident-eng system-architect tech-docs-lead threat-modeler tpm-scrum-lead ux-research-analyst"
+if HARNESS_MUTATING="${HARNESS_MUTATING}" FS_READONLY_ROLES="${FS_READONLY_ROLES}" python3 -c '
 import glob, json, os, sys
 mutating = {"harness_" + t for t in os.environ["HARNESS_MUTATING"].split()}
-readonly = set(os.environ["HARNESS_READONLY_ROLES"].split())
+readonly = set(os.environ["FS_READONLY_ROLES"].split())
 prefixes = ("docs/", "sbom/", "deploy/security/")
 problems = []
 on_disk = set()
@@ -1090,13 +1091,13 @@ for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
     if confined:
         on_disk.add(role)
     allow = {p["action"] for p in perms if p.get("effect") == "allow"}
-    if confined and (allow & mutating):
-        problems.append("%s: read-only role allows mutating harness tools %s" % (role, sorted(allow & mutating)))
+    if allow & mutating:
+        problems.append("%s: role allows mutating harness tools %s" % (role, sorted(allow & mutating)))
 if on_disk != readonly:
     problems.append("read-only set drift: on-disk=%s expected=%s" % (sorted(on_disk), sorted(readonly)))
 if problems:
     sys.exit("; ".join(problems))
-print("read-only set == 16 pinned roles; zero mutating harness allows among them")
+print("read-only set == 16 pinned roles; zero mutating harness allows fleet-wide (51/51)")
 ' >"${TMP}/readonly.out" 2>"${TMP}/readonly.err"; then
   ok "read-only harness strip enforced ($(cat "${TMP}/readonly.out"))"
 else
@@ -1519,7 +1520,10 @@ if [[ -f scripts/seed-50-fleet.sh ]]; then
     # NEVER enter agent payloads — a dba psql deny + read-only MCP URL are
     # moot if the agent inherits superuser credentials. (Upstream
     # inheritance scrubbing in prepareOpenCodeRuntimeConfig is separately
-    # live-unverified — see the §10b canary note.)
+    # live-unverified — see the §10b canary note. P0-3 live canary: in a
+    # live agent turn, `printenv | grep -c DATABASE_URL` MUST be 0 —
+    # sanitizeInheritedPaperclipEnv only strips PAPERCLIP_*/identity keys,
+    # so any DATABASE_URL on the server process survives into the child.)
     if grep -q 'DATABASE_URL\|POSTGRES_PASSWORD\|BETTER_AUTH_SECRET\|OPENCODE_API_KEY\|OPENCODE_GO_API_KEY\|OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GEMINI_API_KEY\|OPENROUTER_API_KEY\|DEEPSEEK_API_KEY\|GROQ_API_KEY\|MISTRAL_API_KEY\|XAI_API_KEY\|AZURE_OPENAI_API_KEY' "${TMP}/seed50.out"; then
       bad "seed-50 payloads leak server credentials/provider keys into adapterConfig.env (P0-3b)"
     else
@@ -1550,14 +1554,20 @@ printf '%s\n' "$@" > "${FAKE_OUT:?FAKE_OUT must be set}"
 EOF
 chmod +x "${TMP}/fake-opencode"
 shim_run() { OPENCODE_REAL_BIN="${TMP}/fake-opencode" FAKE_OUT="${TMP}/shim.args" ./scripts/opencode-shim.sh "$@"; }
-if shim_run run --format json --dir /tmp/ws --model opencode/gemini-3.8-flash --variant high "Create hello.txt"; then
-  if diff -u <(printf 'run\n--format\njson\n/tmp/ws\n--model\nopencode/gemini-3.8-flash#high\n--auto\nCreate hello.txt\n') "${TMP}/shim.args" >/dev/null; then
-    ok "run: --dir flag dropped (value preserved, P1-9), --variant merged to model#variant, --auto injected in order"
+if shim_run run --format json --dir /tmp --model opencode/gemini-3.8-flash --variant high "Create hello.txt"; then
+  if diff -u <(printf 'run\n--format\njson\n--model\nopencode/gemini-3.8-flash#high\n--auto\nCreate hello.txt\n') "${TMP}/shim.args" >/dev/null; then
+    ok "run: --dir + on-disk dir consumed (P0-1), --variant merged to model#variant, --auto injected in order"
   else
     bad "run translation mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
   fi
 else
   bad "shim run invocation failed"
+fi
+if shim_run run --format json --dir /nonexistent-ws-dir-xyz --model opencode/gemini-3.8-flash "Create hello.txt" \
+  && grep -qx '/nonexistent-ws-dir-xyz' "${TMP}/shim.args"; then
+  ok "run: --dir preserves non-existent absolute path (P0-1 fail-closed toward prompt preservation)"
+else
+  bad "shim --dir non-dir preservation failed; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
 fi
 if shim_run run --variant low --model anthropic/claude-sonnet-4-5 --dir=/tmp/x --auto "p" \
   && grep -qx -- '--auto' "${TMP}/shim.args" \
@@ -1585,16 +1595,16 @@ if shim_run run --model m -- --dir kept "p" \
 else
   bad "'--' terminator handling failed"
 fi
-# Wave B P1-9: ambiguous valueless --dir preserves the following token
-# (fail-closed toward prompt preservation — no silent prompt loss).
+# P0-1: non-directory token after --dir is preserved (fail-closed
+# toward prompt preservation — no silent prompt loss).
 if shim_run run --model m --dir prompt; then
   if diff -u <(printf 'run\n--model\nm\n--auto\nprompt\n') "${TMP}/shim.args" >/dev/null; then
-    ok "run: ambiguous valueless --dir preserves following token (P1-9)"
+    ok "run: non-directory --dir token preserved (P0-1)"
   else
-    bad "P1-9 --dir case mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
+    bad "P0-1 --dir case mismatch; got: $(tr '\n' ' ' <"${TMP}/shim.args")"
   fi
 else
-  bad "shim P1-9 invocation failed"
+  bad "shim P0-1 invocation failed"
 fi
 # Wave B P2-2b: empty-string --variant/--dir values are consumed and dropped
 # (no stray "" leaks into the positionals).
@@ -1676,6 +1686,27 @@ if grep -q 'backup-${STAMP}-${RANDOM}.sql.gz.age' scripts/backup-db.sh; then
 else
   bad "backup collision branch missing the .age-preserving path (P1-10)"
 fi
+# P2-13: fail-closed encryption gate — no recipient + no opt-in must
+# refuse BEFORE any dump bytes (exit 1); --plaintext-ok must pass the
+# gate (downstream docker/health failures are out of scope statically).
+code=0
+refusal="$(env -u BACKUP_AGE_RECIPIENT BACKUP_PLAINTEXT_OK=0 ./scripts/backup-db.sh 2>&1)" || code=$?
+if [[ "${code}" -eq 0 ]]; then
+  bad "backup wrote/refused-silently without recipient or opt-in (P2-13)"
+elif [[ "${code}" -eq 1 && "${refusal}" == *"refusing plaintext dump"* ]]; then
+  ok "backup fail-closed without BACKUP_AGE_RECIPIENT and without --plaintext-ok (P2-13)"
+else
+  bad "backup refusal has wrong exit/message (P2-13)"
+fi
+if BACKUP_PLAINTEXT_OK=0 ./scripts/backup-db.sh --plaintext-ok >/dev/null 2>&1; then
+  bad "backup --plaintext-ok unexpectedly fully succeeded without a stack (P2-13)"
+else
+  if ./scripts/backup-db.sh --plaintext-ok 2>&1 | grep -q "refusing plaintext dump"; then
+    bad "backup --plaintext-ok still trips the plaintext gate (P2-13)"
+  else
+    ok "backup --plaintext-ok passes the encryption gate (P2-13)"
+  fi
+fi
 # P2-3: explicit CLI --file/--yes must survive .env sourcing; the
 # FILE-required hint must list encrypted dumps; the terminate query must
 # bind (psql -v) instead of interpolating into single quotes.
@@ -1695,6 +1726,28 @@ if grep -q "datname=:'dbname'" scripts/restore-db.sh \
   ok "restore terminate query binds dbname via psql -v (P2-3)"
 else
   bad "restore interpolates \${POSTGRES_DB} into SQL single quotes (P2-3)"
+fi
+# P1-15: --file must accept the space form (usage header documents
+# `--file path`). Space form with a missing file must fail on the
+# file-not-found gate (exit 1), never on argument parsing (exit 2).
+if ./scripts/restore-db.sh --file backups/definitely-missing-p115.sql.gz >/dev/null 2>&1; then
+  bad "restore --file space form unexpectedly exited 0 for a missing file (P1-15)"
+else
+  code=$?
+  if [[ "${code}" -eq 1 ]]; then
+    ok "restore --file space form parses (missing file fails on file gate, exit 1 — P1-15)"
+  else
+    bad "restore --file space form exits ${code}, want file-gate exit 1 (P1-15)"
+  fi
+fi
+code=0
+./scripts/restore-db.sh --file >/dev/null 2>&1 || code=$?
+if [[ "${code}" -eq 2 ]]; then
+  ok "restore bare --file fails closed with parse exit 2 (P1-15)"
+elif [[ "${code}" -eq 0 ]]; then
+  bad "restore bare --file unexpectedly exited 0 (P1-15)"
+else
+  bad "restore bare --file exits ${code}, want parse exit 2 (P1-15)"
 fi
 # P2-4: create must verify porcelain registration before adopting a
 # pre-existing dir; archive must resolve HEAD up front and clean up partial
@@ -1793,14 +1846,16 @@ else
   # SKIPs otherwise (never fake-passes, never surprises). Uses the --file
   # + --yes CLI flags (the .env-proof snapshot path, not env passthrough)
   # into a scratch BACKUP_DIR; asserts the backup lands non-empty and the
-  # --yes restore exits 0 with its own table-count verification.
+  # --yes restore exits 0 with its own table-count verification. Passes
+  # --plaintext-ok explicitly (P2-13: the fail-closed encryption gate
+  # would otherwise refuse; the opt-in is scoped to this scratch test).
   section "8b. backup->restore round-trip (P2-12, live-only)"
   if [[ "${BACKUP_ROUNDTRIP_LIVE:-0}" != "1" ]]; then
     skip "BACKUP_ROUNDTRIP_LIVE!=1: backup to scratch dir + --yes restore + table-count verify (re-run with BACKUP_ROUNDTRIP_LIVE=1 + 'make up' healthy for full live proof)"
   else
     RT_DIR="${TMP}/roundtrip-backups"
     mkdir -p "${RT_DIR}"
-    if RT_OUT="$(BACKUP_DIR="${RT_DIR}" ./scripts/backup-db.sh 2>"${TMP}/roundtrip-backup.err")"; then
+    if RT_OUT="$(BACKUP_DIR="${RT_DIR}" ./scripts/backup-db.sh --plaintext-ok 2>"${TMP}/roundtrip-backup.err")"; then
       RT_FILE="$(printf '%s\n' "${RT_OUT}" | sed -n 's/^\[backup\] done: //p' | tail -n 1)"
       if [[ -n "${RT_FILE}" && -s "${RT_FILE}" ]]; then
         ok "round-trip backup landed non-empty (${RT_FILE})"

@@ -60,11 +60,6 @@
     },
     {
       "action": "fs:write",
-      "resource": "deploy/security/**",
-      "effect": "allow"
-    },
-    {
-      "action": "fs:write",
       "resource": "*",
       "effect": "deny"
     },
@@ -74,9 +69,24 @@
       "effect": "allow"
     },
     {
-      "action": "github_*",
+      "action": "github_get_*",
       "resource": "*",
       "effect": "allow"
+    },
+    {
+      "action": "github_search_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "github_list_*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "github_*",
+      "resource": "*",
+      "effect": "deny"
     },
     {
       "action": "harness_file_hash_read",

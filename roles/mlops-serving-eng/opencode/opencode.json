@@ -79,11 +79,6 @@
       "effect": "allow"
     },
     {
-      "action": "ollama_*",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
       "action": "docker_list*",
       "resource": "*",
       "effect": "allow"
@@ -116,7 +111,7 @@
     {
       "action": "harness_file_hash_edit",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ast_structural_search",
@@ -126,7 +121,7 @@
     {
       "action": "harness_ast_structural_rewrite",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_ui_geometry_audit",
@@ -156,7 +151,7 @@
     {
       "action": "harness_rename_symbol",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_verify_scoped",
@@ -176,7 +171,7 @@
     {
       "action": "harness_checkpoint_rollback",
       "resource": "*",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "harness_*",
@@ -219,18 +214,6 @@
   ],
   "mcp": {
     "servers": {
-      "ollama": {
-        "type": "local",
-        "command": [
-          "npx",
-          "-y",
-          "ollama-mcp@2.1.0"
-        ],
-        "env": {
-          "OLLAMA_HOST": "http://ollama:11434"
-        },
-        "timeout": 5000
-      },
       "docker": {
         "type": "local",
         "command": [

@@ -93,25 +93,45 @@ assert_args "passthrough: auth subcommand" "auth" "login"
 RUN_ARGS=(mcp --dir /tmp --variant high)
 assert_args "passthrough: flags untouched outside run" "mcp" "--dir" "/tmp" "--variant" "high"
 
-# 3. Space-form --dir with a following non-flag token (Wave B P1-9): the
-# token is AMBIGUOUS (path vs prompt) and is PRESERVED — only the flag is
-# dropped. A bogus path then errors loudly in the real binary instead of
-# the prompt being silently swallowed (Claim 2.1).
+# 3. Space-form --dir with an absolute on-disk directory (P0-1): the
+# token is the Paperclip-appended cwd (prompt arrives via stdin, never
+# as a --dir value) and is CONSUMED — only the flag is dropped. A
+# non-directory token after --dir is still preserved (see 15a0); a
+# bogus path errors loudly in the real binary instead of the prompt
+# being silently swallowed (Claim 2.1).
 RUN_ARGS=(run --format json --dir /tmp prompt)
-assert_args "strip: --dir flag dropped, following token preserved (P1-9)" \
-    "run" "--auto" "--format" "json" "/tmp" "prompt"
+assert_args "strip: --dir + on-disk dir consumed, prompt kept (P0-1)" \
+    "run" "--auto" "--format" "json" "prompt"
 
 # 4. Strip --dir (equals form).
 RUN_ARGS=(run --format json --dir=/tmp prompt)
 assert_args "strip: --dir=<path>" "run" "--auto" "--format" "json" "prompt"
 
-# 5. Acceptance example, exact translation (Wave B P1-9: the ambiguous
-# --dir value /tmp is preserved in place, not swallowed):
+# 5. Acceptance example, exact translation (P0-1: the Paperclip-appended
+# --dir value /tmp is an on-disk dir and is consumed, not preserved):
 #    run --format json --dir /tmp --model opencode/gemini-3.8-flash --variant high "prompt"
-#    -> run --format json /tmp --model opencode/gemini-3.8-flash#high --auto "prompt"
+#    -> run --format json --model opencode/gemini-3.8-flash#high --auto "prompt"
 RUN_ARGS=(run --format json --dir /tmp --model opencode/gemini-3.8-flash --variant high prompt)
 assert_args "acceptance: variant merge + auto injection (exact order)" \
-    "run" "--format" "json" "/tmp" "--model" "opencode/gemini-3.8-flash#high" "--auto" "prompt"
+    "run" "--format" "json" "--model" "opencode/gemini-3.8-flash#high" "--auto" "prompt"
+
+# 5a. P0-1: a non-directory token after --dir is PRESERVED (hand-typed
+# --dir with prompt text — swallowing it would run prompt-less, exit 0).
+RUN_ARGS=(run --format json --dir prompt-text prompt)
+assert_args "strip: --dir preserves non-directory token (P0-1)" \
+    "run" "--auto" "--format" "json" "prompt-text" "prompt"
+
+# 5b. P0-1: a relative-path token after --dir is PRESERVED (consume
+# requires an absolute on-disk directory).
+RUN_ARGS=(run --format json --dir rel/path prompt)
+assert_args "strip: --dir preserves relative-path token (P0-1)" \
+    "run" "--auto" "--format" "json" "rel/path" "prompt"
+
+# 5c. P0-1: an absolute but non-existent path after --dir is PRESERVED
+# (not an on-disk dir — fail closed toward prompt preservation).
+RUN_ARGS=(run --format json --dir /nonexistent-ws-dir-xyz prompt)
+assert_args "strip: --dir preserves non-existent absolute path (P0-1)" \
+    "run" "--auto" "--format" "json" "/nonexistent-ws-dir-xyz" "prompt"
 
 # 6. Order independence: --variant before --model.
 RUN_ARGS=(run --variant high --model opencode/gemini-3.8-flash prompt)
@@ -246,11 +266,11 @@ RUN_ARGS=(run --dir --format json)
 assert_args "strip: --dir does not swallow next flag" \
     "run" "--auto" "--format" "json"
 
-# 15a0. Wave B P1-9: valueless --dir followed by a bare word is AMBIGUOUS
-# (path vs prompt — indistinguishable here). Fail closed toward prompt
-# preservation: drop ONLY the flag, keep the token. A bogus path then
-# errors loudly in the real binary; swallowing it would run prompt-less
-# with exit 0 (silent prompt loss).
+# 15a0. P0-1: valueless --dir followed by a non-directory word is
+# PRESERVED (prompt text — indistinguishable from a hand-typed path
+# here, so fail closed toward prompt preservation: drop ONLY the flag).
+# A bogus path then errors loudly in the real binary; swallowing it
+# would run prompt-less with exit 0 (silent prompt loss).
 RUN_ARGS=(run --model m --dir prompt)
 assert_args "strip: ambiguous --dir preserves following token (P1-9)" \
     "run" "--model" "m" "--auto" "prompt"

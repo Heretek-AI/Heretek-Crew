@@ -267,7 +267,7 @@ the same four artifacts: `AGENTS.md`, `opencode/opencode.json`,
 | 9. Operations & Maintenance | `09_operations_and_maintenance.md` | `dependency-patcher`, `git-drift-coord` | 2 |
 
 Notable specialist wiring (see the catalog for the full spec):
-`android-mobile-spec` drives `mobile-mcp` (`@mobile-next/mobile-mcp@0.1.2`)
+`android-mobile-spec` drives `mobile-mcp` (`@mobilenext/mobile-mcp@1.0.11`)
 against a `docker-android` emulator over ADB (`127.0.0.1:5555`);
 `binary-reverse-eng` pairs `r2mcp` (Radare2) with filesystem + shell tooling
 for evidence-based decompilation (the `morluto/rea` MCP and `opencode-rea`

@@ -29,16 +29,10 @@
 
 ## 4. MCP Servers & Tool Access
 
-1. **Ollama MCP Server**:
-   - **Package / Repo**: `ollama-mcp` (npm verified v2.1.0)
-   - **Transport**: `stdio`
-   - **Command**: `npx -y ollama-mcp`
-   - **Configuration / Environment Variables**: `OLLAMA_HOST=http://ollama:11434`.
-> **Wave C P1-2 — Ollama MCP infra-pending:** no `ollama` service exists in any
-> compose file. Role-ready, infra-pending: add a pinned ollama sidecar and keep this
-> server, or delete this server block.
-> Tracked by the smoke dead-MCP allowlist gate.
-2. **Docker MCP Server**:
+> **P2-8 (2026-10-17) — Ollama MCP REMOVED:** no `ollama` service exists in any
+> compose file, so the dead server block + `ollama_*` allow were deleted from
+> `opencode.json`. Re-add (pinned package + profile-gated sidecar) if infra lands.
+1. **Docker MCP Server**:
    - **Package / Repo**: `docker-mcp` (PyPI verified v0.2.0)
    - **Transport**: `stdio`
    - **Command**: `uvx docker-mcp`

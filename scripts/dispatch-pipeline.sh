@@ -44,6 +44,19 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
+# P2-2: fail-closed ticket-id allowlist (mirrors worktree-manager.sh
+# require_ticket_id): blocks path traversal (../evil), absolute paths
+# (/tmp/wt-abs), and ref-hostile names before any worktree path or
+# branch name is derived from the id. The default timestamp id always
+# matches; an explicit --ticket-id that violates the gate exits 2.
+require_ticket_id() {
+  local ticket_id="$1"
+  if [[ ! "${ticket_id}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$ ]]; then
+    echo "error: invalid ticket-id '${ticket_id}' (allowlist: ^[A-Za-z0-9][A-Za-z0-9._-]{1,63}\$)" >&2
+    exit 2
+  fi
+}
+
 DRY_RUN="false"
 TICKET_ID="tkt-$(date +%Y%m%d%H%M%S)"
 PRIMARY_ROLE="ts-node-fullstack"
@@ -94,6 +107,7 @@ if [ -z "${FEATURE_PROMPT}" ]; then
   echo "error: feature prompt is required (e.g. $0 'Build OAuth login flow')" >&2
   exit 1
 fi
+require_ticket_id "${TICKET_ID}"
 
 log_stage() {
   printf '\n======================================================================\n'
