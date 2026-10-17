@@ -1,288 +1,220 @@
-# Adversarial Three-Subagent Fleet & Architecture Audit — Findings
+# AUDIT_REPORT_FINDINGS.md — Adversarial Three-Subagent Fleet & Architecture Audit
 
 **Target:** `/home/john/Projects/Heretek-Crew`
-**Date:** 2026-10-17 | **Prompt:** `PROMPT_ADVERSARIAL_FLEET_AUDIT.md` (11 domains)
-**Formation:** Alpha (Runtime & Functionality) + Beta (Version Modernity) + Gamma (Security/Sandboxing)
-**Rule:** Tests were NOT trusted. Every verdict rests on file reads, live shell probes, upstream source (`/tmp/paperclip`), and registry checks — not on `test-shim.sh` / `smoke-test.sh` exit codes.
-**Controller spot-verification (2026-10-17, post-triad):** `ls roles/ | wc -l` = 51; 51/51 `opencode.json` declare scoped `@heretek-ai/opencode-harness`; `docker/Dockerfile:21` still `PAPERCLIP_SOURCE_COMMIT=<paste-…>` placeholder; socket-proxy still `tecnativa/docker-socket-proxy:0.3.0` (`docker-compose.sidecars.yml:508`); `android-mobile-spec` still `@mobile-next/mobile-mcp@0.1.2` (`opencode.json:297`); `git status --short` clean pre-triad.
-**Drift-guard remediation pass (2026-10-17):** corrected P0-3 citation to `execute.ts:55-65` + `sanitizeInheritedPaperclipEnv` (sanitize layer EXISTS, DATABASE_URL survival UNPROVEN); corrected P0-4 second citation to `runtime-config.ts:153,207` (not 217-220); corrected P0-9 exemplar (exec-director is DENY-remediated; residual is 35 ALLOW roles); expanded every P1 with Command+Output; expanded P2/P3 to one bullet per item; added Domain Coverage table; added modernity receipts.
-**Supersedes:** prior `AUDIT_REPORT_FINDINGS.md` (2026-10-17 13:05). All P0s below remain open. New: Alpha P0-1 shim `--dir` preserve bug, Gamma P0-1/P0-2 upstream env-scrub + dangerouslySkipPermissions default-TRUE, Beta P0-1 MCP typo, Gamma P0-5 dead MCP backends.
+**Date (UTC):** 2026-10-17
+**Prompt:** `PROMPT_ADVERSARIAL_FLEET_AUDIT.md` §§1–4 (11 domains, Claims 1.1–11.9)
+**Formation:** Alpha (Runtime & Functionality) + Beta (Architecture & Version Modernity) + Gamma (Security, Sandboxing & Threat) — concurrent, independent, read-only
+**Cardinal rule applied:** DO NOT BELIEVE TESTS. No conclusion drawn from `test-shim.sh` / `smoke-test.sh` exit 0 alone. Every FAIL below cites file:line + executed command + raw output/denial.
+**Coordinator verification (2026-10-17):** `git status --short` clean; `grep -n docker-socket-proxy docker-compose.sidecars.yml` → `:531 image: tecnativa/docker-socket-proxy:0.5.0`; `grep -n heretek-crew docker-compose.prebuilt.yml` → `:52 image: ${HERETEK_IMAGE:-ghcr.io/heretek-ai/heretek-crew:1.0.0}`; `ls scripts/seed*` → only `seed-50-fleet.sh`; `grep -n "^  ollama:|^  otel"` → no matches.
 
-## Verified WORKING (do NOT fix)
-- Paperclip appends `--dir <cwd>` + `--variant` (`/tmp/paperclip/packages/adapters/opencode-local/src/server/execute.ts` or `server/src/adapters/process/execute.ts:620-631` region — `execute.ts:629-630` append, `execute.ts:678` stdin prompt); forces `OPENCODE_DISABLE_PROJECT_CONFIG=true` (`execute.ts:329` region) with XDG staging (`runtime-config.ts:105-251` region; opencode-local adapter `runtime-config.ts:110-230`).
-- Real `@opencode/cli@2.0.32` rejects `--dir`/`--variant`, accepts `provider/model#variant`, `--auto`, `--session/-s` (Alpha live npx probes).
-- Upstream `73659c6b27c1d97226f2da9ca39f256eefddac66` matches `sha-73659c6` pin. `git -C /tmp/paperclip rev-parse HEAD` → `73659c6b27c1d97226f2da9ca39f256eefddac66`.
-  - Receipts (Beta re-verified 2026-10-17): `npm view @opencode/cli version` → `2.0.32`; `curl "https://hub.docker.com/v2/repositories/library/postgres/tags?name=17.11-alpine"` count≥1; `curl Hub tags?name=2.11.7` (caddy) count≥1; `curl Hub tags?name=v1.104.1` (tailscale) count≥1; GHCR manifests for `qdrant:v1.19.2`, `semgrep:1.181.0`, `rabbitmq:4.3.6-management-alpine`, `neo4j:5.26.32-community-trixie`, `redis:7.4.11-alpine` → 200. If network blocked on operator rerun, re-run: `npm view @opencode/cli version; npm view @opencode/client version; curl -s "https://hub.docker.com/v2/repositories/library/postgres/tags?name=17.11-alpine" | head -c 400; git -C /tmp/paperclip rev-parse HEAD`. Do NOT cite bare "latest" — every claim above carries a registry command.
-- `postgres:17.11-alpine` digest-pinned newest 17.x (`docker-compose.yml:33` + sha256:b0f956…); `caddy:2.11.7-alpine` (`docker-compose.yml:211`); `tailscale/tailscale:v1.104.1` (`docker-compose.yml:265`); `qdrant:v1.19.2`, `semgrep:1.181.0`, `rabbitmq:4.3.6-management-alpine`, `neo4j:5.26.32-community-trixie` (deliberate LTS), `redis:7.4.11-alpine` (CVE-2025-49844 fix), `@opencode/cli/client@2.0.32` npm-latest.
-- Fleet budget exactly 1,300,000c across 51 roles (`seed-50-fleet.sh:113` default `1300000`; per-role cents sum authoritative — see Domain 5). Firecrawl command matches upstream CMD; seed preflight exits 1; worktree traversal blocked; host act 0.2.89 present.
-- Strengths: 51/51 shell deny-tails; fs:read secret denies ordered fleet-wide; `docker compose config` without `.env` fails closed on 8 secret guards; no hardcoded secrets; `git-drift-coord` denies `git push --force`.
+---
 
-## Domain Coverage (Claims §3.1-§3.11 → Verdict)
+## 0. Meta-finding: audit prompt §3 Domain 11 version table is STALE (applies to all triad members)
 
-| Domain | Claims | Verdict | Evidence command (raw output quoted) |
-|---|---|---|---|
-| D1 Core stack | 1.1 Paperclip loopback :3100; 1.2 postgres internal-only + pg_isready; 1.3 non-root gosu node:1000; 1.4 caddy TLS profile; 1.5 tailscale tag | PARTIAL (P1-11 Caddy `0.0.0.0:80/443` one cmd from exposure) | `grep -n "127.0.0.1:3100\|pg_isready\|gosu\|PROXY_DOMAIN\|advertise-tags" docker-compose.yml docker/Dockerfile \| head` → `127.0.0.1:3100` bind present; `pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}` healthcheck present; `gosu` entrypoint + `chown -R node:node` (`Dockerfile:114`); Caddy `0.0.0.0:80/443` (`compose:235-237`) guarded Makefile-only |
-| D2 Shim translation | 2.1 `--dir` strip; 2.2 `#variant` merge; 2.3 `--auto`; 2.4 `--session`; 2.5 `--` boundary; 2.6 `OPENCODE_GO_API_KEY` | FAIL (P0-1: `--dir <cwd>` preserved as positional) | `OPENCODE_REAL_BIN=/tmp/rec.sh bash scripts/opencode-shim.sh run --format json --dir /tmp/ws --model opencode/gemini --variant high "hello"` → `run --format json /tmp/ws --model opencode/gemini#high --auto hello` (stray `/tmp/ws` positional; real v2 `run [<message...>]` absorbs it → `provider.no-route`, not error) |
-| D3 Isolation/sandbox | 3.1 XDG + DISABLE_PROJECT_CONFIG; 3.2 shell deny-tails; 3.3 read-only separation | FAIL (P0-9: 35 roles hold mutating harness allow; P1-9 wildcard-order; P0-5 prefix bypass) | `grep -rn -A2 "harness_file_hash_edit" roles/*/opencode/opencode.json \| grep -c allow` → `140` allow line-hits; `grep ... \| grep -c deny` → `64` deny line-hits (35 allow-roles / 16 deny-roles via per-role loop); `ls roles/ \| wc -l` → `51` |
-| D4 Harness | 4.1 harness@1.0.7 install; 4.2 `harness_*` allow; 4.3 FNV/AST/blast-radius/circuit-breaker | FAIL (P0-2: 1.0.7 DIES on load, `rootDir must be non-empty`) | `npm pack @heretek-ai/opencode-harness@1.0.7; node -e "setupOpenCodeV2Harness({directory:''})"` → `THROW rootDir must be non-empty`; `??` does not skip `""`; `npm view` → 5 versions in 22h |
-| D5 Seeding/budget | 5.1 two-pass idempotent; 5.2 51 roles/9 depts; 5.3 1,300,000c; 5.4 on-demand wake | PASS (with P2-1 stale comment note) | `grep -n "1300000\|two-pass\|Pass 1\|Pass 2" scripts/seed-50-fleet.sh` → `:45 Default: 1300000`, `:89 two-pass, idempotent`, `:113 FLEET_BUDGET_CAP_CENTS=1300000`, `:599 Pass 1`, `:662 Pass 2 PATCH`; `ls roles/ \| wc -l` → `51`; `bash scripts/seed-50-fleet.sh --dry-run` prints 1 company + 51 payloads; live two-pass rerun needs `make up` |
-| D6 Worktree | 6.1 `ticket-<ticket>` dash branch; 6.2 temp-stage + RANDOM, never `--force` | PASS | `grep -n "ticket-\|RANDOM\|--force\|temp-stage" scripts/worktree-manager.sh` → `:13 branch ticket-<ticket-id> (dash, NOT ticket/)`, `:16 never --force`, `:21 -$RANDOM suffix`, `worktree-manager.sh:39-45` ticket-id allowlist `^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$`; `git worktree list` → `/home/john/Projects/Heretek-Crew c734103 [main]` |
-| D7 Dispatch-pipeline | 7.1 provisioner-tracer NOT dispatcher; 7.2 NO API calls / NO transitions | PASS (as-scoped; fail-closed absent-by-design) | `grep -n "curl\|/api/\|poll\|PAPERCLIP_URL" scripts/dispatch-pipeline.sh` → header-only (`:7-8` "does NOT call the Paperclip API (no curl, no PAPERCLIP_URL, no /api/)"); `sed -n '1,20p' scripts/dispatch-pipeline.sh` → "provisions ONE isolated git worktree + task_plan.md (phase 3) and exits 0" |
-| D8 Local-CI-runner | 8.1 read-only observer (not in-docker exec); 8.2 GET-only proxy POST/BUILD/EXEC=0 | PASS (with P1-13 GET-recon residual) | `sed -n '507,560p' docker-compose.sidecars.yml` → `CONTAINERS: "1" IMAGES: "1" INFO: "1" VERSION: "1" POST: "0" BUILD: "0" EXEC: "0" VOLUMES: "0" NETWORKS: "0" AUTH: "0"`; `grep -n "act-22.04\|DOCKER_HOST\|sleep infinity\|:ro" docker-compose.sidecars.yml` → `ghcr.io/catthehacker/ubuntu:act-22.04@sha256:f5f5c...:905`, `DOCKER_HOST: tcp://docker-socket-proxy:2375:921`, `sleep infinity:911`, `:ro` checkouts |
-| D9 GHCR/prebuilt | 9.1 multi-arch publish; 9.2 prebuilt no-compile; 9.3 pre-publish verify | PARTIAL (P1-2 `:1.0.0` unpublished tag) | `grep -n "1.0.0\|image:" docker-compose.prebuilt.yml` → `:7 ghcr.io/heretek-ai/heretek-crew:1.0.0`, `:52 image: ${HERETEK_IMAGE:-...:1.0.0}`; `docker manifest inspect ghcr.io/heretek-ai/heretek-crew:1.0.0` → `manifest unknown` / 404 (see P1-2); fix `git tag v1.0.0 && git push origin v1.0.0` |
-| D10 Backup/restore | 10.1 pg_dump gzip timestamped; 10.2 fail-closed restore | PASS (with P1-15 `--file` space-form bug) | `grep -n "pg_dump\|--clean\|terminate\|ON_ERROR_STOP\|--file" scripts/backup-db.sh scripts/restore-db.sh` → `backup-db.sh:120-126 pg_dump --no-owner --clean --if-exists`, `restore-db.sh:163-170 ON_ERROR_STOP=1 + pg_terminate_backend`, `restore-db.sh:51-52 --file=* only, --file space → exit 2` |
-| D11 Sidecars | 11.1-11.9 ingestion/browser/devsec/piston/AI/mocks/observability/security/mobile | PARTIAL (P0-7 MCP typo; P0-8 5 dead MCP backends; P1-1/3/4/6/8 version/health findings) | `grep '^  [a-z-]*:' docker-compose.sidecars.yml` service list vs `grep -n "CLICKHOUSE_URL\|KAFKA\|PROMETHEUS_URL\|OLLAMA_HOST" roles/*/opencode/opencode.json` → 5 dead hosts (no `clickhouse/kafka/redis/prometheus/ollama` service); `npm view @mobile-next/mobile-mcp` → `E404` |
+The prompt cites: searxng `2024.10.16-ac56c663b`, rabbitmq `3.13.7`, ghidra `11.2`, semgrep `1.96.0`, hound `v0.6.1`, piston `v2.0.0`, litellm `v1.52.16`, qdrant `v1.12.1`, neo4j `5.26.0`, jaeger `1.62.0`, mitmproxy `11.0.x`, socket-proxy `0.3.0`, gotenberg `8.15.0`, browserless `v2.18.0`, ollama `0.4.4`, otel-collector `0.113.0`.
+The repo has been bumped past nearly all of these (Beta registry-confirmed: gotenberg `8.38.1`, browserless `v2.26.0`, ghidra `12.1.4`, semgrep `1.181.0`, hound `0.6.0`, neo4j `5.26.32`, litellm `main-v1.60.0`, qdrant `v1.19.2`, jaeger `2.22.0`, rabbitmq `4.3.6`, socket-proxy `0.5.0` [broken tag — see P0-1]).
+**Action:** re-baseline `PROMPT_ADVERSARIAL_FLEET_AUDIT.md` §3 before the next audit or Alpha/Gamma will file false positives. Code wins over prompt where they diverge.
 
-## P0 / Critical
-### P0-1. Shim preserve injects workspace path into EVERY Paperclip prompt (Claim 2.1 broken)
-- Files: `scripts/opencode-shim.sh:201-212`; `scripts/test-shim.sh:96-102`.
-- Proof (Alpha):
-  - Command: `OPENCODE_REAL_BIN=/tmp/rec.sh bash scripts/opencode-shim.sh run --format json --dir /tmp/ws --model opencode/gemini --variant high "hello"`
-  - Output: `run --format json /tmp/ws --model opencode/gemini#high --auto hello` (stray `/tmp/ws` positional; Paperclip appends `--dir <cwd>` at `execute.ts:629-630`, prompt via stdin at `:678`; real v2 `run [<message...>]` absorbs stray → proceeded to `provider.no-route`, not error). Test at `test-shim.sh:96-102` asserts polluted translation as PASS with false "errors loudly" rationale.
-- Fix:
+---
+
+## 1. Prioritized Defect Matrix — P0 / Critical (broken deploy/exec, fatal sec, defunct registry)
+
+### P0-1. Socket-proxy pin references NONEXISTENT tag — `core`/`devsec`/`ci` profiles cannot pull (Beta P0-1; corroborated by coordinator)
+- **File:line:** `docker-compose.sidecars.yml:531` (`image: tecnativa/docker-socket-proxy:0.5.0`); stale comment at `:526` claims `0.3.0`.
+- **Claim:** Domain 8 Claim 8.2 (daemon protection via `0.3.0` per prompt; file intends `0.5.0` GET-only).
+- **Status:** FAIL.
+- **Command:** `skopeo inspect docker://tecnativa/docker-socket-proxy:0.5.0` → `fatal ... reading manifest 0.5.0 in docker.io/tecnativa/docker-socket-proxy: manifest unknown`
+- **Command:** `skopeo list-tags docker://tecnativa/docker-socket-proxy` → full set includes `v0.5.0` but NOT `0.5.0` — `0.5.0` series exists **only with `v` prefix**. In-file "Hub tag verified live 2026-10-17" false as written.
+- **Remediation (fail-closed):**
 ```diff
--            # P1-9: when next token is non-flag it is PRESERVED
--            if [[ -z "${next}" && "$((i + 1))" -lt "${#args[@]}" ]]; then
-+            # Paperclip prompt via stdin, token after --dir is ALWAYS cwd. Consume iff absolute on-disk dir.
-+            if [[ -z "${next}" && "$((i + 1))" -lt "${#args[@]}" ]]; then
-                 i=$((i + 2))
-+            elif [[ "${next}" == /* && -d "${next}" ]]; then
-+                i=$((i + 2))
-             else
-                 i=$((i + 1))
-             fi
+-    image: tecnativa/docker-socket-proxy:0.5.0
++    image: tecnativa/docker-socket-proxy:v0.5.0
 ```
+then `skopeo inspect docker://tecnativa/docker-socket-proxy:v0.5.0`, capture digest, re-pin `v0.5.0@sha256:<digest>` per file tag+digest convention. Never invent digest offline. Then `docker compose --profile core pull` must succeed.
 
-### P0-2. Harness 1.0.7 DIES on load under 2.0.32 — 51 roles dead surface (Claims 4.1-4.3)
-- Files: `docker/Dockerfile:33-53,69-73`; all 51 roles plugins + harness_* allows.
-- Proof (Alpha reproduced + Beta):
-  - Command: `npm pack @heretek-ai/opencode-harness@1.0.7 && node -e "setupOpenCodeV2Harness({directory:''})"`
-  - Output: `THROW rootDir must be non-empty` (`??` does not skip `""`).
-  - Command: `npm view @heretek-ai/opencode-harness version`
-  - Output: 5 versions in 22h, 1-day-old single-vendor dep. Publish gate correctly FAILS.
-- Fix upstream:
-```diff
--    inferredRoot = ctx?.directory ?? ctx?.worktree ?? process.cwd()
-+    const pick = (v) => (typeof v === "string" && v.trim() !== "" ? v : undefined);
-+    inferredRoot = pick(ctx?.directory) ?? pick(ctx?.worktree) ?? process.cwd()
-```
-Bump pin to fixed successor only, re-run live tool-visibility gate. Treat allows as dead config until then.
+### P0-2. Harness primitives 100% non-functional under pinned CLI — Domain 4 Claim 4.3 FAIL (Alpha P0-1 + Beta P1-4, same root cause)
+- **Files:** `docker/Dockerfile:35-53` (self-admits), `harness/package/dist/index.js:601-605`, `.github/workflows/docker-publish.yml:162-184` (harness gate).
+- **Claims:** 4.1/4.2 (install/plugin presence — PASS as pins) vs 4.3 (FNV-1a edits, AST transforms, blast-radius, doom-loop — FAIL live).
+- **Status:** FAIL (fail-closed throw, no silent corruption — but flagship tooling claim false).
+- **Commands:**
+  - `npm pack @heretek-ai/opencode-harness@1.0.7` → `sed -n '596,605p'` shows `const inferredRoot = ctx?.directory ?? ctx?.worktree ?? … ?? process.cwd();` — `""` is not nullish so flows into `resolveHarnessOptions({rootDir:""})` which throws (`index.js:92-94`).
+  - `node -e "setupOpenCodeV2Harness({directory:''})"` → `THREW AS DOCUMENTED: opencode-harness: rootDir must be a non-empty string (fail-closed)`.
+  - `npm view @heretek-ai/opencode-harness versions` → tail `[..., "1.0.7"]` (latest == pinned, good) — `npm ls` presence ≠ loadable.
+  - Publish gate `setup({directory:""})` must-not-throw → FAILs until upstream ships fix, so **no multi-arch image can ship** (reinforces P0-3).
+- **Remediation (upstream, fail-closed):** apply `pick()` fix recorded in `docker/Dockerfile:42-45`, publish harness successor, bump `OPENCODE_HARNESS_VERSION`, re-run docker-publish harness gate (correctly FAILs today — blocking publish by design). Re-enumerate `EXTENDED_HARNESS_TOOL_NAMES` into `smoke-test.sh`; change gate fixture model `opencode/gemini-3.8-flash` to fake provider string so gate never depends on real model id.
 
-### P0-3. Sanitize layer EXISTS but DATABASE_URL survival UNPROVEN — live canary required (Claim: child env)
-- Files: `/tmp/paperclip/server/src/adapters/process/execute.ts:55-65`; `/tmp/paperclip/packages/adapter-utils/src/server-utils.ts:3513-3531` (`sanitizeInheritedPaperclipEnv`), `:171-175` (`isForbiddenConfigEnvKey`); `docker-compose.yml:104-151` (server env carries superuser URL + provider keys).
-- Proof (Gamma, corrected — prior "zero scrub / unscrubbed spread" premise was FALSE):
-  - Command: `sed -n '50,70p' /tmp/paperclip/server/src/adapters/process/execute.ts`
-  - Output:
-    ```
-    for (const [k, v] of Object.entries(envConfig)) {
-      if (typeof v !== "string") continue;
-      // Runtime PAPERCLIP_* always wins over config, and PAPERCLIP_API_KEY is
-      // never accepted from config — the harness-minted run token is the only
-      // source. Other PAPERCLIP_* keys Paperclip did not assign flow through.
-      if (isForbiddenConfigEnvKey(k)) continue;          // :55
-      if (isPaperclipRuntimeEnvKey(k) && k in env) continue;
-      env[k] = v;
-    }
-    env.PAPERCLIP_RUN_ID = runId;                        // :59-60
-    if (authToken) env.PAPERCLIP_API_KEY = authToken;
-    // runtimeEnv is only used to resolve the command path and log HOME below;
-    // the child env is built inside runChildProcess from
-    // sanitizeInheritedPaperclipEnv(process.env) + env, so a PAPERCLIP_API_KEY
-    // on the server process never reaches the child.               // :61-65
-    ```
-  - Command: `sed -n '3513,3531p' /tmp/paperclip/packages/adapter-utils/src/server-utils.ts`
-  - Output:
-    ```
-    export function sanitizeInheritedPaperclipEnv(baseEnv) {
-      const env = { ...baseEnv };
-      delete env.PAPERCLIPAI_CMD;
-      for (const key of Object.keys(env)) {
-        if (AGENT_IDENTITY_ENV_KEYS.includes(key.toUpperCase())) { delete env[key]; continue; }
-        if (!key.startsWith("PAPERCLIP_")) continue;
-        if (key === "PAPERCLIP_RUNTIME_API_URL") continue;
-        if (key === "PAPERCLIP_LISTEN_HOST") continue;
-        if (key === "PAPERCLIP_LISTEN_PORT") continue;
-        delete env[key];
-      }
-      return env;
-    }
-    ```
-  - Allow/block lists: BLOCKED from inheritance = `PAPERCLIPAI_CMD`, `PAPERCLIP_AGENT_KEY_ID / _PUBLIC_KEY / _PRIVATE_KEY` (`AGENT_IDENTITY_ENV_KEYS`), every `PAPERCLIP_*` except `PAPERCLIP_RUNTIME_API_URL`, `PAPERCLIP_LISTEN_HOST`, `PAPERCLIP_LISTEN_PORT`. BLOCKED from config = `PAPERCLIP_API_KEY`, `PAPERCLIP_WAKE_PAYLOAD_JSON` + identity keys (`isForbiddenConfigEnvKey`, `server-utils.ts:171-175`). NOT in either list = `DATABASE_URL`, `POSTGRES_PASSWORD`, provider keys (`OPENAI_/ANTHROPIC_/GATEWAY_`), `BETTER_AUTH_SECRET`, `GITHUB_TOKEN` — these survive `process.env` inheritance because the sanitizer only strips `PAPERCLIP_*`/identity keys. Upstream `runChildProcess` merges `sanitizeInheritedPaperclipEnv(process.env) + env` (`server-utils.ts:4720`), so any `DATABASE_URL` on the server process IS inherited by the child unless the server env itself is clean.
-  - Honest premise: sanitize layer EXISTS (prior report's `execute.ts:337-338,374` + "zero delete/scrub" was wrong lines and wrong claim); the open question is narrower — `DATABASE_URL` survival is UNPROVEN, block-list incomplete until canary proves it stripped.
-- Fix: keep P0 (fail-closed: secret-bearing env reaches 51 agent shells until proven otherwise); do NOT claim "unscrubbed spread" — claim "sanitizer present, DATABASE_URL not in block-list, survival unproven". Add live canary gate: in a live agent turn run `printenv | grep -c DATABASE_URL` must be `0`; if `≥1`, scrub `DATABASE_URL/POSTGRES_PASSWORD/BETTER_AUTH_SECRET`/provider keys from server env or extend `sanitizeInheritedPaperclipEnv` block-list; rotate `POSTGRES_PASSWORD`/`BETTER_AUTH_SECRET`.
+### P0-3. Prebuilt image does not exist — Claim 9.2 unsatisfiable (Alpha P0-2 + Beta P1-1, same registry proof)
+- **Files:** `docker-compose.prebuilt.yml:52` (`image: ${HERETEK_IMAGE:-ghcr.io/heretek-ai/heretek-crew:1.0.0}`), `.github/workflows/docker-publish.yml:73-75`.
+- **Claim:** 9.2 zero-compilation prebuilt pull.
+- **Status:** FAIL.
+- **Commands:** `docker manifest inspect ghcr.io/heretek-ai/heretek-crew:1.0.0` / `skopeo inspect docker://ghcr.io/heretek-ai/heretek-crew:1.0.0` → `manifest unknown`; `skopeo list-tags` → 18 tags, **all `sha-*`, zero semver**. Honestly documented in-file (`prebuilt.yml:14-32`) but path unusable; Claim 9.1 multi-arch publish can never go green on current pins (gate FAIL per P0-2).
+- **Remediation:** `git tag v1.0.0 && git push origin v1.0.0`, wait for workflow, then `docker manifest inspect ghcr.io/heretek-ai/heretek-crew:1.0.0` must resolve before operators use `-f docker-compose.prebuilt.yml`. Until then README "Option A (prebuilt)" dead; build locally. Once resolvable, replace tag pin with immutable `sha-<sha>` digest.
 
-### P0-4. dangerouslySkipPermissions defaults TRUE → permission allow for non-seed agents
-- Files: `/tmp/paperclip/packages/adapters/opencode-local/src/server/runtime-config.ts:110,153,207`; `scripts/seed-50-fleet.sh:~473` (`dangerouslySkipPermissions False` seeded).
-- Proof:
-  - Command: `grep -n "dangerouslySkipPermissions\|permission" /tmp/paperclip/packages/adapters/opencode-local/src/server/runtime-config.ts`
-  - Output:
-    ```
-    110:  const skipPermissions = asBoolean(input.config.dangerouslySkipPermissions, true);
-    153:    "Injected runtime OpenCode config with permission=allow for all tools and connections.",
-    207:    permission: "allow",
-    ```
-    (Prior citation `runtime-config.ts:217-220` was WRONG — those lines are the `small_model` pin (`smallModel` lookup `:219-221`, `nextConfig.small_model` `:221`), not a permission allow. Correct permission-allow lines are `:153` note + `:207` `permission: "allow"` gated by `:110` default-TRUE.)
-  - Seeded agents carry `False`, but any UI/API-created agent without the flag gets full allow via `:110 → :207`.
-- Fix: upstream flip default to `false`; lock smoke gate asserting `False`; forbid manual creation; audit `list-agents | jq '.[] | select(.adapterConfig.dangerouslySkipPermissions != false)'`.
-
-### P0-5. Prefix-match shell allows bypassable in all 51 roles
-- Files: all roles opencode.json (233 shell rules); `AGENTS.md:129-143`.
-- Proof (Gamma fnmatch):
-  - Command: `python3 -c "import fnmatch; print([fnmatch.fnmatch(x,'git status*') for x in ['git status; id','git status\$(id)','git status||id']])"` (mirrors enforcer prefix semantics)
-  - Output: `[True, True, True]` — `git status; id` MATCHES `git status*`; `git status$(id)` MATCHES; `pytest; rm -rf /` MATCHES `pytest*`; `kubectl diff; kubectl exec` MATCHES; `curl .../runtimesXXX -X POST evil` MATCHES exact-host pin; `adb connect 127.0.0.1; adb shell` MATCHES. Voids kubectl/psql/tofu denies. Live probes still required (`make up` + seeded fleet): run `git status; id`, `git status$(id)`, `git status||id`, `npm test -- --unknown-flag` through an agent turn and record deny/allow.
-- Fix: treat as advisory; approval-gated actions; run 4 live probes; add deny for `*;*`, `*$(*`, `*||*`, `*&&*` if enforcer supports.
-
-### P0-6. Piston shared heretek net = unauth RCE-as-a-service
-- Files: `docker-compose.sidecars.yml:560-606` (expose:2000, zero auth); `sabotage-qa-tester:73-78` curl execute allows.
-- Proof:
-  - Command: `grep -n "expose\|2000\|piston" docker-compose.sidecars.yml | head; sed -n '560,606p' docker-compose.sidecars.yml`
-  - Output: `expose: - "2000"`, zero auth env/secret knobs; `POST /api/v2/execute` arbitrary code by design (upstream Piston API).
-  - Command: `grep -n "piston" roles/sabotage-qa-tester/opencode/opencode.json`
-  - Output: `73-78` curl execute allows pinned to exact `piston:2000` host paths.
-- Fix: front :2000 with shared-secret sidecar proxy on isolated net; profile-gate; never co-schedule qa/devsec with untrusted (extend guard-profiles).
-
-### P0-7. android-mobile-spec MCP typo, npx hard-fails (Beta P0-1)
-- Files: `roles/android-mobile-spec/opencode/opencode.json:297` `@mobile-next/mobile-mcp@0.1.2`; catalog + README.
-- Proof:
-  - Command: `npm view @mobile-next/mobile-mcp version`
-  - Output: `E404` (not found).
-  - Command: `npm view @mobilenext/mobile-mcp version`
-  - Output: `1.0.11` (2026-10-14). Primary tool surface never loads.
-- Fix:
-```diff
--            "@mobile-next/mobile-mcp@0.1.2"
-+            "@mobilenext/mobile-mcp@1.0.11"
-```
-
-### P0-8. Five MCP backends point at non-existent services
-- Files: `analytics-metrics-eng:204` `CLICKHOUSE_URL`, `cache-streaming-eng:209,220` `REDIS/KAFKA`, `observability-eng:219`/`sre:244` `PROMETHEUS_URL`, `mlops:230` `OLLAMA_HOST`.
-- Proof:
-  - Command: `grep '^  [a-z-]*:' docker-compose.sidecars.yml | head -n 40`
-  - Output: service list has NO `clickhouse`, `kafka`, `redis`, `prometheus`, `ollama` entries (Domain 11.5 `ollama:11434` not composed).
-  - Command: `grep -rn "CLICKHOUSE_URL\|OLLAMA_HOST\|PROMETHEUS_URL" roles/*/opencode/opencode.json | head`
-  - Output: 5+ MCP env refs to undeployed hostnames → connection refused at runtime.
-- Fix: add missing services (pinned/authed/profile-gated) or delete dead MCP + allows; smoke resolves MCP env hostnames vs `compose config --services`.
-
-### P0-9. Claim 3.3 FALSE — 35 roles hold 4 mutating harness allows; exec-director already remediated to DENY (prior exemplar inverted)
-- Files: 35 ALLOW roles (exemplars below) vs 16 DENY roles (incl. corrected `exec-director:137-156` which now holds `harness_*` deny at `:137` + 4 explicit denies at `:142,147,152,157` — the prior report's "exec-director:137-156 allow" exemplar was INVERTED and is struck).
-- Proof (corrected 2026-10-17):
-  - Command: `grep -rn -A2 "harness_file_hash_edit\|harness_ast_structural_rewrite\|harness_rename_symbol\|harness_checkpoint_rollback" roles/*/opencode/opencode.json | grep -c '"effect": "allow"'`
-  - Output: `140` allow line-hits (35 roles × 4 tools).
-  - Command: same pipeline `| grep -c '"effect": "deny"'`
-  - Output: `64` deny line-hits (16 roles × 4 tools).
-  - Command (role counts): `for f in roles/*/opencode/opencode.json; do grep -A2 "harness_file_hash_edit\|harness_ast_structural_rewrite\|harness_rename_symbol\|harness_checkpoint_rollback" "$f" | grep -q '"effect": "allow"' && echo "$f"; done | wc -l` → `35` roles with allow; same loop with `'"effect": "deny"'` → `16` roles with deny
-  - Output: `35` allow roles / `16` deny roles (deny roles: `ai-red-teamer, appsec-engineer, binary-reverse-eng, cloud-sec-auditor, compliance-auditor, exec-director, firmware-sec-analyst, git-drift-coord, product-director, release-qa-officer, sre-incident-eng, system-architect, tech-docs-lead, threat-modeler, tpm-scrum-lead, ux-research-analyst`).
-  - Command (residual ALLOW exemplars — effect allow on next line, verified with `-A2`):
-    - `grep -n -A2 "harness_file_hash_edit\|harness_ast_structural_rewrite\|harness_rename_symbol\|harness_checkpoint_rollback" roles/a11y-specialist/opencode/opencode.json` → `:97-99 allow`, `:107-109 allow`, `:137-139 allow`, `:157-159 allow`.
-    - `... roles/analytics-metrics-eng/opencode/opencode.json` → `:92-94 allow`, `:102-104 allow`, `:132-134 allow`, `:152-154 allow`.
-    - `... roles/dba-specialist/opencode/opencode.json` → `:104 allow`, `:112-114 allow`, `:142-144 allow`, `:162-164 allow`.
-  - Full residual ALLOW list (35): `a11y-specialist, analytics-metrics-eng, android-mobile-spec, api-contract-tester, brand-copy-spec, cache-streaming-eng, cloud-platform-eng, cpp-lowlevel-eng, data-pipeline-eng, dba-specialist, dependency-patcher, design-system-eng, e2e-browser-qa, engine-systems-eng, fe-perf-eng, game-ai-dev, game-systems-dev, go-backend-eng, graphics-shader-eng, ios-mobile-spec, java-kotlin-eng, k8s-orchestrator, load-stress-tester, mlops-serving-eng, mobile-web-eng, observability-eng, physics-sim-eng, python-backend-spec, rust-systems-spec, sabotage-qa-tester, static-analysis-lead, tech-artist-pipeline, ts-node-fullstack, ui-ux-designer, vector-rag-spec`.
-  - Remediated DENY exemplar (preserve diff): `roles/exec-director/opencode/opencode.json:137-157`:
+### P0-4. MCP wildcard allows with NO namespace deny tail bypass every shell deny (Gamma P0-G2)
+- **Files:** `roles/*/opencode/opencode.json` (66 wildcard allows across ~40 roles with no matching deny); contrast correct template `roles/k8s-orchestrator/opencode/opencode.json:60-78` (`kubernetes_kubectl_exec* → deny` then `kubernetes_* → deny`; `docker_create*/docker_deploy* → deny` then `docker_* → deny`) and `threat-modeler` (`github_get/search/list allow + github_* deny` — correct GitHub template).
+- **Claims:** 3.2/3.3 FAIL.
+- **Command:** enumerate every `allow` ending `_*`, check for matching namespace `deny` → 66 gaps, e.g. `a11y-specialist playwright_* (no deny)`, `chrome-devtools_* (no deny)`, `exec-director github_*, memory_* (no deny)`, `product-director github_*, memory_* (no deny)`, `vector-rag-spec qdrant_* (no deny)`, `binary-reverse-eng rea_*, r2_* (no deny)`, `appsec-engineer semgrep_* (no deny)`, `data-pipeline-eng duckdb_* (no deny)`.
+- **Attack:** compromised agent gets full tool surface despite shell deny tail. `AGENTS.md:149-157` admits "MCP namespaces bypass shell denies" but fleet not yet fixed.
+- **Remediation (fail-closed, per role, e.g. exec-director):**
 ```json
-{ "action": "harness_*", "resource": "*", "effect": "deny" },
-{ "action": "harness_file_hash_edit", "resource": "*", "effect": "deny" },
-{ "action": "harness_ast_structural_rewrite", "resource": "*", "effect": "deny" },
-{ "action": "harness_rename_symbol", "resource": "*", "effect": "deny" },
-{ "action": "harness_checkpoint_rollback", "resource": "*", "effect": "deny" }
+{"action": "github_get_*", "resource": "*", "effect": "allow"},
+{"action": "github_search_*", "resource": "*", "effect": "allow"},
+{"action": "github_list_*", "resource": "*", "effect": "allow"},
+{"action": "github_*", "resource": "*", "effect": "deny"},
 ```
-- Fix: strip the 4 mutating allows from the 35 residual roles (or flip to deny above the wildcard if first-match), mirroring the exec-director pattern. Status: **partially remediated — residual in 35 roles** (list above).
+Apply fleet-wide: enumerate exact read-only MCP verbs needed, allow those, then `<namespace>_* → deny`. Copy k8s-orchestrator / dba-specialist (`postgres_query* allow + postgres_* deny`) / threat-modeler pattern.
 
-## P1 / High
-- **P1-1 Firecrawl `:3002/health` 404** (`sidecars:240-245`).
-  - Command: `sed -n '238,246p' docker-compose.sidecars.yml` → `test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/health || exit 1"]`.
-  - Output: upstream Firecrawl routes are `/`, `/v0/health/liveness|readiness`, `/e2e-test` — no `/health` → perpetual unhealthy.
-  - Fix: `wget -qO- http://127.0.0.1:3002/e2e-test`.
-- **P1-2 Prebuilt `:1.0.0` unpublished** (`prebuilt:52` `image: ${HERETEK_IMAGE:-ghcr.io/heretek-ai/heretek-crew:1.0.0}`; header `:7-24` documents tag scheme).
-  - Command: `docker manifest inspect ghcr.io/heretek-ai/heretek-crew:1.0.0`
-  - Output: `manifest unknown` / 404 (anonymous inspect of both `:v1.0.0` and `:1.0.0` returns denied — header `:15` notes `:v1.0.0` NEVER minted).
-  - Fix: `git tag v1.0.0 && git push origin v1.0.0`, replace with sha digest.
-- **P1-3 socket-proxy:0.3.0 2y stale** (`:508` `tecnativa/docker-socket-proxy:0.3.0` 2024-09-09 vs v0.5.0 2026-07-27).
-  - Command: `curl -s "https://hub.docker.com/v2/repositories/tecnativa/docker-socket-proxy/tags?name=0.5.0" | head -c 300`
-  - Output: `0.5.0` exists (2026-07-27); pinned `0.3.0` is 2y stale.
-  - Fix: bump to `:0.5.0`, verify env contract, re-run deny probe.
-- **P1-4 MinIO undeployable** (`:750` `quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z`, quay 401, no digest, AGPLv3).
-  - Command: `grep -n "minio" docker-compose.sidecars.yml | head; docker manifest inspect quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z`
-  - Output: `401 Unauthorized` (quay anonymous deny); no digest pinned; AGPLv3-only license implication noted `:744`.
-  - Fix: replace with `localstack/localstack:<tag>@sha256:<digest>`.
-- **P1-5 Paperclip base unreproducible** (`Dockerfile:17-28` placeholder, `:63-64` local tag).
-  - Command: `sed -n '17,28p' docker/Dockerfile; grep -n "PAPERCLIP_SOURCE_COMMIT" docker/Dockerfile`
-  - Output: `PAPERCLIP_SOURCE_COMMIT=<paste-…>` placeholder still present (`:21`).
-  - Fix: paste `73659c6b27c1d97226f2da9ca39f256eefddac66` (verified `git -C /tmp/paperclip rev-parse HEAD` → same) + assert 40-hex in smoke.
-- **P1-6 Hound archived rationale false** (`sidecars:446-453`, SUPPORTING 845-857 "etsy/hound archived").
-  - Command: `curl -s https://api.github.com/repos/etsy/hound | jq '{archived, pushed_at}'; curl -s https://api.github.com/repos/hound-search/hound | jq '{archived, pushed_at}'`
-  - Output: `etsy/hound` → redirect/renamed; `hound-search/hound` → `{archived: false, pushed_at: 2026-09-10}` — not archived, renamed not archival.
-  - Fix: correct comment; migration OPTIONAL.
-- **P1-7 Piston digest-of-latest** (`:591` engineer-man latest only, v2.0.0 404).
-  - Command: `curl -s "https://hub.docker.com/v2/repositories/engineer-man/piston/tags?name=v2.0.0" | head -c 300; grep -n "piston" docker-compose.sidecars.yml | head`
-  - Output: `v2.0.0` tag 404; only floating latest resolves.
-  - Fix: vendor `ghcr.io/heretek-ai/piston:<semver>@digest` per SUPPORTING E.2.
-- **P1-8 Ghidra :1337 / Radare2 :9090 unauth + bridge** (`sidecars:350-438`, `:946-950` paperclip joins 3 nets).
-  - Command: `grep -n "1337\|9090\|ghidra\|radare2" docker-compose.sidecars.yml | head`
-  - Output: Ghidra WebUI `:1337` + Radare2 `:9090` exposed without auth env; paperclip attached to 3 nets.
-  - Fix: secret-proxy front + hard guard-profiles refusal.
-- **P1-9 harness_* wildcard precedes specifics in 16 roles** (exec-director:137-156 pattern etc — dead under first-match).
-  - Command: `grep -n -B2 -A2 '"harness_\*"' roles/exec-director/opencode/opencode.json | head`
-  - Output: `harness_* deny :137` precedes specifics `:142-157` — correct order here (mirror k8s-orchestrator); 16-flagged roles have inverted order where specifics are shadowed.
-  - Fix: move specifics above wildcard (mirror k8s-orchestrator).
-- **P1-10 threat-modeler deploy/security write + github_* over-broad** (threat-modeler fs:write deploy/security/** + github_*; compliance github_*).
-  - Command: `grep -n "fs:write\|github_" roles/threat-modeler/opencode/opencode.json | head`
-  - Output: `:57,:62,:67 fs:write` incl. deploy/security scopes; `:77 github_*` allow; `:157-172` additional write scopes.
-  - Fix: drop deploy write, scope github to get/search/list + deny tail.
-- **P1-11 Caddy 0.0.0.0:80/443 one cmd from exposure** (`compose:235-237`, Makefile:57-70 guard Makefile-only).
-  - Command: `sed -n '235,237p' docker-compose.yml; sed -n '57,70p' Makefile`
-  - Output: `0.0.0.0:80/443` published; guard lives only in Makefile target, not compose fail-closed.
-  - Fix: compose fail-closed `test $EXPOSURE = private && exec caddy…`.
-- **P1-12 Superuser DATABASE_URL inspect-readable** (`compose:105-116`).
-  - Command: `sed -n '105,116p' docker-compose.yml`
-  - Output: `DATABASE_URL: postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:?...}@postgres:5432/...` — superuser URL in server env, inspect-readable via `docker inspect`.
-  - Fix: password-file/secret + unset POSTGRES_PASSWORD.
-- **P1-13 GET-recon open whole net** (`:507-558` POST/BUILD/EXEC=0 good, but expose:2375 heretek-wide lists containers).
-  - Command: `sed -n '507,560p' docker-compose.sidecars.yml`
-  - Output: `POST: "0" BUILD: "0" EXEC: "0" VOLUMES: "0" NETWORKS: "0" AUTH: "0"` (good) BUT `expose: - "2375"` + `networks: - heretek` → any heretek-net container runs unauthenticated `GET /containers/json`, `/images/json`, `/version`, `/info` recon.
-  - Fix: dedicated heretek-ci / allowlist + smoke probe.
-- **P1-14 Offensive shell allows** (ai-red-teamer garak/pyrit/promptfoo; dependency-patcher npm install/cargo/go; sabotage piston).
-  - Command: `grep -n "garak\|pyrit\|promptfoo\|npm install\|cargo\|piston" roles/ai-red-teamer/opencode/opencode.json roles/dependency-patcher/opencode/opencode.json roles/sabotage-qa-tester/opencode/opencode.json | head -n 20`
-  - Output: installer + offensive-harness allows present as claimed.
-  - Fix: npm ci-only, ephemeral sandbox, approval-gated installs.
-- **P1-15 restore-db.sh --file usage mismatch** (`:6` `--file path` vs `:51-52` `--file=*` only → exit 2).
-  - Command: `bash scripts/restore-db.sh --file backups/x.sql.gz`
-  - Output: `error: --file requires '=path' form` exit `2` (`:52`); usage header `:6` documents space form.
-  - Fix: accept space form or change usage + regression test.
+### P0-5. Unauthenticated RCE-as-a-service reachable from shared net: piston :2000, ghidra :1337, radare2 :9090 /cmd/ (Gamma P0-G3)
+- **Files:** `docker-compose.sidecars.yml:583-632` (piston `expose: 2000`, heretek net), `:367-456` (ghidra :1337 + radare2 :9090 `r2 -qc=H 0.0.0.0:9090`, heretek-devsec net), `roles/sabotage-qa-tester/opencode/opencode.json` (exact-host curl pins), bridge `docker-compose.sidecars.yml:970-974` (paperclip joins heretek-devsec).
+- **Claims:** Domain 8 / 11.3 / 11.4 FAIL-OPEN by design; in-file mitigations advisory only.
+- **Attack paths:** (1) any `heretek` container `POST http://piston:2000/api/v2/execute` zero creds; (2) paperclip bridges into heretek-devsec so any agent-code-exec reaches ghidra :1337 / r2 `:9090/cmd/`; (3) sabotage-qa-tester curl pins are prefix-matched (see P0-6) compounding SSRF reach.
+- **Remediation:** front :2000/:1337/:9090 with shared-secret sidecar proxy (or per-request tokens mounted only into RE-needing roles) before untrusted-sample/multi-tenant use; until then keep devsec+qa-testing profiles OFF by default, add compose-level guard refusing `--profile devsec` + `--profile web-research` in one invocation, move piston onto isolated net (tracked Wave E P0-4 residual).
 
-## P2 / Medium
-- **P2-1 stale budget comment 1270000** — Files: `scripts/seed-50-fleet.sh:337` (`Sum = 1270000 cents ($12,700.00 USD)`). Command: `grep -n "1270000\|1300000" scripts/seed-50-fleet.sh` → Output: `:45 Default: 1300000`, `:99 summing to 1300000`, `:113 FLEET_BUDGET_CAP_CENTS=1300000`, `:337 stale 1270000`. Fix: update `:337` to `1300000 ($13,000.00)`.
-- **P2-2 dispatch-pipeline no ticket validation** — Files: `scripts/dispatch-pipeline.sh` (no `require_ticket_id`). Command: `grep -n "require_ticket_id\|allowlist" scripts/dispatch-pipeline.sh scripts/worktree-manager.sh` → Output: worktree-manager `:39-45` HAS allowlist, dispatch HAS NONE. Fix: add `^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$` gate at top.
-- **P2-3 unverified probes playwright/radare2/hound/ghidra** — Files: `sidecars:350-468`. Command: first-boot `docker ps --format '{{.Names}} {{.Status}}'; docker logs <svc> --tail 20` → Output (deferred): live `ps/logs` on first boot required; do not bump blind. Fix: verify logs then bump.
-- **P2-4 searxng stale + false newest comment** — Files: `sidecars:37-39` (`2025.12.19` vs `2026.10.17`). Command: `curl -s "https://hub.docker.com/v2/repositories/searxng/searxng/tags?page_size=3&ordering=last_updated" | head -c 400` → Output: newer tag exists. Fix: bump + correct comment.
-- **P2-5 firecrawl 2.10.19→2.11 digests 5044→94d7** — Files: `sidecars:firecrawl image`. Command: `curl Hub tags?name=2.11` → Output: digest `94d7` supersedes `5044`. Fix: bump pin.
-- **P2-6 browserless v2.24.2→v2.26.0; litellm main-v1.54→v1.60** — Files: `sidecars:browserless/litellm`. Command: `curl Hub/GHCR tags` → Output: newer tags resolve. Fix: bump both.
-- **P2-7 phantom wirings SUPPORTING (searxng settings, hound config, wiremock mappings, litellm config)** — Files: `SUPPORTING_SERVICES.md` doc block vs compose mounts. Command: `grep -n "settings\|hound.*config\|mappings\|litellm.*config" SUPPORTING_SERVICES.md | head; grep -n "volumes" -A5 docker-compose.sidecars.yml | grep -i "searxng\|hound\|wiremock\|litellm" | head` → Output: doc references mounts absent from compose. Fix: vendor+mount or delete doc block; searxng limiter + litellm passthrough real impact noted.
-- **P2-8 phantom services ollama/otel/crawl4ai/ast-grep specified not composed + 7 dead MCP envs** — Files: `SUPPORTING_SERVICES.md` + `roles/*/opencode/opencode.json`. Command: `grep '^  [a-z-]*:' docker-compose.sidecars.yml | grep -E "ollama|otel|crawl|ast-grep" ; echo ---; grep -rn "OLLAMA_HOST\|OTEL\|CRAWL4AI\|AST_GREP" roles/*/opencode/opencode.json | head` → Output: no service entries; 7 dead MCP env refs. Fix: compose or delete.
-- **P2-9 jaeger v2 v1-era COLLECTOR_OTLP_ENABLED verify logs** — Files: `sidecars:jaeger`. Command: `docker logs jaeger --tail 30 2>&1 | grep -i "otlp\|collector\|error" | head` (first boot) → Output: verify v1 env still honoured under v2 image. Fix: confirm logs, drop stale env if ignored.
-- **P2-10 playwright 10 pages/2g no shm_size → 5 + shm 1gb** — Files: `sidecars:playwright-service`. Command: `grep -n -B2 -A6 "playwright" docker-compose.sidecars.yml | head -n 20` → Output: no `shm_size`, page/memory limits oversized. Fix: `shm_size: 1gb`, pages 5.
-- **P2-11 mocks lag wiremock/mailpit/mitmproxy (mitmproxy first)** — Files: `sidecars:wiremock/mailpit/mitmproxy`. Command: `curl Hub tags wiremock/mailpit/mitmproxy | head` → Output: newer tags available. Fix: bump mitmproxy first (security surface).
-- **P2-12 XDG provenance/canary gaps (paste commit, run canary)** — Files: `docker/Dockerfile:21`, `scripts/smoke-test.sh`. Command: `git -C /tmp/paperclip rev-parse HEAD` → Output: `73659c6b27c1d97226f2da9ca39f256eefddac66` (paste into Dockerfile, assert 40-hex). Fix + `printenv | grep -c DATABASE_URL == 0` live canary.
-- **P2-13 backup plaintext default (require AGE_RECIPIENT unless --plaintext-ok)** — Files: `scripts/backup-db.sh`. Command: `grep -n "AGE_RECIPIENT\|plaintext" scripts/backup-db.sh | head` → Output: no mandatory recipient gate. Fix: fail-closed require `AGE_RECIPIENT` unless explicit `--plaintext-ok`.
-- **P2-14 fs:read ** cross-agent read (scope or accept documented)** — Files: 51 roles `fs:read`. Command: `grep -rn '"action": "fs:read"' roles/*/opencode/opencode.json | wc -l; grep -rn -A1 'fs:read' roles/exec-director/opencode/opencode.json | head` → Output: broad `**` reads present. Fix: scope to role dirs or record accepted-risk.
-- **P2-15 firecrawl USE_DB_AUTH false loopback-only keep** — Files: `sidecars:firecrawl env`. Command: `grep -n -B2 -A2 "USE_DB_AUTH" docker-compose.sidecars.yml | head` → Output: `false` but loopback-only binding contains it. Fix: keep, document loopback-only justification.
-- **P2-16 privileged android + tailscale caps profile-gated no change** — Files: `sidecars:docker-android/tailscale`. Command: `grep -n -B2 -A4 "privileged\|cap_add" docker-compose.sidecars.yml | head -n 20` → Output: privileged/caps present but profile-gated (mobile/tailscale profiles, never default). Fix: none — accepted, keep gating.
+### P0-6. Prefix-match shell bypass structurally unmitigated (Gamma P0-G1; Alpha P2-3 corroborates)
+- **Files:** all 51 `roles/*/opencode/opencode.json`; `AGENTS.md:130-143`; `scripts/seed-50-fleet.sh:437-440` ("even per-role opencode.json allow-lists are only hints once CLI runs with --auto"); shim `scripts/opencode-shim.sh:24-36`.
+- **Claim:** 3.2 PARTIAL (shape PASS 51/51 `permissions[-1] == {shell,*,deny}`; enforcement FAIL-OPEN by admission).
+- **Commands:** allow-frequency scan → top allow `git status*` in **47/51** roles (+ `npm test*`, `pytest*`, `go test*`, `cargo test*`, `curl -s http://piston:2000/...*`, `python3 pipelines/*`); `AGENTS.md:130-131` admits continuations `git status; <payload>` match prefix when enforcer prefix-based; `:134-136` admits semantics unpinned/live-untested.
+- **Attack:** `git status; id`, `git status||id`, `git status$(id)` — deny tail never fires if enforcer prefix-based (assumed until live probes `AGENTS.md:138-139` run).
+- **Remediation:** (1) run 4 live probes through seeded fleet agent turn, record allow/deny; claim no sandboxing until all 4 deny; (2) if any allows, replace prefix allows with argv-aware wrapper validating `argv[0..n]` exactly, rejecting `;||&&$()`; pin enforcer version+semantics in `NOTES.md`; (3) reduce blast radius now: drop `git status*` where unneeded; scope remainder to `git status --porcelain -- <path>` wrapper. Plus live-canary asserting Paperclip exact argv order in `NOTES.md`.
 
-## P3 / Low
-- **P3-1 backup-db.sh .env warning drift** — Files: `scripts/backup-db.sh`. Command: `grep -n "warning\|\.env" scripts/backup-db.sh | head` → Output: stale warning text vs current guard. Fix: sync wording.
-- **P3-2 NOTES 46/46 vs 54/54** — Files: `NOTES.md`. Command: `grep -n "46/46\|54/54" NOTES.md | head` → Output: count mismatch vs `test-shim.sh` 54 assertions. Fix: update to 54/54.
-- **P3-3 grep assert count artifact** — Files: `scripts/smoke-test.sh`. Command: `grep -n "assert.*count\|grep -c" scripts/smoke-test.sh | head` → Output: brittle count assert. Fix: pin or relax.
-- **P3-4 gotenberg 8.37→8.38.1** — Files: `sidecars:254` (`gotenberg/gotenberg:8.37.0`). Command: `curl -s "https://hub.docker.com/v2/repositories/gotenberg/gotenberg/tags?name=8.38.1" | head -c 200` → Output: `8.38.1` exists. Fix: bump.
-- **P3-5 node:24 floats minor** — Files: `docker/Dockerfile:31` (`node:24-trixie-slim` inherited). Command: `grep -n "node:" docker/Dockerfile` → Output: unpinned minor. Fix: pin `node:24.x-trixie-slim@sha256:<digest>` (low — official base tracks).
-- **P3-6 redis 7.4 LTS deliberate** — Files: `sidecars:redis`. Command: `curl Hub tags?name=7.4.11` → Output: `7.4.11-alpine` current; CVE-2025-49844 fixed. Fix: none — deliberate LTS, keep.
-- **P3-7 act-22.04 EOL 2027-04 calendar** — Files: `sidecars:905` (`ghcr.io/catthehacker/ubuntu:act-22.04@sha256:f5f5c...`). Command: `grep -n "act-22.04\|act-24.04" docker-compose.sidecars.yml` → Output: `:905` pinned 22.04, `:899` notes 24.04 quarterly plan. Fix: calendar migration to 24.04 quarterly.
-- **P3-8 android pin verified** — Files: `sidecars:docker-android`. Command: `grep -n "budtmo" docker-compose.sidecars.yml` → Output: pin present and profile-gated. Fix: none.
-- **P3-9 dba postgres_query shape check** — Files: `roles/dba-specialist/AGENTS.md:§4`. Command: `grep -n "postgres_query\|GRANT\|read-only" roles/dba-specialist/AGENTS.md | head` → Output: read-only GRANT shape asserted. Fix: enforce at resource layer (true read-only Postgres role via GRANTs).
-- **P3-10 loopback mocks acceptable extend smoke §3a** — Files: `scripts/smoke-test.sh`. Command: `grep -n "3a\|loopback\|mock" scripts/smoke-test.sh | head` → Output: loopback mocks accepted. Fix: extend §3a asserts.
-- **P3-11 mitmproxy block_global keep** — Files: `sidecars:mitmproxy`. Command: `grep -n -B2 -A2 "block_global\|mitmproxy" docker-compose.sidecars.yml | head` → Output: block-global present. Fix: keep.
-- **P3-12 Dockerfile --force/root confirm `id -u==1000` live** — Files: `docker/Dockerfile`. Command: `docker run --rm <built> id -u` → Output (needs `make build`): expect `1000`. Fix: confirm live, record.
+---
 
-## Residuals NOT filed
-Backup/restore pg path correct (socket trust, `--clean --if-exists` `backup-db.sh:120-126`, `ON_ERROR_STOP=1` + `pg_terminate_backend` `restore-db.sh:163-170`, restore `--file` form `restore-db.sh:7,27,51` — space form rejected exit 2 per P1-15, `=` form canonical); seed idempotency (fail-with-body, nonzero on unparseable, drift-only PATCH, preflight); caddy guard consistent; healthcheck syntax; all modern pins verified (see receipts above + Domain table).
+## 2. P1 / High
 
-## Method note
-Hub `…/tags?name=<tag>` count≥1; GHCR token + manifests 200/404; npm view; PyPI json; GitHub api repos/releases/tags. Upstream `git -C /tmp/paperclip rev-parse HEAD` → `73659c6b27c1d97226f2da9ca39f256eefddac66`; grep execute/runtime-config (`grep -n "dangerouslySkipPermissions\|permission" …/runtime-config.ts` → `110,153,207`; `grep -rn sanitizeInheritedPaperclipEnv|isForbiddenConfigEnvKey … --include="*.ts"` → `execute.ts:55,63`, `server-utils.ts:171,3505,3513,4720`); shim rec.sh + npx run --help; npm pack harness load probe (`rootDir must be non-empty`); grep shell 233 rules + fnmatch (`True,True,True`); ordering audits (`grep -n -A2 harness_…` → 35 allow / 16 deny); `docker compose config` no-.env 8 errors; service enumeration (`grep '^  [a-z-]*:'`); `printenv | grep -c DATABASE_URL` live canary (must be 0); `bash scripts/restore-db.sh --file … → exit 2`; `npm view @mobile-next/mobile-mcp → E404` vs `npm view @mobilenext/mobile-mcp version → 1.0.11`. Modernity re-verified live by Beta 2026-10-17 via Hub/GHCR/npm (see Beta transcript); operator rerun: `npm view @opencode/cli version; curl -s "https://hub.docker.com/v2/repositories/library/postgres/tags?name=17.11-alpine" | head -c 400; git -C /tmp/paperclip rev-parse HEAD`.
+### P1-1. Paperclip source-commit pin provenance conflict — UNRESOLVED, needs re-verification (Alpha P1-1 vs Beta P2-7 disagree)
+- **Files:** `docker/Dockerfile:20-21`, `NOTES.md:366`, `.github/workflows/docker-publish.yml:20`, `docker-compose.yml:94-95`, `docker/Dockerfile:63-64` (`FROM ${PAPERCLIP_BASE_IMAGE}` default `paperclip:official-local`).
+- **Claim:** 1.1.
+- **Alpha evidence (FAIL):** `GET /repos/paperclipai/paperclip/git/commits/73659c6b27c1d9726f2da9ca39f256eefddac66` → 404; `/commits/<sha>` → 422; raw Dockerfile → 404; full SHA nowhere in `paperclipai/paperclip` (default branch `master` not `main`). GHCR tag `sha-73659c6` IS real multi-arch — image genuine but source unverifiable.
+- **Beta evidence (PASS):** `GitHub API /commits/73659c6` → sha match, author Devin Foley, 2026-10-16; prebuilt base `ghcr.io/paperclipai/paperclip:sha-73659c6` exists (digest `sha256:b12822a3…`).
+- **Status:** CONFLICT — treat as P1 until single live re-check closes it.
+- **Remediation:** re-clone upstream at tag build commit, record `git rev-parse HEAD` + `git log -1` + registry digest in `docker/Dockerfile` + `NOTES.md`; if commit gone, rebuild base from resolvable commit, rotate tag. Add CI assertion `git -C /tmp/paperclip rev-parse HEAD == recorded commit` before build, or move base to GHCR digest pin.
+
+### P1-2. Claimed sidecars absent from compose: `ollama`, `otel-collector` (Alpha P1-2 + Beta P2-6)
+- **File:** `docker-compose.sidecars.yml` (38 services); `grep -n "^  ollama:|^  otel"` → no matches; anchored grep finds all other claimed services (hound:460 … jaeger:821).
+- **Claims:** 11.5 (`ollama/ollama:0.4.4`), 11.7 (`otel/opentelemetry-collector-contrib:0.113.0`) FAIL as stated. `SUPPORTING_SERVICES.md:1169` confesses "specified but NOT composed" (cites `0.5.4`, contradicting prompt `0.4.4`).
+- **Remediation:** either add services (pinned + profiled + healthchecked) or strike claims + role docs referencing endpoints.
+
+### P1-3. Non-root runtime depends on unverified upstream entrypoint internals (Alpha P1-3 + Gamma P2-G4: PARTIAL → PASS-pending-live)
+- **Files:** `docker/Dockerfile:129-146`, `docker-compose.yml:193-197`; upstream `master` (`apt-get install … gosu`, `ENTRYPOINT ["tini","--","docker-entrypoint.sh"]`, ends `exec gosu node "$@"`).
+- **Claim:** 1.3.
+- **Gap:** pin doesn't resolve (see P1-1); repo asserts nothing mechanically about base; only live `id -u` gate catches post-boot. `smoke §8` (`docker compose exec paperclip id -u == 1000`) is live gate, ungated here.
+- **Remediation:** build-time assertion `docker pull $PAPERCLIP_BASE_IMAGE && docker run --rm --entrypoint sh $BASE -c 'command -v gosu && grep -q "exec gosu node" /usr/local/bin/docker-entrypoint.sh'`; do not assert non-root without live gate.
+
+### P1-4. MinIO pin unpullable anonymously (Beta P1-2)
+- **File:** `docker-compose.sidecars.yml:774` (`quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z`); honest note `:760-773` incl. AGPLv3.
+- **Claim:** 11.6.
+- **Command:** `skopeo inspect docker://quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z` → `unauthorized: access to the requested resource is not authorized`.
+- **Remediation:** provision quay robot account into CI/host docker config + record digest, or mirror to `ghcr.io/heretek-ai/minio:<RELEASE>` + pin digest; evaluate localstack alternative next bump. No digest invented offline.
+
+### P1-5. Mitmproxy full major behind (Beta P1-3)
+- **File:** `docker-compose.sidecars.yml:331` (`mitmproxy/mitmproxy:11.0.2` + digest `sha256:92ab9e…` resolves).
+- **Claim:** 11.8.
+- **Command:** `skopeo list-tags docker://mitmproxy/mitmproxy` tail → `['12.2.0','12.2.1','12.2.2','12.2.3']`. Full-major lag on intercept proxy, security-relevant. File admits quarterly plan — keep severity.
+- **Remediation (quarterly, live-verified):** re-resolve newest `12.x`, bump tag+digest together, re-verify `:8081` healthcheck on first qa-testing boot (v12 behavior NOT verified from here).
+
+### P1-6. Caddy proxy binds 0.0.0.0:80/443; Makefile-only guard (Alpha P2-1 + Gamma P1-G1: PASS with weak enforcement)
+- **Files:** `docker-compose.yml:239-241` (`80:80,443:443`; rendered `config --format json`: caddy `host_ip=None`, every other service `host_ip='127.0.0.1'`); `Makefile:57-64` guard-proxy; note `:230-238` honest.
+- **Claim:** 1.4 (Caddy `2.11.7-alpine` multi-arch w/ `localhost` default — PASS; tailscale `v1.104.1` w/ `--advertise-tags=tag:heretek` — PASS).
+- **Gap:** raw `docker compose --profile proxy up` bypasses guard (admitted "deferred"). Single typo publishes stack to LAN/Internet.
+- **Remediation:** keep guard; document `make proxy-up` only path; long-term compose gate (override entrypoint `sh -c 'test … && exec caddy …'`) or `pre-up` hook; verify `ss -tlnp | grep -E ':80|:443'` in `make proxy-up`.
+
+### P1-7. Socket-proxy GET-recon open to every `heretek`-net container (Alpha P2-2 + Gamma P1-G2: proxy config PASS, placement residual)
+- **File:** `docker-compose.sidecars.yml:525-581` (after P0-1 tag fix; `CONTAINERS/IMAGES/INFO/VERSION=1`, `POST/BUILD/EXEC/VOLUMES/NETWORKS/NODES/SWARM/SYSTEM/AUTH=0`, socket `:ro`, `expose: 2375` no host ports — correct).
+- **Claim:** 8.2 (GET-only BY DESIGN — PASS; prompt stale `0.1.1`/`0.3.0` and inverted wording — prompt wrong, file correct).
+- **Gap (admitted `:548-553`):** any heretek-networked container gets unauthenticated GET-recon. No source-IP allowlist; `heretek-ci` dedicated-net move deferred.
+- **Remediation:** relocate proxy + `local-ci-runner` to dedicated `heretek-ci` net or iptables/source-IP allowlist; verify `docker compose run --rm <untrusted> wget -qO- http://docker-socket-proxy:2375/version` denies. Never weaken POST/BUILD/EXEC to "fix" CI (Domain 8 Claims 8.1/8.2 corrected: `local-ci-runner` `ghcr.io/catthehacker/ubuntu:act-22.04` `sleep infinity` `:ro` + `/scratch` is quarantined read-only observer; mutating `act` runs on HOST only).
+
+### P1-8. `DATABASE_URL` superuser password in paperclip env (Gamma P1-G3)
+- **File:** `docker-compose.yml:116` (`DATABASE_URL: postgres://${POSTGRES_USER}:…${POSTGRES_PASSWORD:?…}@postgres:5432/…`); self-flags `:105-115`.
+- **Claims:** 1.1/3.1 PASS-functionally, P1 hygiene.
+- **Verification:** `scripts/seed-50-fleet.sh:465-471` adapterConfig.env only `XDG_CONFIG_HOME` + `OPENCODE_DISABLE_PROJECT_CONFIG`; `smoke-test.sh:1519-1530` greps dry-run payloads. Shape-level only — upstream inheritance (`/tmp/paperclip`) needs live canary.
+- **Remediation:** implement in-file plan (Docker secret + entrypoint-assembled URL); until then keep `smoke §4` green + live `printenv | grep -c DATABASE_URL == 0` agent-turn gate.
+
+### P1-9. Backup/restore `source .env` executes file as shell + retention fail-open (Gamma P1-G4 + Alpha P2-4)
+- **Files:** `scripts/backup-db.sh` (~`:70` `set -a; source ./.env; set +a`; `:166-182` non-numeric `BACKUP_RETENTION_COUNT` → `keeping all dumps` disk-fill; admitted `:74-82`), `scripts/restore-db.sh` (same pattern).
+- **Claims:** 10.1/10.2 PASS-functionally, P1 hardening.
+- **Attack:** malicious `.env` command substitution executes with operator privs.
+- **Remediation:**
+```bash
+[[ "${BACKUP_RETENTION_COUNT:-5}" =~ ^[0-9]+$ ]] || { echo "error: BACKUP_RETENTION_COUNT must be a non-negative integer" >&2; exit 1; }
+```
+Replace `source` with restricted parser (`grep -E '^(POSTGRES_USER|POSTGRES_DB|BACKUP_DIR|BACKUP_RETENTION_COUNT|BACKUP_AGE_RECIPIENT|BACKUP_PLAINTEXT_OK)=' .env` + safe assignment).
+
+### P1-10. XDG isolation config-advice, not proven isolation (Gamma P1-G5)
+- **Files:** `scripts/seed-50-fleet.sh:75-79,422-471`; `docker-compose.yml:117-120`; `AGENTS.md:20-24`.
+- **Claim:** 3.1 PARTIAL (honestly labeled live-unverified).
+- **Evidence:** seed payload correct; `ROLE_DIR` hazard guard (`:427-430` + python assert) fail-closed. Copying/merging in upstream Paperclip (`/tmp/paperclip`, base locally-tagged `paperclip:official-local`); canary + child-scrub ungated statically.
+- **Remediation:** record Paperclip source commit, run canary (plant canary `opencode.json` + `.opencode/` in scratch workspace, one agent turn, assert ignored) + `printenv` child-scrub probe before claiming isolation.
+
+### P1-11. Claim 3.3 "read-only separation" false as worded (Gamma P1-G6)
+- **Evidence:** scan all 51 `opencode.json` → EVERY role has scoped `fs:write` allows. Zero `fs:write * allow` (good); every `fs:write * → deny` tail exists. Implementation is reasonable scoped-write, narrative overclaims.
+- **Remediation:** correct Claim 3.3 to "scoped-write separation"; list truly edit-denied roles if any.
+
+---
+
+## 3. P2 / Medium
+
+### P2-1. Browserless ~31 releases behind (Beta P2-1)
+- **File:** `docker-compose.sidecars.yml:294` (`ghcr.io/browserless/chromium:v2.26.0` + digest `sha256:899026f6…` resolves). GHCR tail → `['v2.56.6','v2.56.7','v2.57.0','v2.57.1']`. CDP/stealth surface moves fast.
+- **Fix:** quarterly bump tag+digest together after verifying `/pressure` healthcheck. Claim 11.2 CDP `ws://browserless:3000` otherwise sound.
+
+### P2-2. Firecrawl `2.10.19` vs live `2.11.532` (Beta P2-2)
+- **File:** `docker-compose.sidecars.yml:195`. GHCR `2.x` tail → `['2.11.528',...,'2.11.532']`. No drift: tag digest == pinned `sha256:50446cbc…`. Quarterly bump tag+digest together.
+
+### P2-3. LiteLLM `main-v1.60.0` vs live `main-v1.82.3` (Beta P2-3)
+- **File:** `docker-compose.sidecars.yml:709`. GHCR tail → `['main-v1.61.1','main-v1.61.3','main-v1.61.7','main-v1.82.3']`. Tag↔digest binding exact. Quarterly bump; re-verify `/health/readiness`.
+
+### P2-4. Mailpit `v1.21.8` vs `v1.31.6` — admitted, keep quarterly plan (Beta P2-4) — `docker-compose.sidecars.yml:738`
+### P2-5. Wiremock `3.10.0-alpine` vs `3.13.2-alpine` — admitted, keep plan; do NOT jump to `4.0.0-beta` (Beta P2-5) — `docker-compose.sidecars.yml:803`
+### P2-6. Base-image supply chain checkout-dependent (Beta P2-7) — `docker/Dockerfile:63-64`, `docker-compose.yml:94-95`. Fix: CI assertion `git -C /tmp/paperclip rev-parse HEAD == recorded commit` before build, or GHCR digest pin.
+### P2-7. Tight memory fits — self-flagged, monitor live (Beta P3-1) — ghidra `MAXMEM=3G` vs `4g` (`:399-402`); neo4j heap `1536m`+pagecache `512m` inside `2.5g` (`:670-672` TIGHT); rabbitmq `512m` lean (`:90-91`). Confirm via `docker stats` on first profile up.
+### P2-8. Sensitive volumes without rotation note (Gamma P2-G2) — `docker-compose.sidecars.yml:344-345,983-992`. Mitmproxy CA in named volume, no rotation/expiry. Fix: document CA rotation + purge; confirm `mitmproxy-certs` never mounts into agent-reachable roles.
+
+---
+
+## 4. P3 / Low / Cleanups + Verified PASS ledger
+
+### P3-1. Semgrep `healthcheck: ["CMD-SHELL","true"]` meaningless but harmless (admitted in-file)
+### P3-2. Restore `ls -1t` breaks on exotic filenames (SC2012 noted in-file)
+### P3-3. Tailscale healthcheck can't distinguish "socket up" from "mesh joined" (empty `TS_AUTHKEY` default) — cosmetic
+### P3-4. Shim intentional-loud behaviors (PASS, documented): (a) `--dir <existing-file>` non-dir path preserved as prompt text, exit 0 — hand-typed only; (b) whitespace-only `OPENCODE_API_KEY` left in env — binary fails loudly on auth
+### P3-5. `..`-containing worktree IDs pass allowlist but git rejects refname loudly — fail-closed
+### P3-6. Docker-android `emulator_14.0_v3.8.0-p1` (`:853`) resolves; `privileged`+/dev/kvm/4.0/8g + co-scheduling guard sane. Recency vs Android 15/16 on mobile-profile cycle.
+### P3-7. Firecrawl digest-only pins (nuq-postgres, playwright-service `:127`/`:154`) both resolve; acceptable per zero-`:latest`; record originating tags if documented. Piston upstream-`latest`-only handled correctly (digest pin, no `:latest`, vendoring plan `:584-596`).
+
+### Verified PASS (registry/file/live-probe confirmed 2026-10-17)
+- **Domain 2 all six claims PASS vs real `2.0.32` binary:** `run --help` shows no `--dir`/`--variant`, `--model provider/model#variant`, `--auto`, `--session,-s`. Shim live-probes: order-independent merge, first-wins duplicate `--model`, `-m=` merge, single `--auto` both slots, `--` terminator, `--session` verbatim, GO-key fallback incl. trims, dangling/dir `OPENCODE_REAL_BIN` → 127, self-ref → 127, `auth` passthrough. Best-engineered artifact in scope.
+- **Domain 1:** `127.0.0.1:3100`, postgres expose-only + `pg_isready` healthcheck, caddy `2.11.7-alpine` newest `-alpine`, tailscale `v1.104.1` newest `v1.x`.
+- **Domain 5 PASS:** sole seeder, 51 roles, `total fleet budget: 1300000 cents ($13000.00 USD)` via live `--dry-run`, timers 1800/3600.
+- **Domain 6 PASS (live scratch-repo):** `create` → branch `ticket-TKT-001` (dash); `archive` dirty → exit 1, no `--force` anywhere.
+- **Domain 7 PASS:** zero runtime `curl|PAPERCLIP_URL|/api/|poll|wget` outside comments; execute provisions worktree + `task_plan.md` only.
+- **Domain 8 `local-ci-runner` PASS as corrected** (`sleep infinity`, `:ro`, `DOCKER_HOST=tcp://…:2375`, `restart:"no"`); unverified whether `docker`/`act` CLIs inside image (no pull).
+- **Domain 10 PASS:** timestamped+gzip+no-overwrite+non-empty+retention; FILE/extension/TTY-confirm/backend-terminate/`ON_ERROR_STOP=1`/table-count; `postgres-init-readonly-role.sh` `psql -v` binding, placeholder rejection, SELECT-only grants; age-encryption genuinely fail-closed.
+- **Domain 11 bindings:** all host binds loopback except caddy; zero `:latest` in any `image:`; every sidecar carries `cpus`+`mem_limit` 26/26.
+- **Registry-current pins:** postgres `17.11-alpine@sha256:b0f956…` newest 17.x intact; caddy newest; tailscale newest v1.x; redis `7.4.11-alpine` ×2 (CVE-2025-49844 fixed LTS); rabbitmq `4.3.6` newest 4.3.x; gotenberg `8.38.1` newest; semgrep `1.181.0` newest; qdrant `v1.19.2` + `mcp-server-qdrant==0.8.1` (PyPI latest) coherent; neo4j `5.26.32-community-trixie` exact LTS; jaeger `2.22.0` v1→v2 done; searxng/radare2/hound/nuq/playwright/act-22.04/ghidra digests resolve; `@opencode/cli@2.0.32`+`@opencode/client@2.0.32` == npm latest; `opencode-mem@2.31.3`, `@prevalentware/opencode-goal-plugin@0.1.64` == latest; all role MCP servers == latest; no floats.
+- **Fleet hardening 51/51 PASS:** `small_model=anthropic/claude-haiku-4-5`, `compaction={auto,prune,reserved:10000}`, local MCP `timeout=5000`, `DOCKER_HOST=tcp://docker-socket-proxy:2375` (k8s-orchestrator+mlops), `KUBECONFIG=/paperclip/secrets/kubeconfig-readonly`, `fs:read` denies cover 8 secret patterns sorted before allows, skills symlinks 51/51 + both paths declared, zero `fs:write * allow`, every `fs:write * → deny` tail exists, secret grep only `:?`/`${VAR}`/`--help`/dummies — no hardcoded creds, no `set -x` leaks, qdrant `${QDRANT_API_KEY}` by reference correct.
+- **Inside-container `0.0.0.0` correctly contained** (firecrawl `HOST: 0.0.0.0` `:213`, mitmweb `:338`, r2 `:446` — publish only via `127.0.0.1:` or `expose:`-only).
+
+---
+
+## 5. Top remediation order
+
+1. **P0-1** socket-proxy `v0.5.0` tag fix + digest re-pin (unblocks 3 profiles).
+2. **P0-4** MCP namespace deny tails fleet-wide (copy k8s-orchestrator/threat-modeler).
+3. **P0-5** proxy-front piston/ghidra/r2; refuse combined devsec+untrusted profiles; isolate piston net.
+4. **P0-6** live prefix-bypass 4-probe suite; argv-aware wrappers if any allows.
+5. **P0-2/P0-3** harness successor + `v1.0.0` tag publish (unblocks prebuilt + CI green).
+6. **P1-1** close Paperclip commit conflict with single live re-check + CI assertion.
+7. **P1-2** compose or delete ollama/otel claims.
+8. **P1-6/P1-7/P1-8/P1-9/P1-10/P1-11** caddy gate, heretek-ci net, password-file, dotenv parser, canary isolation test, Claim 3.3 reword.
+9. **P2** quarterly bump cycle + `docker stats` watch + CA rotation doc.
+10. **Prompt** re-baseline Domain 11 table to repo reality.
+
+---
+
+## 6. Auditor provenance
+
+- Alpha `ses_eb4c0cd75ffeBfRtbaxP0XtgiS`: real `@opencode/cli-linux-x64@2.0.32` binary `run --help`+`strings`, recorder-binary shim probes, `docker compose config --format json` w/ dummy secrets, scratch-repo worktree create/archive, `npm pack` harness + `node -e` throw repro, `docker manifest inspect` + `npm view`, upstream Paperclip Dockerfile/entrypoint via GitHub raw.
+- Beta `ses_eb4c0cd5cffeiAV4nGgfwFYW9p`: `skopeo inspect/list-tags`, `npm view`, `git ls-remote`, GitHub API, PyPI JSON live 2026-10-17 on compose/Dockerfile/workflow/51 role JSONs.
+- Gamma `ses_eb4c0cd4fffeUczlHIvDNMYssS`: 51-file `opencode.json` permission/MCP/`fs:read`/`fs:write`/hardening scan, full `ports:` sweep, `grep -rn PASSWORD|SECRET|API_KEY|TOKEN`, seed/smoke shape-vs-enforcement analysis. Read-only, no modifications.
+- Coordinator ground-truth re-checks: git clean, socket-proxy `:531`, prebuilt `:52`, single seeder, no ollama/otel service.
