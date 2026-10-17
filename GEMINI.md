@@ -28,7 +28,7 @@ When navigating or discovering code within this codebase:
 - **CLI Translation Shim**: `scripts/opencode-shim.sh` intercepts `opencode run`, strips `--dir`, maps `--variant`, and injects `--auto`.
 - **Per-Role Config Isolation**: Each agent's runtime environment is defined in `roles/<role-id>/opencode/opencode.json` and mounted via `XDG_CONFIG_HOME = "/roles/<role-id>"`.
 - **Wake Strategy**: 48/50 roles are strictly on-demand (`heartbeat.enabled: false`, `intervalSec: 0`, `wakeOnAssignment: true`, `wakeOnMention: true`). Only `exec-director` (1800s) and `tpm-scrum-lead` (3600s) have recurring timers.
-- **Budget Control**: Fleet budget cap is $12,790.00 USD/mo (1,279,000 cents) across 50 specialist roles.
+- **Budget Control**: Fleet budget cap is $12,700.00 USD/mo (1,270,000 cents) across 50 specialist roles.
 
 ---
 
@@ -50,8 +50,7 @@ shellcheck scripts/*.sh
 BETTER_AUTH_SECRET=dummy POSTGRES_PASSWORD=dummy docker compose config
 BETTER_AUTH_SECRET=dummy POSTGRES_PASSWORD=dummy docker compose -f docker-compose.yml -f docker-compose.sidecars.yml config
 
-# 5. Verify seeding payloads in dry-run mode
-bash scripts/seed-company.sh --dry-run
+# 5. Verify seeding payload in dry-run mode (Wave 3 P1-11: fleet seeder only)
 bash scripts/seed-50-fleet.sh --dry-run
 ```
 

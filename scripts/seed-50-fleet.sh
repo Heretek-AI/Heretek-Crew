@@ -3,11 +3,16 @@
 # seed-50-fleet.sh — idempotently seed "Heretek Autonomous Fleet" and its
 # 50-agent specialist fleet into Paperclip.
 #
-# Scope note (P3-4): this seeds ONLY the 50 fleet roles. The 6 legacy
-# prototype roles (director, pm, programmer, tester, qa, designer) are
-# seeded by scripts/seed-company.sh. Both sets coexist on disk under roles/
-# (56 dirs); scripts/smoke-test.sh discovers them dynamically and asserts
-# each seed's own payload count (51 vs 7 documents).
+# Scope note (Wave 3 P1-11): this seeds the 50 fleet roles — the ONLY
+# roles on disk (`ls roles/` = 50, single fleet dialect). The 6 legacy
+# prototype roles (director, pm, programmer, tester, qa, designer) and
+# their seeder (scripts/seed-company.sh) were deleted as superseded:
+# director -> exec-director; pm -> product-director + tpm-scrum-lead;
+# programmer -> the 8 language engineers (19-26); tester/qa ->
+# e2e-browser-qa + api-contract-tester + release-qa-officer; designer ->
+# ui-ux-designer + design-system-eng + brand-copy-spec.
+# scripts/smoke-test.sh discovers roles dynamically and asserts this
+# seed's own payload count (51 documents).
 #
 # Usage:
 #   ./scripts/seed-50-fleet.sh [--dry-run] [--help]

@@ -397,10 +397,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       # Read-only proxy (fail-closed): POST/BUILD/EXEC/AUTH disabled so a
-      # compromised CI runner cannot create privileged containers, build
+      # compromised container cannot create privileged containers, build
       # images, exec into containers, or use auth endpoints to escape.
-      # Verify CI still functions with GET-only access; run image pulls on
-      # the host Docker directly if 'act' needs them (see P0-5).
+      # Wave 3 P1-3 (design decision, option a): this proxy is GET-only BY
+      # DESIGN, so nothing behind it can run mutating CI (`act` needs
+      # create/build/exec). CI jobs run on the HOST Docker daemon via host
+      # `act`, never through this proxy; the local-ci-runner container is a
+      # quarantined read-only observer (inspect/list/diagnose only — see its
+      # comment). The read-only posture is never weakened to "fix" CI.
       CONTAINERS: "1"
       IMAGES: "1"
       INFO: "1"
@@ -679,6 +683,18 @@ services:
     # NOTE: requires the socket proxy at runtime: run with
     #   docker compose -f docker-compose.yml -f docker-compose.sidecars.yml --profile core --profile ci up
     # (proxy lives in the "core" profile; "ci" alone never schedules it).
+    #
+    # Wave 3 P1-3 (design decision, option a — READ-ONLY OBSERVER): this
+    # container shells into a quarantined act-ready image (`sleep infinity`,
+    # workflows mounted :ro) with DOCKER_HOST pointed at the GET-only
+    # socket proxy, so it can INSPECT the daemon (list containers/images,
+    # read version/info, diagnose CI state) but CANNOT mutate it —
+    # create/build/exec/auth are denied at the proxy (POST/BUILD/EXEC=0).
+    # Mutating CI runs (`act` jobs that build, create, or exec) execute on
+    # the HOST via host-installed `act` against the host Docker daemon, NOT
+    # from inside this container. Do not "fix" CI by enabling proxy writes
+    # or mounting /var/run/docker.sock here (see P1-12); that re-opens the
+    # host-escape the proxy exists to close.
     image: ghcr.io/catthehacker/ubuntu:act-22.04
     profiles: ["ci", "qa-testing", "core"]
     restart: "no"
@@ -717,7 +733,16 @@ volumes:
 # ==============================================================================
 # NETWORKS
 # ==============================================================================
+# Wave 3 P1-2: compose-MANAGED network (not external). `docker-compose.yml`
+# creates this same `heretek` bridge, and both files declare `name: heretek`,
+# so the merged stack (`-f docker-compose.yml -f docker-compose.sidecars.yml`)
+# and the base stack alone attach every service to one Docker network
+# literally named `heretek`. Previously this block said `external: true`,
+# which won the file merge and made every sidecar-profile `up` fail unless
+# the operator had pre-created the network out of band (undocumented).
+# Managed is the fail-closed default: `up` creates what `config` references.
 networks:
   heretek:
-    external: true
+    name: heretek
+    driver: bridge
 

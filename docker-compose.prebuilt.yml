@@ -4,19 +4,30 @@
 # container image from GitHub Container Registry (ghcr.io) without requiring
 # local Paperclip compilation or npm dependencies.
 #
-# Pinned image: ghcr.io/heretek-ai/heretek-crew:v1.0.0
+# Pinned image: ghcr.io/heretek-ai/heretek-crew:1.0.0
 # (Overrides build block from docker-compose.yml)
 #
 # Quickstart:
 #   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml pull paperclip
 #   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d
 #
-# Registry access (P1-9): ghcr.io/heretek-ai/heretek-crew:v1.0.0 resolves
-# 401 anonymously — the tag is either private or unpublished. Authenticate
-# before pulling (fail-closed: no anonymous fallback):
+# Release status (Wave 3 P1-9): no image tag is published yet — anonymous
+# `docker manifest inspect` of both :v1.0.0 and :1.0.0 returns
+# `manifest unknown`, and the repo has no git tags. The pin is :1.0.0
+# (NOT :v1.0.0) because the publish workflow
+# (.github/workflows/docker-publish.yml, docker/metadata-action `semver`
+# on `refs/tags/v*`) mints `1.0.0` / `1.0` / `latest` / `sha-<sha>` from a
+# `v1.0.0` git tag — it NEVER mints a `:v1.0.0` tag, so the old pin was
+# unpublishable by construction. To publish (maintainer, needs network +
+# push rights — NOT runnable from a quarantined env):
+#   git tag v1.0.0 && git push origin v1.0.0
+# then verify before pulling (fail-closed: no anonymous fallback, no
+# invented digest — the exact tag pin below stays until a published
+# `sha-<sha>` digest is resolvable):
 #   echo "$GITHUB_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
-# Publishing the tag publicly (or confirming the private-pull flow) is a
-# tracked release item; there is no v1.0.0 git tag yet (see REMEDIATION_LOG).
+#   docker manifest inspect ghcr.io/heretek-ai/heretek-crew:1.0.0
+# Until the tag is published, build locally (README Option B) instead of
+# pulling — `pull` fails closed with the registry's own error.
 #
 # With supporting sidecars (e.g. web research profile):
 #   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml -f docker-compose.sidecars.yml --profile web-research up -d
@@ -26,4 +37,4 @@ name: heretek-crew
 services:
   paperclip:
     build: !reset null
-    image: ${HERETEK_IMAGE:-ghcr.io/heretek-ai/heretek-crew:v1.0.0}
+    image: ${HERETEK_IMAGE:-ghcr.io/heretek-ai/heretek-crew:1.0.0}

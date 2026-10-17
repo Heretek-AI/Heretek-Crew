@@ -7,7 +7,7 @@
 #   2. ARCH: System Architect generates ADR and interface contracts.
 #   3. DECOMPOSE: TPM / Scrum Lead creates ticket, provisions isolated worktree.
 #   4. DEV: Specialist engineer implements changes using opencode-harness.
-#   5. QA: Tester & Release QA Officer verify via local CI and browser tests.
+#   5. QA: e2e-browser-qa & Release QA Officer verify via local CI and browser tests.
 #   6. ARCHIVE-ONLY: no auto-merge is performed (fail-closed). The worktree is
 #      retained for explicit manual review + git merge; archiving runs only
 #      after a human merges (see Phase 6 body).
@@ -145,7 +145,7 @@ fi
 
 # Phase 5: Local CI & QA Acceptance
 log_stage "5/6 QA" "Automated testing and QA sign-off gate"
-log_step "Roles: tester (Automation) + release-qa-officer (Acceptance Gate)"
+log_step "Roles: e2e-browser-qa (Automation) + release-qa-officer (Acceptance Gate)"
 if [ "${DRY_RUN}" = "true" ]; then
   log_step "[DRY-RUN] Local CI Runner: docker compose --profile core --profile ci (act runner; core schedules the socket proxy) / scripts/smoke-test.sh"
   log_step "[DRY-RUN] Triggered local-ci-runner container on 'heretek' network"

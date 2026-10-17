@@ -1,9 +1,10 @@
 # Heretek-Crew — Paperclip + OpenCode v2 Agent Fleet
 
 Self-hosted Docker Compose stack where [Paperclip](https://github.com/paperclipai/paperclip)
-orchestrates a company-style fleet of **OpenCode v2** agents: a Director, a PM,
-and four specialists (Programmer, Tester, QA, Designer) operating as
-"Acme Autonomous Corp".
+orchestrates a company-style fleet of **OpenCode v2** agents: **50
+specialists** across 9 departments (Executive, Game Dev, Web/UI, Language
+Engineers, Cloud/SRE, QA, Security/Forensics, Data/AI, Ops) operating as
+"Heretek Autonomous Fleet".
 
 All versions are pinned — never `latest` (see [Version upgrades](#version-upgrades)).
 
@@ -15,7 +16,7 @@ All versions are pinned — never `latest` (see [Version upgrades](#version-upgr
 | OpenCode client SDK | `@opencode/client@2.0.32` | `docker/Dockerfile` (`OPENCODE_CLIENT_VERSION`) |
 | Reverse proxy (optional) | `caddy:2.11.7-alpine` | `docker-compose.yml` |
 | Mesh sidecar (optional) | `tailscale/tailscale:v1.104.1` | `docker-compose.yml` |
-| QA/Designer browser MCP | `@playwright/mcp@0.0.83` | `roles/qa`, `roles/designer` `opencode.json` |
+| Browser/QA MCP | `@executeautomation/playwright-mcp-server@1.0.12` | `roles/e2e-browser-qa`, `roles/ui-ux-designer`, `roles/a11y-specialist` `opencode.json` (+ `fe-perf-eng`, `mobile-web-eng`) |
 
 Paperclip source: extended from the official build in `/tmp/paperclip`
 (`paperclipai/paperclip`) — we layer on top of it, we do not fork it.
@@ -75,9 +76,17 @@ How a run flows:
 
 Prerequisites: Docker with the Compose plugin, `make`, `curl`, `python3`.
 
-### Option A: Prebuilt Image (Zero Compilation — Recommended)
+### Option A: Prebuilt Image (Zero Compilation — Requires a Published Release)
 
-Run the production stack immediately using the official image published to GitHub Container Registry (`ghcr.io/heretek-ai/heretek-crew:v1.0.0`):
+Run the production stack using the official image from GitHub Container
+Registry (`ghcr.io/heretek-ai/heretek-crew:1.0.0`). This tag is minted by
+the publish workflow when a maintainer pushes the `v1.0.0` git tag
+(`git tag v1.0.0 && git push origin v1.0.0` — see
+`docker-compose.prebuilt.yml` for the full release/auth flow). No image
+tag is published yet: until `docker manifest inspect
+ghcr.io/heretek-ai/heretek-crew:1.0.0` resolves (after `docker login
+ghcr.io`), use Option B below — `make prebuilt-pull` fails closed with
+the registry's own error rather than falling back to anything unpinned.
 
 ```bash
 # 1. Configure secrets
@@ -93,7 +102,7 @@ make prebuilt-up
 #   cp docker-compose.override.yml.example docker-compose.override.yml
 #   docker compose pull paperclip && docker compose up -d
 
-# 3. Seed the 50-agent fleet (or 6-agent bootstrap)
+# 3. Seed the 50-agent fleet (the only role set)
 make seed-50
 
 # 4. Verify
@@ -116,8 +125,8 @@ make build
 # 3. Start the stack (postgres + paperclip, UI/API on 127.0.0.1:3100)
 make up
 
-# 4. Seed "Acme Autonomous Corp" + the 6-agent fleet (idempotent)
-make seed
+# 4. Seed "Heretek Autonomous Fleet" + the 50-agent fleet (idempotent)
+make seed-50
 
 # 5. Verify (static checks; live checks run when the stack is up)
 make test
@@ -139,7 +148,6 @@ set `PROXY_DOMAIN`), or `docker compose --profile tailscale up -d`
 | `make up` | Start the stack detached |
 | `make down` | Stop the stack (named volumes keep all data) |
 | `make logs` | Follow `paperclip` service logs |
-| `make seed` | Seed company + fleet (safe to re-run; patches org-chart/budget drift) |
 | `make generate-roles` | Scaffold the 50-agent fleet on disk (`roles/<role-id>/`, idempotent) |
 | `make seed-50` | Seed the 50-agent fleet (safe to re-run; patches org-chart/budget drift) |
 | `make backup` | `pg_dump` → `backups/backup-YYYYMMDD-HHMMSS.sql.gz`, keeps newest 14 |
@@ -168,40 +176,47 @@ Smoke test modes (`scripts/smoke-test.sh --help` documents both):
 
 ## Roles
 
-Six roles ship under `roles/<role>/`, each with `AGENTS.md` (charter, chain of
-command, delegation triggers) and `opencode/opencode.json` (v2-native
-permissions, skills, MCPs):
+50 specialist roles ship under `roles/<role-id>/`, each with `AGENTS.md`
+(charter, chain of command, delegation triggers) and
+`opencode/opencode.json` (v2-native permissions, skills, MCPs) — the full
+spec lives in `roles-catalog/ROLE_CATALOG_50.md` (see the department table
+below). Every role file uses the single fleet permission dialect and ends
+in a terminal `shell * deny` tail. Only `exec-director` (30 min) and
+`tpm-scrum-lead` (1 h) have timer heartbeats; everyone else wakes on
+assignment and on mention. Per-role monthly budgets are exact integer
+cents in `scripts/seed-50-fleet.sh` (`role_budget_cents()`), summing to
+the $12,700.00 fleet cap.
 
-| Role | Paperclip role | Reports to | Tools | Heartbeat |
-|---|---|---|---|---|
-| `director` | ceo | human board | read-only (no edit/write/bash) | 30 min |
-| `pm` | pm | Director | read-only triage | 1 h |
-| `programmer` | engineer | PM | full (edit/shell/git) | on-demand |
-| `tester` | engineer | PM | test files + test runners only | on-demand |
-| `qa` | qa | PM | read + bash + Playwright MCP | on-demand |
-| `designer` | designer | PM | read + webfetch + Playwright MCP | on-demand |
+Wave 3 P1-11 supersession map (the 6 legacy prototype roles were deleted;
+use the fleet role instead):
 
-Org chart: Director → PM → {Programmer, Tester, QA, Designer}. Only Director
-and PM have timer heartbeats; everyone wakes on assignment and on mention.
-Monthly budgets: $100 Director, $50 others (see `BUDGET_*` in
-`scripts/seed-company.sh`).
+| Deleted prototype | Superseded by (fleet) |
+|---|---|
+| `director` | `exec-director` (Director / CEO-Delegate) |
+| `pm` | `product-director` + `tpm-scrum-lead` |
+| `programmer` | Language engineers (roles 19–26, e.g. `ts-node-fullstack`) |
+| `tester`, `qa` | `e2e-browser-qa` + `api-contract-tester` + `release-qa-officer` |
+| `designer` | `ui-ux-designer` + `design-system-eng` + `brand-copy-spec` |
 
 ### Add a new role (or modify one)
 
 1. Copy an existing role as a template:
-   `cp -r roles/programmer roles/sre` (or `roles/qa` for a read-biased role).
+   `cp -r roles/ts-node-fullstack roles/sre` (or `roles/release-qa-officer`
+   for a read-biased role).
 2. Edit `roles/sre/opencode/opencode.json`: set `model`, least-privilege
-   `permissions` (deny `edit`/`write`/`bash` you don't need), `skills`, and any
-   `mcp` servers (pin versions, never `latest`).
+   `permissions` (single fleet dialect, terminal `shell *` deny), `skills`,
+   and any `mcp` servers (pin versions, never `latest`).
 3. Write `roles/sre/AGENTS.md`: identity/scope, who it reports to, who it may
    delegate to, delegation triggers, non-negotiables, completion protocol.
-4. Wire it into `scripts/seed-company.sh`: extend `ROLE_LIST` and the
+4. Wire it into `scripts/seed-50-fleet.sh`: extend `ROLE_LIST` and the
    `role_*()` metadata helpers (Paperclip role enum, display name, model,
-   budget, timer, `reportsTo` wiring in both dry-run placeholders and pass 2).
+   budget, timer, `reportsTo` wiring in both dry-run placeholders and pass 2),
+   plus `scripts/generate-50-roles.py` if the role belongs in the generator.
 5. Validate without a server:
-   `./scripts/seed-company.sh --dry-run` and
-   `./scripts/smoke-test.sh --check-only` (add the role to the smoke test's
-   role loop so it stays covered).
+   `./scripts/seed-50-fleet.sh --dry-run` (with the Wave-2 provisioning
+   dummies — see `scripts/smoke-test.sh` §4) and
+   `./scripts/smoke-test.sh --check-only` (roles are discovered
+   dynamically, so the new role is covered automatically).
 
 Per-role isolation needs no image rebuild: `./roles` is mounted read-only at
 `/roles` and each agent's adapter config sets `env.XDG_CONFIG_HOME` to
@@ -216,8 +231,9 @@ Three levels, cheapest first:
    then re-seed or update the agent. Variants use the v2 suffix form:
    `"provider/model#variant"` (the shim also auto-merges Paperclip's legacy
    `--variant` flag into this form).
-2. **At seed time** — `MODEL_DEFAULT=… MODEL_DIRECTOR=… MODEL_PM=… ./scripts/seed-company.sh`
-   overrides the adapter `model` for all / director / PM agents without
+2. **At seed time** — `MODEL_DEFAULT=… MODEL_COORDINATOR=… ./scripts/seed-50-fleet.sh`
+   overrides the adapter `model` for all / the three coordination roles
+   (`exec-director`, `tpm-scrum-lead`, `system-architect`) without
    touching role files.
 3. **Credentials** — provider keys come from `.env`
    (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …); they are injected at runtime,
@@ -225,14 +241,14 @@ Three levels, cheapest first:
 
 ## 50-agent fleet (`roles-catalog/` → `roles/` → Paperclip)
 
-Beyond the 6-role prototype above, the repo ships a full **50-specialist
-enterprise fleet** specified in `roles-catalog/ROLE_CATALOG_50.md` (plus
-department modules `01_*.md` … `09_*.md`) and scaffolded on disk under
-`roles/<role-id>/`. Each fleet role carries the same four artifacts as the
-prototype roles: `AGENTS.md`, `opencode/opencode.json`,
+The repo ships a full **50-specialist enterprise fleet** specified in
+`roles-catalog/ROLE_CATALOG_50.md` (plus department modules `01_*.md` …
+`09_*.md`) and scaffolded on disk under `roles/<role-id>/` — this IS the
+role set (`ls roles/ | wc -l` = 50; the 6-role prototype was removed in
+Wave 3 P1-11, see the supersession map above). Each fleet role carries
+the same four artifacts: `AGENTS.md`, `opencode/opencode.json`,
 `.opencode/agents/<role-id>.md`, and skill packs under
-`.opencode/skills/*/SKILL.md`. The 6 prototype roles remain in place and stay
-covered by the smoke test (which discovers roles dynamically).
+`.opencode/skills/*/SKILL.md`.
 
 ### Department breakdown (9 departments, 50 roles)
 
@@ -272,14 +288,15 @@ Model overrides: `MODEL_DEFAULT=…` re-targets all 50 agents,
 (`exec-director`, `tpm-scrum-lead`, `system-architect`); heartbeat
 intervals via `TIMER_EXEC_SEC` / `TIMER_TPM_SEC` (defaults 1800 / 3600).
 
-**Budget note — known $90 catalog discrepancy.** The catalog's documented
-fleet cap is **$12,790.00 USD** (1,279,000 cents), but the authoritative
-verbatim per-role values sum to **$12,700.00 USD** (1,270,000 cents) — a
-$90.00 gap. The seeder uses the per-role catalog values verbatim, prints
-the computed total, and emits a `WARNING` on mismatch; it never invents
-budgets to force the total. The smoke test asserts this handling
-(51 payloads + budget total + `WARNING`) so the discrepancy stays visible
-until the catalog is amended.
+**Budget note — reconciled (Wave 3 P1-1).** The catalog's documented
+fleet cap is **$12,700.00 USD** (1,270,000 cents), exactly the sum of the
+verbatim per-role table values (verified: `python3` re-sum of both the
+catalog `$` column and the seeder's per-role cents table = 1,270,000¢,
+n=50). The seeder uses the per-role catalog values verbatim, prints the
+computed total, and emits a `WARNING` only on drift (e.g. via
+`FLEET_BUDGET_CAP_CENTS` env override) — it never invents budgets to force
+a total. The smoke test asserts total == cap with no `WARNING`, so any
+future catalog/seed drift stays visible.
 
 ### How Paperclip routes tasks to on-demand specialists
 
@@ -313,23 +330,25 @@ until the catalog is amended.
 | PostgreSQL | `postgres:17-alpine` | `docker-compose.yml` `postgres.image` | `make backup` before major bumps; PG data volume may need `pg_upgrade`/dump-restore |
 | Caddy | `caddy:2.11.7-alpine` | `docker-compose.yml` `caddy.image` | proxy profile only |
 | Tailscale | `tailscale/tailscale:v1.104.1` | `docker-compose.yml` `tailscale.image` | tailscale profile only |
-| Playwright MCP | `@playwright/mcp@0.0.83` | `roles/qa`, `roles/designer` `opencode.json` | keep QA/Designer in sync |
+| Playwright MCP | `@executeautomation/playwright-mcp-server@1.0.12` | `roles/e2e-browser-qa`, `roles/ui-ux-designer`, `roles/a11y-specialist`, `roles/fe-perf-eng`, `roles/mobile-web-eng` `opencode.json` | keep all five consumers in sync |
 
 After any bump: `make build && make up && make test` (live), plus
 `scripts/test-shim.sh` for the shim matrix.
 
 ## Security model
 
-**Why `dangerouslySkipPermissions` is `true` for every agent.**
+**How unattended runs stay permission-enforced.**
 OpenCode v2 non-interactive runs reject tool-approval prompts
 (`"This non-interactive run cannot ask the user for permission…"`) unless the
 run passes `--auto` or carries an allow-all permissions array. Paperclip drives
-agents unattended — there is no human at the approval prompt at 3 AM — so both
-are set: every seeded agent has `dangerouslySkipPermissions: true`, the role
-configs carry explicit `permissions` arrays, and the shim injects `--auto`.
-Read-scoped roles (Director, PM, QA, Designer, Tester-outside-tests) additionally
-`deny` `edit`/`write`/`bash` at the OpenCode layer, so even an auto-approved
-run cannot write where its role forbids.
+agents unattended — there is no human at the approval prompt at 3 AM — so the
+shim injects `--auto`, but every seeded agent is created with
+`dangerouslySkipPermissions: false` (asserted by the smoke gate): `--auto`
+only auto-approves tools the role's `permissions` array explicitly allows,
+and every role file ends in a terminal `shell *` deny. Least-privilege is
+enforced at the role-config layer plus the resource layer (read-only PG
+role, scoped `GITHUB_TOKEN`, read-only kubeconfig — see `AGENTS.md` §4),
+never by prefix `shell` allows alone.
 
 **How container isolation compensates.** Auto-approve is only safe inside a
 sandbox; this stack provides it:
@@ -369,7 +388,6 @@ docker/Dockerfile         official-base extension: OpenCode v2 + shim, pinned
 Makefile                  build/up/down/logs/seed/backup/restore/test + prebuilt
 scripts/
   opencode-shim.sh        v1→v2 CLI translation (--dir/--variant/--auto)
-  seed-company.sh         idempotent company + 6-agent seeder (supports --dry-run)
   generate-50-roles.py    50-role disk scaffolding generator (roles/<role-id>/)
   seed-50-fleet.sh        idempotent 50-agent fleet seeder (supports --dry-run)
   backup-db.sh            timestamped pg_dump + retention

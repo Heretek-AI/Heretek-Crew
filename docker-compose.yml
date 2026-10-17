@@ -255,4 +255,10 @@ volumes:
 
 networks:
   heretek:
+    # Wave 3 P1-2: pinned to the literal name `heretek` so the base stack
+    # alone and the merged sidecar stack share ONE network. Matches the
+    # `name: heretek` declaration in docker-compose.sidecars.yml (merged
+    # config keeps this name); compose manages it (no `external: true`
+    # anywhere — `up` creates what `config` references).
+    name: heretek
     driver: bridge

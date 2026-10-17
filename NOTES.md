@@ -270,7 +270,7 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 - Uses BuildKit GitHub Actions cache (`type=gha,mode=max`) and least-privilege token permissions (`contents: read`, `packages: write`).
 
 ### Zero-Compilation Prebuilt Docker Compose Stack
-- `docker-compose.prebuilt.yml`: Fail-closed override using `build: !reset null` and pinning `ghcr.io/heretek-ai/heretek-crew:v1.0.0` (with `${HERETEK_IMAGE}` fallback). Enables operators to spin up the entire 50-agent fleet without needing Node.js, pnpm, or source checkouts.
+- `docker-compose.prebuilt.yml`: Fail-closed override using `build: !reset null` and pinning `ghcr.io/heretek-ai/heretek-crew:1.0.0` (with `${HERETEK_IMAGE}` fallback). The image is unpublished as of Wave 3 (no tag resolvable; pull requires auth after the maintainer publishes per the release step in the prebuilt header — until then build locally). Enables operators to spin up the entire 50-agent fleet without needing Node.js, pnpm, or source checkouts.
 - `docker-compose.override.yml.example`: Frictionless template allowing operators to opt into automatic prebuilt discovery for standard `docker compose up -d` invocations.
 - `Makefile`: Added `prebuilt-pull`, `prebuilt-up`, and `prebuilt-config` operational targets.
 - `scripts/smoke-test.sh`: Extended static test suite to 225 assertions verifying prebuilt files, config parsing, and absence of `:latest` tags.

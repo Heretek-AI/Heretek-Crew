@@ -19,19 +19,18 @@
 #                       non-empty rules where present) with pinned MCP
 #                       commands (no `:latest`), plus a non-empty
 #                       AGENTS.md and .opencode/agents/<role>.md per
-#                       role — legacy 6 prototype roles still validated
-#                       when present; plus 3b. static denied-tool probe
-#                       (programmer has no allow-all + terminal shell deny,
-#                       qa/tester bash narrowed to named test commands +
-#                       terminal bash deny, dba/k8s MCP-boundary shell
+#                       role — single fleet dialect (Wave 3 P1-11: the 6
+#                       legacy prototype roles were deleted as superseded;
+#                       `ls roles/` = 50); plus 3b. static denied-tool probe
+#                       (no bare allow-all anywhere + terminal shell deny,
+#                       dba/k8s MCP-boundary shell
 #                       denies intact, harness manifest == per-tool allows
 #                       with no wildcard, MCP namespaces scoped to read
 #                       verbs + deny tails, negative prefix-chain probes
-#                       denied by the reference matcher, seeds set
+#                       denied by the reference matcher, seed sets
 #                       dangerouslySkipPermissions False, socket proxy
 #                       denies POST/BUILD/EXEC)
-#                    4. seed dry-runs emit company + agent payloads:
-#                       seed-company.sh (company + 6 agents) and
+#                    4. seed dry-run emits company + agent payloads:
 #                       seed-50-fleet.sh (1 company + 50 agents =
 #                       51 payloads, fleet total == cap with no WARNING)
 #                    5. shim translation: --dir stripped, --variant merged into
@@ -79,7 +78,7 @@ cd "${REPO_ROOT}"
 
 PAPERCLIP_URL="${PAPERCLIP_URL:-http://127.0.0.1:3100}"
 PAPERCLIP_TOKEN="${PAPERCLIP_TOKEN:-${ADMIN_API_KEY:-}}"
-COMPANY_NAME="${COMPANY_NAME:-Acme Autonomous Corp}"
+COMPANY_NAME="${COMPANY_NAME:-Heretek Autonomous Fleet}"
 POSTGRES_USER="${POSTGRES_USER:-paperclip}"
 POSTGRES_DB="${POSTGRES_DB:-paperclip}"
 HEALTH_TIMEOUT_SEC="${HEALTH_TIMEOUT_SEC:-30}"
@@ -120,26 +119,17 @@ REQUIRED_FILES=(
   docker-compose.yml docker-compose.prebuilt.yml docker-compose.override.yml.example
   docker/Dockerfile .env.example Makefile
   .github/workflows/docker-publish.yml
-  scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh
+  scripts/opencode-shim.sh scripts/seed-50-fleet.sh
   scripts/generate-50-roles.py scripts/worktree-manager.sh scripts/dispatch-pipeline.sh
   scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh
 )
 for f in "${REQUIRED_FILES[@]}"; do
   if [[ -f "${f}" ]]; then ok "${f} exists"; else bad "${f} MISSING"; fi
 done
-for role in director pm programmer tester qa designer; do
-  if [[ -f "roles/${role}/opencode/opencode.json" ]]; then
-    ok "roles/${role}/opencode/opencode.json exists"
-  else
-    bad "roles/${role}/opencode/opencode.json MISSING"
-  fi
-  if [[ -f "roles/${role}/AGENTS.md" ]]; then
-    ok "roles/${role}/AGENTS.md exists"
-  else
-    bad "roles/${role}/AGENTS.md MISSING"
-  fi
-done
-for s in scripts/opencode-shim.sh scripts/seed-company.sh scripts/seed-50-fleet.sh \
+# Wave 3 P1-11: the 6 legacy prototype roles (director, pm, programmer,
+# tester, qa, designer) were deleted as superseded by the 50-fleet — no
+# hardcoded legacy list remains; §3 below discovers roles dynamically.
+for s in scripts/opencode-shim.sh scripts/seed-50-fleet.sh \
          scripts/worktree-manager.sh scripts/dispatch-pipeline.sh \
          scripts/backup-db.sh scripts/restore-db.sh scripts/smoke-test.sh; do
   if [[ -x "${s}" ]]; then ok "${s} executable"; else bad "${s} NOT executable"; fi
@@ -239,13 +229,12 @@ fi
 
 # --- 3. role configs valid + pins -------------------------------------------
 # Dynamically discovers every role directory under roles/ (the 50-agent
-# fleet plus the legacy 6 prototype roles when present — never a hardcoded
-# list), then per role asserts: valid v2 opencode.json (provider/model,
-# non-empty permissions with a fail-closed deny tail, non-empty rules
-# where present), exact-pinned MCP commands (npx pkg@x.y.z / uvx pkg==x.y.z
-# in either the legacy flat `mcp: {<name>: {command}}` shape or the fleet
-# `mcp.servers` shape; sole tracked exception @morluto/rea-mcp),
-# and non-empty AGENTS.md + .opencode/agents/<role>.md charters.
+# fleet — never a hardcoded list), then per role asserts: valid v2
+# opencode.json (provider/model, non-empty permissions with a fail-closed
+# deny tail, non-empty rules where present), exact-pinned MCP commands
+# (npx pkg@x.y.z / uvx pkg==x.y.z in the fleet `mcp.servers` shape; sole
+# tracked exception @morluto/rea-mcp), and non-empty AGENTS.md +
+# .opencode/agents/<role>.md charters.
 section "3. role opencode.json validity + version pins"
 ROLE_COUNT=0
 for roledir in roles/*/; do
@@ -266,7 +255,7 @@ assert isinstance(doc.get("permissions"), list) and doc["permissions"], "permiss
 for p in doc["permissions"]:
     assert p.get("effect") in ("allow", "deny", "ask"), "permission effect must be allow/deny/ask"
 assert doc["permissions"][-1].get("effect") == "deny", \
-    "permissions must end with a fail-closed deny tail (shell * deny / bash * deny by dialect); bare allow-all is forbidden"
+    "permissions must end with a fail-closed deny tail (fleet dialect: shell * deny); bare allow-all is forbidden"
 rules = doc.get("rules")
 if rules is not None:
     assert isinstance(rules, list) and rules, "rules, when present, must be non-empty"
@@ -311,6 +300,14 @@ if [[ "${ROLE_COUNT}" -eq 0 ]]; then
   bad "no role directories discovered under roles/"
 else
   ok "discovered ${ROLE_COUNT} role directories under roles/"
+fi
+# Wave 3 rework (QA gate gap): the fleet is exactly 50 roles — a re-added
+# legacy dir (51) or a missing role (49) must FAIL closed here, not pass
+# with a human-enforced `ls` criterion.
+if [[ "${ROLE_COUNT}" -ne 50 ]]; then
+  bad "expected exactly 50 fleet role directories under roles/, found ${ROLE_COUNT}"
+else
+  ok "fleet role count is exactly 50 (ls roles/ = 50)"
 fi
 if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)' \
     roles/*/opencode/opencode.json 2>/dev/null | grep -q .; then
@@ -373,10 +370,25 @@ if grep -rnE ':(latest)([^a-zA-Z0-9._-]|$)|@(latest)([^a-zA-Z0-9._-]|$)|npm inst
 else
   ok "no :latest pins in docker-compose.yml / prebuilt overrides / Dockerfile / .env.example / Makefile"
 fi
-if grep -q 'ghcr\.io/heretek-ai/heretek-crew:v1\.0\.0' docker-compose.prebuilt.yml; then
-  ok "pin present: ghcr.io/heretek-ai/heretek-crew:v1.0.0 in docker-compose.prebuilt.yml"
+# Wave 3 P1-9: the prebuilt pin is the semver form :1.0.0 (NOT :v1.0.0 —
+# the publish workflow's metadata-action semver on refs/tags/v* mints
+# 1.0.0/1.0/latest/sha-* and NEVER :v1.0.0, so the old pin was
+# unpublishable by construction). Fail closed on any drift back.
+if grep -q 'ghcr\.io/heretek-ai/heretek-crew:1\.0\.0' docker-compose.prebuilt.yml \
+  && ! grep -q 'heretek-crew:v1\.0\.0' docker-compose.prebuilt.yml; then
+  ok "pin present: ghcr.io/heretek-ai/heretek-crew:1.0.0 in docker-compose.prebuilt.yml (no :v1.0.0)"
 else
-  bad "pin MISSING: ghcr.io/heretek-ai/heretek-crew:v1.0.0 in docker-compose.prebuilt.yml"
+  bad "pin MISSING or REGRESSED: docker-compose.prebuilt.yml must pin ghcr.io/heretek-ai/heretek-crew:1.0.0 with no :v1.0.0"
+fi
+# Wave 3 rework (P1-2 regression gate): no `external:` network key may
+# appear in any compose file — the fleet uses the managed `name: heretek`
+# network (compose creates what `config` references). Anchored to YAML
+# keys so prose comments mentioning `external: true` do not trip the
+# gate; any real key FAILs closed (`config -q` passes either way).
+if grep -rnE '^[[:space:]]*external:' docker-compose.yml docker-compose.sidecars.yml docker-compose.prebuilt.yml docker-compose.override.yml.example 2>/dev/null | grep -q .; then
+  bad "found 'external:' network key in compose files (must use managed name: heretek): $(grep -rnE '^[[:space:]]*external:' docker-compose.yml docker-compose.sidecars.yml docker-compose.prebuilt.yml docker-compose.override.yml.example | head -c 200)"
+else
+  ok "no 'external:' network keys in compose files (managed heretek network)"
 fi
 for pin in 'postgres:17-alpine' 'node:24-trixie-slim' '@opencode/cli@2.0.32' '127.0.0.1:3100'; do
   case "${pin}" in
@@ -402,32 +414,42 @@ else
 fi
 
 # --- 3b. permission deny enforcement (static denied-tool simulation) -----------
-# Simulates the denied-tool probe: asserts the programmer role carries no
-# bare allow-all, ends in an explicit shell deny, seed payloads request
-# permission enforcement (skip=False), and the socket proxy denies POST.
+# Simulates the denied-tool probe: asserts no role carries a bare
+# allow-all, every role ends in an explicit shell deny, the seed payload
+# requests permission enforcement (skip=False), and the socket proxy
+# denies POST.
 section "3b. permission deny enforcement (static)"
+# Wave 3 P1-11: single fleet dialect — no bare allow-all may exist in ANY
+# role (the old programmer-specific probe generalized after the 6 legacy
+# roles were deleted as superseded). §3 already asserts each file's
+# terminal deny tail; this gate additionally scans all 50 for allow-all.
 if python3 -c '
-import json, sys
-doc = json.load(open("roles/programmer/opencode/opencode.json"))
-perms = doc.get("permissions", [])
-if any(p.get("action") == "*" and p.get("resource") == "*" and p.get("effect") == "allow" for p in perms):
-    sys.exit("programmer carries a bare allow-all")
-tails = [p for p in perms if p.get("action") == "shell" and p.get("resource") == "*" and p.get("effect") == "deny"]
-if not tails or perms[-1].get("effect") != "deny":
-    sys.exit("programmer lacks a terminal shell deny tail")
-print("programmer: enumerated allows + terminal shell deny, no allow-all")
+import glob, json, sys
+bad_roles = []
+nodeny = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    perms = json.load(open(f)).get("permissions", [])
+    if any(p.get("action") == "*" and p.get("resource") == "*" and p.get("effect") == "allow" for p in perms):
+        bad_roles.append(role)
+    tails = [p for p in perms if p.get("action") == "shell" and p.get("resource") == "*" and p.get("effect") == "deny"]
+    if not tails or perms[-1].get("effect") != "deny":
+        nodeny.append(role)
+if bad_roles:
+    sys.exit("bare allow-all in: %s" % ", ".join(bad_roles))
+if nodeny:
+    sys.exit("missing terminal shell deny tail in: %s" % ", ".join(nodeny))
+print("50 roles: enumerated allows + terminal shell deny, no allow-all")
 ' >"${TMP}/deny.out" 2>"${TMP}/deny.err"; then
-  ok "programmer opencode.json denies by default ($(cat "${TMP}/deny.out"))"
+  ok "fleet opencode.json deny by default ($(cat "${TMP}/deny.out"))"
 else
-  bad "programmer permission probe FAILED: $(head -c 200 "${TMP}/deny.err")"
+  bad "fleet permission probe FAILED: $(head -c 200 "${TMP}/deny.err")"
 fi
-if grep -q '"dangerouslySkipPermissions": False' scripts/seed-company.sh \
-  && grep -q '"dangerouslySkipPermissions": False' scripts/seed-50-fleet.sh \
-  && ! grep -q '"dangerouslySkipPermissions": True' scripts/seed-company.sh \
+if grep -q '"dangerouslySkipPermissions": False' scripts/seed-50-fleet.sh \
   && ! grep -q '"dangerouslySkipPermissions": True' scripts/seed-50-fleet.sh; then
-  ok "seed scripts enforce permissions (dangerouslySkipPermissions False, no True remains)"
+  ok "seed script enforces permissions (dangerouslySkipPermissions False, no True remains)"
 else
-  bad "seed scripts still request dangerouslySkipPermissions True"
+  bad "seed script still requests dangerouslySkipPermissions True"
 fi
 if grep -q 'POST: "0"' docker-compose.sidecars.yml \
   && grep -q 'BUILD: "0"' docker-compose.sidecars.yml \
@@ -436,29 +458,11 @@ if grep -q 'POST: "0"' docker-compose.sidecars.yml \
 else
   bad "docker-socket-proxy still permits POST/BUILD/EXEC (host-escape primitive)"
 fi
-# P1-5: qa/tester bash narrowed to named test commands + terminal bash deny.
-# Any `bash * allow` here re-opens curl/redirection exfil (see AUDIT P1-5).
-for _role in qa tester; do
-  if _ROLE="${_role}" python3 -c '
-import json, os, sys
-role = os.environ["_ROLE"]
-doc = json.load(open("roles/%s/opencode/opencode.json" % role))
-perms = doc.get("permissions", [])
-if any(p.get("action") == "bash" and p.get("resource") == "*" and p.get("effect") == "allow" for p in perms):
-    sys.exit("%s still carries bash * allow" % role)
-last = perms[-1]
-if not (last.get("action") == "bash" and last.get("resource") == "*" and last.get("effect") == "deny"):
-    sys.exit("%s lacks a terminal bash * deny tail" % role)
-named = [p["resource"] for p in perms if p.get("action") == "bash" and p.get("effect") == "allow"]
-if not named:
-    sys.exit("%s has no named bash allows left" % role)
-print("%s: bash narrowed to %s + terminal deny" % (role, ", ".join(named)))
-' >"${TMP}/narrow.out" 2>"${TMP}/narrow.err"; then
-    ok "$(cat "${TMP}/narrow.out")"
-  else
-    bad "$(head -c 200 "${TMP}/narrow.err")"
-  fi
-done
+# Wave 3 P1-11: the qa/tester legacy narrowing gate was removed with the
+# 6 legacy roles (single fleet dialect now — §3 asserts every role's
+# terminal `shell * deny`, and the fleet-wide probe above forbids
+# allow-all). The `bash * allow` exfil concern (AUDIT P1-5) is closed by
+# deletion: no `bash`-action permission exists anywhere in roles/.
 # P1-5: MCP-boundary shell denies must not regress (MCP namespaces bypass
 # these shell denies, so the denies are the inner layer — see AGENTS.md §4).
 if python3 -c '
@@ -647,21 +651,11 @@ else
   bad "negative prefix probe FAILED: $(head -c 300 "${TMP}/negprobe.err")"
 fi
 
-# --- 4. seed dry-runs ---------------------------------------------------------
-section "4. seed dry-runs (seed-company.sh + seed-50-fleet.sh)"
-if ./scripts/seed-company.sh --dry-run >"${TMP}/seed.out" 2>"${TMP}/seed.err"; then
-  if grep -q 'Acme Autonomous Corp' "${TMP}/seed.out" \
-    && grep -q 'opencode_local' "${TMP}/seed.out" \
-    && grep -q 'XDG_CONFIG_HOME' "${TMP}/seed.out" \
-    && grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG' "${TMP}/seed.out" \
-    && grep -q 'dangerouslySkipPermissions' "${TMP}/seed.out"; then
-    ok "seed dry-run emits company + 6 agent payloads (opencode_local, XDG_CONFIG_HOME, OPENCODE_DISABLE_PROJECT_CONFIG, skipPermissions)"
-  else
-    bad "seed dry-run output missing expected payload keys"
-  fi
-else
-  bad "seed dry-run exited nonzero: $(head -c 300 "${TMP}/seed.err")"
-fi
+# --- 4. seed dry-run ---------------------------------------------------------
+# Wave 3 P1-11: scripts/seed-company.sh was deleted with the 6 legacy
+# prototype roles it seeded (superseded by the 50-fleet). Only the fleet
+# seeder remains; this section asserts its dry-run.
+section "4. seed dry-run (seed-50-fleet.sh)"
 if [[ -f scripts/seed-50-fleet.sh ]]; then
   # Wave 2 (P0-2/P1-8): the seed preflight requires provisioned MCP
   # credentials even for --dry-run (fail-closed); throwaway dummies here
@@ -805,7 +799,7 @@ items = doc.get("companies", doc) if isinstance(doc, dict) else doc
 print(next((c.get("id","") for c in items if isinstance(c, dict) and c.get("name")==os.environ["COMPANY_NAME"]), ""))
 ' "${TMP}/companies.json")"
       if [[ -z "${COMPANY_ID}" ]]; then
-        bad "company '${COMPANY_NAME}' not found; run 'make seed' first"
+        bad "company '${COMPANY_NAME}' not found; run 'make seed-50' first"
       else
         ok "resolved company '${COMPANY_NAME}' (${COMPANY_ID})"
         curl "${AUTH[@]}" -o "${TMP}/agents.json" "${PAPERCLIP_URL}/api/companies/${COMPANY_ID}/agents" || true
@@ -813,13 +807,17 @@ print(next((c.get("id","") for c in items if isinstance(c, dict) and c.get("name
 import json, sys
 doc = json.load(open(sys.argv[1]))
 items = doc.get("agents", doc) if isinstance(doc, dict) else doc
-names = {"Programmer", "PM"}
+# Wave 3 rework: prefer fleet display names (the live API returns the
+# seed-50 `name` = role_display_name strings verbatim; legacy
+# seed-company names "Programmer"/"PM" no longer exist). Any-agent
+# fallback below keeps the flow alive if the fleet is reseeded.
+names = {"TypeScript / Node Fullstack Engineer", "End-to-End Browser Automation Engineer"}
 pick = next((a for a in items if isinstance(a, dict) and a.get("name") in names), None)
 pick = pick or next((a for a in items if isinstance(a, dict) and a.get("id")), {})
 print(pick.get("id", ""))
 ' "${TMP}/agents.json")"
         if [[ -z "${AGENT_ID}" ]]; then
-          bad "no agent found to assign the test ticket to; run 'make seed' first"
+          bad "no agent found to assign the test ticket to; run 'make seed-50' first"
         else
           ok "assigning test ticket to agent ${AGENT_ID}"
           ISSUE_BODY="$(TODAY="${TODAY}" AGENT_ID="${AGENT_ID}" python3 -c '

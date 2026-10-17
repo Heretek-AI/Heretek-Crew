@@ -21,8 +21,8 @@ shellcheck scripts/*.sh             # Must pass with 0 errors/warnings
 BETTER_AUTH_SECRET=dummy POSTGRES_PASSWORD=dummy docker compose config
 BETTER_AUTH_SECRET=dummy POSTGRES_PASSWORD=dummy docker compose -f docker-compose.yml -f docker-compose.sidecars.yml config
 
-# Fleet Seeding Dry-Runs (validates generated JSON against Paperclip schema)
-bash scripts/seed-company.sh --dry-run
+# Fleet Seeding Dry-Run (validates generated JSON against Paperclip schema)
+# Wave 3 P1-11: seed-company.sh removed with the legacy roles; fleet only.
 bash scripts/seed-50-fleet.sh --dry-run
 
 # Running the Stack

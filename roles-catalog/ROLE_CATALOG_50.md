@@ -116,7 +116,7 @@ flowchart TD
 | `dependency-patcher` | Dependency & CVE Patching Steward | Operations & Maintenance | `@cyanheads/git-mcp-server`, `codebase-memory-mcp` | SemVer lockfile updates, regression test | $220.00 |
 | `git-drift-coord` | Git & Worktree Drift Coordinator | Operations & Maintenance | `@cyanheads/git-mcp-server`, `codebase-memory-mcp` | Worktree isolation, rebase conflict sync | $200.00 |
 
-**Total Monthly Fleet Budget Cap**: **$12,790.00 USD** across 50 active specialist agents.
+**Total Monthly Fleet Budget Cap**: **$12,700.00 USD** across 50 active specialist agents.
 
 ---
 

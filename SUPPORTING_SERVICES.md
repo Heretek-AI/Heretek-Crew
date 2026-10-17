@@ -2031,9 +2031,15 @@ volumes:
 # ==============================================================================
 # NETWORKS
 # ==============================================================================
+# Wave 3 P1-2: compose-managed (mirrors docker-compose.sidecars.yml — the
+# `external: true` form was removed because it won the file merge and broke
+# every sidecar-profile `up` without an undocumented manual `docker network
+# create`). Both compose files declare `name: heretek`, so base-alone and
+# merged stacks share one Docker network literally named `heretek`.
 networks:
   heretek:
-    external: true
+    name: heretek
+    driver: bridge
 ```
 
 ---
@@ -2046,5 +2052,5 @@ networks:
    For adversarial reverse engineering (Ghidra, Radare2) and code scanning (Semgrep), containers mount host workspaces as read-only (`:ro`). Containers drop all root capabilities (`cap_drop: ["ALL"]`) and add only required primitives (`NET_BIND_SERVICE`).
 3. **Internal Network Segmentation**:
    Paperclip and the OpenCode v2 agent fleet share the single isolated `heretek` bridge network. Sidecars communicate over DNS aliases (e.g. `http://firecrawl:3002`, `bolt://neo4j:7687`), preventing container-to-host network leakage.
-4. **Daemon Protection via Socket Proxy**:
-   The `docker-socket-proxy` sidecar eliminates the catastrophic vulnerability of mounting `/var/run/docker.sock` into agent containers. All CI or test-spawn requests pass through the socket proxy with volume and network manipulation explicitly disabled.
+4. **Daemon Protection via Socket Proxy (Wave 3 P1-3, option a — read-only observer)**:
+   The `docker-socket-proxy` sidecar eliminates the catastrophic vulnerability of mounting `/var/run/docker.sock` into agent containers. The proxy is GET-only by design (`POST/BUILD/EXEC/AUTH=0`, never weakened): the `local-ci-runner` container behind it is a quarantined read-only observer — it may inspect/list the daemon (containers, images, version/info) and read CI state, but cannot create, build, exec, or authenticate. Mutating CI work runs on the HOST via host-installed `act` against the host Docker daemon, never through the proxy and never from inside the runner container.

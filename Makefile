@@ -7,7 +7,7 @@
 #
 # Typical flow:
 #   cp .env.example .env   # then fill in secrets
-#   make build && make up && make seed
+#   make build && make up && make seed-50
 #   make test              # smoke test (static checks; live when stack is up)
 
 # Load .env when present so compose sub-commands and scripts see the same
@@ -19,19 +19,18 @@ COMPOSE := docker compose
 COMPOSE_PREBUILT := $(COMPOSE) -f docker-compose.yml -f docker-compose.prebuilt.yml
 BACKUP_SCRIPT := ./scripts/backup-db.sh
 RESTORE_SCRIPT := ./scripts/restore-db.sh
-SEED_SCRIPT := ./scripts/seed-company.sh
 SEED_50_SCRIPT := ./scripts/seed-50-fleet.sh
 GENERATE_ROLES_SCRIPT := ./scripts/generate-50-roles.py
 SMOKE_SCRIPT := ./scripts/smoke-test.sh
 
 .DEFAULT_GOAL := help
-.PHONY: help build up down logs seed seed-50 generate-roles backup restore test prebuilt-pull prebuilt-up prebuilt-config
+.PHONY: help build up down logs seed-50 generate-roles backup restore test prebuilt-pull prebuilt-up prebuilt-config
 
 help: ## Show this help (lists all documented targets).
 	@echo "Heretek-Crew — Paperclip + OpenCode v2 stack"
 	@echo ""
 	@echo "Quickstart: cp .env.example .env  # edit secrets"
-	@echo "            make build && make up && make seed"
+	@echo "            make build && make up && make seed-50"
 	@echo ""
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-10s %s\n", $$1, $$2}'
@@ -62,9 +61,8 @@ down: ## Stop the stack (containers kept; data in named volumes is preserved).
 logs: ## Follow logs of the paperclip service (Ctrl-C to stop).
 	$(COMPOSE) logs -f paperclip
 
-seed: ## Seed the company and 6-agent fleet (idempotent; see scripts/seed-company.sh --help).
-	$(SEED_SCRIPT)
-
+# Wave 3 P1-11: `seed` (6-agent prototype seeder) removed with the legacy
+# roles it seeded — the 50-fleet is the only role set; use `seed-50`.
 generate-roles: ## Scaffold the 50-agent fleet on disk (idempotent; see scripts/generate-50-roles.py --help).
 	python3 $(GENERATE_ROLES_SCRIPT)
 

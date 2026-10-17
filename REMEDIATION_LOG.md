@@ -704,3 +704,226 @@ progress).
   deny-tail runtime probe); existing (non-fresh) pgdata volumes need the
   manual GRANT step from the hook's `--dry-run` output.
 - No commits, no merges, no subagents used.
+
+---
+
+# Stage 5 Remediation Log — Wave 3 Claims + topology (P1-1, P1-2, P1-3, P1-9, P1-11)
+
+**Worktree:** `/home/john/Projects/Heretek-Crew/.worktrees/wave3` (branch `remediate/wave3-claims-topology`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` P1-1/P1-2/P1-3/P1-9/P1-11 + P2-1, `PROMPT_REMEDIATION_HANDOFF.md` §2 Wave 3
+**Status:** all Wave 3 items closed, verified empirically. Changes left UNCOMMITTED for QA/Drift-Guard.
+
+## P1-1: budget $90 gap → catalog Total line was wrong (one-line diff)
+
+- Re-summed BOTH sources with python3: seed `role_budget_cents()` printf
+  values = **50 rows, 1,270,000¢ ($12,700.00)**; catalog table `$` column =
+  **50 rows, 1,270,000¢ ($12,700.00)**. The two authoritative tables AGREE;
+  only the catalog's Total prose line (`$12,790.00`) disagreed.
+- Fix (one-line diff): `roles-catalog/ROLE_CATALOG_50.md:119`
+  `$12,790.00` → `$12,700.00`. Consistency: `README.md` budget note
+  rewritten (discrepancy-documentation → reconciled state, WARNING-on-drift
+  only), `GEMINI.md` budget-cap line corrected to $12,700.00. Historical
+  audit/prompt files (`AUDIT_REPORT_FINDINGS.md`, `PROMPT_*.md`,
+  `REMEDIATION_LOG.md` prior stages) intentionally untouched.
+- Proof: seed `--dry-run` → `total fleet budget: 1270000 cents ...
+  (cap 1270000 cents)`, stderr empty (no WARNING); smoke §4 asserts
+  total==cap with no WARNING (green).
+
+## P1-2: sidecar network merge break → managed network, both files (option: drop external)
+
+- `docker-compose.sidecars.yml` NETWORKS block: `external: true` →
+  `name: heretek` + `driver: bridge` (+ comment recording why). No
+  `external:` remains in any compose file.
+- `docker-compose.yml` NETWORKS block: added `name: heretek` so the base
+  stack alone and the merged sidecar stack share ONE Docker network
+  literally named `heretek` (previously base-alone would use
+  `heretek-crew_heretek` while merged used external `heretek`).
+- `SUPPORTING_SERVICES.md` mirrored compose snippet updated identically
+  (it carried the same `external: true`). No Makefile/README create-step
+  needed (nothing is external anymore); README already names the network
+  `heretek` in its topology diagram.
+- Proof: `config -q` exit 0 on default, prebuilt, web-research, devsec,
+  ai-gateway, observability, mobile, core+ci, qa-testing+core,
+  proxy+tailscale; rendered merged network = `{name: heretek, driver:
+  bridge}`.
+
+## P1-3: CI-runner contradiction → option (a), read-only observer (one coherent story)
+
+- Decision: (a) document runner as quarantined read-only observer, CI via
+  host `act`. Rationale: non-goal forbids weakening `POST/BUILD/EXEC=0`;
+  option (b) would add a full-socket attack path next to agent workloads.
+- `local-ci-runner` comment rewritten: inspect/list/diagnose ONLY through
+  the GET-only proxy; mutating `act` jobs run on the HOST daemon, never
+  from inside the container; explicit ban on re-adding proxy writes or a
+  socket mount here (P1-12 pointer).
+- `docker-socket-proxy` comment rewritten: GET-only BY DESIGN (removed the
+  `Verify CI still functions with GET-only access` claim — it cannot, and
+  no longer pretends to); points at the runner comment for the observer
+  pattern; restates the read-only posture is never weakened to "fix" CI.
+- `SUPPORTING_SERVICES.md` §12 item 4 rewritten: was `All CI or test-spawn
+  requests pass through the socket proxy` (contradicted the decision) →
+  now states proxy-is-GET-only, runner-is-observer, mutating CI on host act.
+- Proof: `config -q` exit 0 on core+ci (and qa-testing+core); repo-wide grep
+  for `Verify CI`/`GET-only` shows only the new honest wording; no comment
+  claims CI-mutating work passes through the proxy.
+
+## P1-9: prebuilt tag → retarget to publishable semver + honest quickstart (no invented digest)
+
+- Evidence (fail-closed, nothing invented): anonymous `docker manifest
+  inspect` of BOTH `:v1.0.0` and `:1.0.0` → `manifest unknown`; `git tag`
+  empty; push impossible from this env.
+- Key finding beyond the audit text: the workflow
+  (`.github/workflows/docker-publish.yml`, docker/metadata-action `semver`
+  on `refs/tags/v*`) mints `1.0.0` / `1.0` / `latest` / `sha-<sha>` from a
+  `v1.0.0` git tag — it NEVER mints `:v1.0.0`. The old pin was
+  unpublishable by construction, so `git tag v1.0.0 && git push` alone
+  would NOT have fixed it. Retarget (chosen path): pin `:v1.0.0` →
+  `:1.0.0` in `docker-compose.prebuilt.yml` + `docker-compose.override.yml.example`;
+  header rewritten with the exact maintainer release step, login + manifest
+  verify step, and `build locally until published` guidance. Exact tag pin
+  kept; no digest invented.
+- `README.md` Option A rewritten: was `official image published to GHCR
+  (...:v1.0.0)` (false — nothing published) → now states the release
+  precondition, the verify command, and the fail-closed pull behavior.
+- Smoke pin gate updated to assert `:1.0.0` present AND `:v1.0.0` absent
+  (regression-proof against drift back).
+- Proof: prebuilt `config -q` exit 0; smoke pin gate green; `grep v1.0.0`
+  across README/prebuilt/override/Makefile/.github shows only the release
+  instruction and the `:v1.0.0`-never-minted rationale.
+
+## P1-11 + P2-1: 6 legacy roles deleted as superseded → 50 roles, single dialect
+
+- Decision: DELETE (not migrate). All 6 map cleanly onto fleet roles
+  (director→exec-director; pm→product-director+tpm-scrum-lead;
+  programmer→language engineers 19–26; tester/qa→e2e-browser-qa +
+  api-contract-tester + release-qa-officer; designer→ui-ux-designer +
+  design-system-eng + brand-copy-spec); migration would leave 56 dirs and
+  fail the `ls roles/ = 50` criterion. Mapping recorded in
+  `scripts/seed-50-fleet.sh` scope note + `README.md` supersession table.
+- Deleted: `roles/{designer,director,pm,programmer,qa,tester}/` (24 files)
+  + `scripts/seed-company.sh` (410 lines — seeded exactly the deleted
+  roles; an empty/retargeted seeder would be a stub).
+- Consistent updates (no dangling refs): `scripts/smoke-test.sh` (§1 legacy
+  existence loop removed; §3 prose fleet-only; §3b programmer probe
+  GENERALIZED to a fleet-wide allow-all + terminal-deny scan of all 50;
+  §3b skip-permissions gate narrowed to seed-50; qa/tester narrowing gate
+  removed with rationale comment — closed by deletion, zero `bash`-action
+  permissions remain; §4 seed-company block removed; live-flow hints
+  `make seed` → `make seed-50`; COMPANY_NAME default → `Heretek
+  Autonomous Fleet`); `Makefile` (`seed` target + SEED_SCRIPT removed,
+  flow comments → `make seed-50`); `README.md` (intro, pin table,
+  quickstarts, ops table, Roles section + supersession map, add-role,
+  seed-override, fleet intro, Playwright rows, security-model skip=False
+  rewrite, layout); `AGENTS.md` (layout, seed commands, single-dialect
+  PoLP); `CLAUDE.md`/`GEMINI.md` (seed-company dry-run lines removed).
+  Historical logs/prompts (`REMEDIATION_LOG.md` prior stages,
+  `AUDIT_REPORT_FINDINGS.md`, `PROMPT_*.md`, `NOTES.md`,
+  `EVALUATION_AWESOME_OPENCODE.md`) intentionally untouched.
+- Proof: `ls roles/ | wc -l` = **50**; `grep -rl '"action": "bash"'` = 0
+  files; all 50 terminal perms are `shell * deny`; dangling-ref grep over
+  scripts/Makefile/compose/workflows shows only intentional explanatory
+  comments + `make seed-50` hints; smoke `--check-only` green.
+
+## Test results (must-keep-green set + Wave 3 proofs)
+
+- `bash scripts/test-shim.sh` → **39 passed, 0 failed** (unchanged).
+- `bash scripts/smoke-test.sh --check-only` → **209 passed, 0 failed,
+  3 skipped** (244 baseline → 209: −35 = −12 legacy §1 existence loop
+  (6 roles × 2 checks) −18 §3 per-role checks (6 roles × 3: valid +
+  AGENTS.md + agent md) −2 §1 seed-company.sh list entries
+  (REQUIRED_FILES existence + executable) −1 §4 seed-company dry-run
+  block −2 qa/tester narrowing gate −1 programmer probe +1 fleet-wide
+  probe (probe swap nets 0); zero regressions — every removed check is
+  accounted for by a deletion).
+- `shellcheck -S warning scripts/*.sh` → zero warnings; `bash -n` all OK.
+- `bash scripts/seed-50-fleet.sh --dry-run` → 51 docs, total == cap,
+  empty stderr.
+- `docker compose config -q` exit 0: default, prebuilt, web-research,
+  devsec, ai-gateway, observability, mobile, core+ci, qa-testing+core,
+  proxy+tailscale.
+- `grep -rn ':latest'` → only the pre-existing piston prose comment
+  (policy text, not a pin); `grep -L 'deny'` → none (all 50 tails present).
+- `make test` (live mode, stack down) → 209 passed / same 2 environmental
+  fails as every prior baseline (`postgres not healthy`, `paperclip not
+  responding`) — no new failures; full green needs `make up` (live stage).
+
+## Files changed (uncommitted, Wave 3 only)
+
+- `roles-catalog/ROLE_CATALOG_50.md` (P1-1 one-line Total fix)
+- `docker-compose.sidecars.yml` (P1-2 network; P1-3 proxy+runner comments)
+- `docker-compose.yml` (P1-2 network name)
+- `docker-compose.prebuilt.yml`, `docker-compose.override.yml.example`
+  (P1-9 retarget + release docs)
+- `roles/{designer,director,pm,programmer,qa,tester}/` deleted (P1-11,
+  24 files), `scripts/seed-company.sh` deleted (P1-11)
+- `scripts/smoke-test.sh` (§1/§3/§3b/§4/live-hint/COMPANY_NAME/pin gate)
+- `scripts/seed-50-fleet.sh` (scope note + supersession map)
+- `Makefile` (seed target removal, flow comments)
+- `README.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`,
+  `SUPPORTING_SERVICES.md` (doc consistency per finding)
+- `REMEDIATION_LOG.md` (this entry)
+
+## Self-audit notes (Wave 3)
+
+- Fail-closed kept: managed-network default (`up` creates what `config`
+  references); proxy posture untouched (comments only, `POST/BUILD/EXEC=0`
+  still asserted by smoke); prebuilt keeps an exact pin with a verify step
+  (no invented digest, pull fails closed); deletions remove capability
+  rather than adding it; no `|| true`/`TODO`/dummy returns added (remaining
+  `|| true` are pre-existing grep-heredoc/live-curl guards); no secrets
+  touched; scripts keep `--help`/`--dry-run` + `set -euo pipefail`.
+- Chose DELETE over MIGRATE for P1-11 with the count criterion as the
+  decider (migration cannot reach 50); chose network-option-A (managed)
+  over create-step docs (fewer moving parts, no boot-order dependency);
+  chose CI-option-(a) (observer) over dedicated socket (no new host-escape
+  path); chose retarget-over-push for P1-9 with the semver-minting proof
+  (push alone would not have produced `:v1.0.0`).
+- Residuals: live `make up` sweep (network adoption on hosts with a stale
+  manually-created `heretek` network; proxy/runner behavior; prebuilt pull
+  after a real `v1.0.0` push) still needs the live stage.
+- No commits, no merges, no subagents used.
+
+---
+
+# Wave 3 REWORK cycle 1/3 — QA FAIL items (5) + P1-2 bonus gate
+
+**Worktree:** `/home/john/Projects/Heretek-Crew/.worktrees/wave3` (branch `remediate/wave3-claims-topology`)
+**Date:** 2026-10-17 | **Source:** QA FAIL on 5 narrow items (everything else PASS)
+**Status:** 5 items + bonus fixed, verified empirically. Changes left UNCOMMITTED. No commits.
+
+1. `scripts/dispatch-pipeline.sh:148` — live log line named deleted legacy
+   role `tester`. Fixed to `e2e-browser-qa (Automation)` (exists on disk:
+   `roles/e2e-browser-qa/`; charter Title `End-to-End Browser Automation
+   Engineer`, so `(Automation)` still describes the purpose). File header
+   `:10` updated identically. Precise grep
+   (`\btester\b|Programmer|\bPM\b`) over the file: clean.
+2. `scripts/smoke-test.sh` live §10 — `names = {"Programmer", "PM"}`
+   replaced with exact live-API display names from
+   `scripts/seed-50-fleet.sh role_display_name()`: `{"TypeScript / Node
+   Fullstack Engineer", "End-to-End Browser Automation Engineer"}` (the
+   seed's `name` = display string verbatim). Any-agent fallback + comment
+   retained. Live-only; gate unaffected.
+3. `ROLE_COUNT == 50` gate added at the §3 discovery block (fail-closed
+   `bad` on any mismatch, covering 0/49/51). Scratch proof (51st dir added
+   to a /tmp copy, worktree untouched): `[FAIL] expected exactly 50 fleet
+   role directories under roles/, found 51`, SMOKE FAIL.
+4. `NOTES.md:273` — prebuilt pin `:v1.0.0` corrected to `:1.0.0` with
+   unpublished/auth-required status matching the
+   `docker-compose.prebuilt.yml` header. Minimal one-line edit.
+5. Stage 5 arithmetic corrected (accounting only, no gate change): 244→209
+   (−35) = −12 legacy §1 existence loop (6×2) −18 §3 per-role (6×3) −2 §1
+   seed-company.sh list entries (REQUIRED_FILES + executable) −1 §4
+   seed-company block −2 qa/tester narrowing gate −1 programmer probe +1
+   fleet-wide probe (net 0). The published Stage 5 entry above had omitted
+   the two §1 list entries (−33 claimed vs −35 actual); fixed in place.
+BONUS (QA P1-2): `external:` YAML-key-anchored gate added next to the pin
+   gate (comments mentioning `external: true` do not trip it). Scratch
+   proof: injected `external: true` → `[FAIL] found 'external:' network
+   key ... docker-compose.yml:267`, SMOKE FAIL. Worktree files have zero
+   real `external:` keys (3 prose-comment mentions only), gate green.
+
+Test results: `smoke --check-only` → **211 passed, 0 failed, 3 skipped**
+(209 + 1 ROLE_COUNT + 1 external:); `test-shim.sh` → 39/39;
+`shellcheck -S warning scripts/*.sh` clean; `bash -n` all OK;
+`seed-50-fleet.sh --dry-run` → cap == sum; dispatch `--dry-run` shows the
+new role line; `git status` shows modifications only, no commits.

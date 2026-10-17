@@ -54,7 +54,6 @@ Any AI coding assistant, autonomous agent, or paired developer working on this c
 ├── scripts/
 │   ├── opencode-shim.sh            # Production CLI shim
 │   ├── test-shim.sh                # 39-assertion unit test suite for the shim
-│   ├── seed-company.sh             # 6-agent bootstrap seeding script
 │   ├── seed-50-fleet.sh            # 50-agent fleet seeding script
 │   ├── generate-50-roles.py        # 50-role disk scaffolding generator
 │   ├── smoke-test.sh               # Static and end-to-end integration test runner
@@ -91,9 +90,10 @@ make backup                         # Generate timestamped dump in backups/
 make restore FILE=backups/<file>.sql.gz  # Restore database with confirmation prompt
 
 # Fleet Seeding
-make seed                           # Seed initial 6 core agents
-bash scripts/seed-company.sh --dry-run   # Validate payloads without network calls
-bash scripts/seed-50-fleet.sh --dry-run  # Validate 50-agent payloads (51 documents)
+make seed-50                       # Seed the 50-agent fleet (Wave 3 P1-11:
+                                   # the 6-role prototype seeder is removed;
+                                   # the fleet is the only role set)
+bash scripts/seed-50-fleet.sh --dry-run  # Validate 50-agent payloads without network calls
 
 # Sidecar Services
 docker compose -f docker-compose.yml -f docker-compose.sidecars.yml --profile web-research up -d
@@ -115,9 +115,9 @@ When modifying this repository, follow these non-negotiable rules:
      ```json
      { "action": "shell", "resource": "*", "effect": "deny" }
      ```
-     (fleet dialect) or `{ "action": "bash", "resource": "*", "effect": "deny" }`
-     (legacy 6-role dialect, which uses `read`/`glob`/`grep`/`list`/`edit`/`write`/`bash`
-     instead of `fs:*`/`shell`). Every role file MUST end in its dialect's deny tail —
+     (single fleet dialect — Wave 3 P1-11 deleted the 6 legacy
+     `bash`-dialect prototype roles; `ls roles/` = 50, zero `bash`-action
+     permissions remain). Every role file MUST end in this deny tail —
      `scripts/smoke-test.sh` §3/§3b enforces this mechanically.
    - **Known limitation — prefix matching is not an argv-aware sandbox.**
      `shell`/`bash` allows are string-prefix patterns (`git status*`, `npm test*`):
