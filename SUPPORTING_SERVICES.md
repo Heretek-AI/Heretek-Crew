@@ -97,15 +97,15 @@ flowchart TB
   * API / Workers Harness: `ghcr.io/firecrawl/firecrawl:2.10.19`
   * Playwright Microservice: `ghcr.io/firecrawl/playwright-service@sha256:717699bf8a61d94451926c810d19ca1d36278192907e307bf5229a558b08fcc6`
   * NuQ Postgres (Queue DB): `ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc`
-  * RabbitMQ (Queue Broker): `rabbitmq:3.13.7-management-alpine`
-  * Redis (Rate Limits & State): `redis:7.4.1-alpine`
+  * RabbitMQ (Queue Broker): `rabbitmq:4.3.6-management-alpine`
+  * Redis (Rate Limits & State): `redis:7.4.11-alpine` (Wave 4 P1-4: CVE-2025-49844 + requirepass)
 * **Core Value Proposition**: Monolithic scrapers struggle with JavaScript-heavy SPAs, paywalls, and cookie banners. Firecrawl orchestrates headless Playwright browsers behind a clean REST and WebSocket interface, automatically converting messy DOM structures into pristine, LLM-optimized Markdown while stripping advertising trackers, navigations, and styling scripts. Running Firecrawl as a dedicated sidecar cluster keeps massive browser memory footprints and Playwright dependencies outside the agent runtime.
 * **Target Roles**: Technical Researcher, Market Research Analyst, Competitive Intelligence Specialist, Documentation Lead, Bug Triage Specialist.
 
 #### Docker Compose Service Block
 ```yaml
   firecrawl-redis:
-    image: redis:7.4.1-alpine
+    image: redis:7.4.11-alpine
     profiles: ["web-research"]
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
@@ -124,7 +124,7 @@ flowchart TB
     mem_limit: 512m
 
   firecrawl-rabbitmq:
-    image: rabbitmq:3.13.7-management-alpine
+    image: rabbitmq:4.3.6-management-alpine
     profiles: ["web-research"]
     restart: unless-stopped
     command: rabbitmq-server
@@ -356,14 +356,14 @@ flowchart TB
 ### Service A.3: SearXNG
 * **Service Identity**: SearXNG (`searxng/searxng`)
 * **Repository**: [https://github.com/searxng/searxng](https://github.com/searxng/searxng)
-* **Image Tag**: `searxng/searxng:2024.10.16-ac56c663b`
+* **Image Tag**: `searxng/searxng@sha256:13de…e24e9` (tag `2025.12.19-8bf600cc6`)
 * **Core Value Proposition**: Commercial search APIs (Google Custom Search, Bing Web Search, Tavily, Brave) impose strict per-request billing, rate limits, and query logging. SearXNG aggregates 70+ search engines locally with zero tracking, rotating proxies, and structured JSON output. It gives agent fleets unlimited private web search capabilities without exposing API keys.
 * **Target Roles**: All Roles (General Web Search, API Discovery, Error Message Resolution).
 
 #### Docker Compose Service Block
 ```yaml
   searxng-redis:
-    image: redis:7.4.1-alpine
+    image: redis:7.4.11-alpine
     profiles: ["web-research"]
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
@@ -380,7 +380,7 @@ flowchart TB
     mem_limit: 256m
 
   searxng:
-    image: searxng/searxng:2024.10.16-ac56c663b
+    image: searxng/searxng@sha256:13de9d465bd2d9da6a6718f2a57d96e6e5fa3b8aba3c0bec077a5b7e5f24e4e9
     profiles: ["web-research"]
     restart: unless-stopped
     depends_on:
@@ -439,14 +439,14 @@ flowchart TB
 ### Service A.4: Gotenberg
 * **Service Identity**: Gotenberg (`gotenberg/gotenberg`)
 * **Repository**: [https://github.com/gotenberg/gotenberg](https://github.com/gotenberg/gotenberg)
-* **Image Tag**: `gotenberg/gotenberg:8.15.0`
+* **Image Tag**: `gotenberg/gotenberg:8.37.0`
 * **Core Value Proposition**: Autonomous agents frequently need to generate PDF reports, convert Markdown/HTML specs into formal documentation, or parse PDFs into images for visual regression testing. Gotenberg provides a stateless API wrapping Chromium, LibreOffice, and PDFtk, avoiding the need to install 800MB of font packages and office runtimes inside agent containers.
 * **Target Roles**: Technical Documentation Lead, UI/UX Designer, Executive Reporter.
 
 #### Docker Compose Service Block
 ```yaml
   gotenberg:
-    image: gotenberg/gotenberg:8.15.0
+    image: gotenberg/gotenberg:8.37.0
     profiles: ["web-research", "qa-testing"]
     restart: unless-stopped
     expose:
@@ -666,14 +666,14 @@ flowchart TB
 ### Service C.2: Radare2 / r2mcp
 * **Service Identity**: Radare2 (`radare/radare2`)
 * **Repository**: [https://github.com/radareorg/radare2](https://github.com/radareorg/radare2)
-* **Image Tag**: `radare/radare2:6.0.0`
+* **Image Tag**: `radare/radare2@sha256:88b7…d2ae37` (tag `6.2.4`)
 * **Core Value Proposition**: While Ghidra provides deep decompilation, it has significant startup latency. Radare2 starts in milliseconds, making it optimal for rapid binary triage, string extraction, entropy scanning, ELF header inspection, and fast disassembling of specific functions.
 * **Target Roles**: Binary Triage Specialist, C/C++ Systems Engineer, Exploit Mitigator.
 
 #### Docker Compose Service Block
 ```yaml
   radare2:
-    image: radare/radare2:6.0.0
+    image: radare/radare2@sha256:88b7ff67710e12f430b269abc7714490e3a0c37e391521523148cbd6f9d2ae37
     profiles: ["devsec"]
     restart: unless-stopped
     expose:
@@ -771,14 +771,14 @@ In `opencode.json`:
 ### Service D.2: Semgrep Local Analysis Engine
 * **Service Identity**: Semgrep (`semgrep/semgrep`)
 * **Repository**: [https://github.com/semgrep/semgrep](https://github.com/semgrep/semgrep)
-* **Image Tag**: `semgrep/semgrep:1.97.0`
+* **Image Tag**: `semgrep/semgrep:1.181.0` (Wave 4 P1-10)
 * **Core Value Proposition**: Semgrep enforces semantic security rulesets and architectural constraints locally. Running Semgrep as a shared analysis sidecar allows security and QA agents to mount repository checkouts, audit for OWASP vulnerabilities (SQL injection, unsafe deserialization, SSRF), and generate SARIF compliance reports without uploading code to third-party SaaS.
 * **Target Roles**: Application Security Lead, QA Compliance Auditor, DevSecOps Lead.
 
 #### Docker Compose Service Block
 ```yaml
   semgrep:
-    image: semgrep/semgrep:1.97.0
+    image: semgrep/semgrep:1.181.0
     profiles: ["devsec", "qa-testing"]
     restart: unless-stopped
     expose:
@@ -808,14 +808,14 @@ In `opencode.json`:
 ### Service D.3: Hound Code Search Engine
 * **Service Identity**: Hound (`hound-search/hound`)
 * **Repository**: [https://github.com/hound-search/hound](https://github.com/hound-search/hound)
-* **Image Tag**: `ghcr.io/hound-search/hound:v0.6.0`
+* **Image Tag**: `ghcr.io/hound-search/hound@sha256:5b7f…c470e` (tag `0.6.0`)
 * **Core Value Proposition**: On multi-gigabyte codebases with dozens of microservices, `grep` or `find` over Docker volume mounts causes severe disk I/O bottlenecks. Hound indexes repositories into memory using trigrams, providing sub-millisecond regex search across millions of lines of code via a clean REST API.
 * **Target Roles**: System Architect, Legacy Migration Engineer, Platform Lead.
 
 #### Docker Compose Service Block
 ```yaml
   hound:
-    image: ghcr.io/hound-search/hound:v0.6.0
+    image: ghcr.io/hound-search/hound@sha256:5b7fd0982ce12ebf41cfdbb8ab7aac081679667e778a8641bcd3026c98fc470e
     profiles: ["devsec", "web-research"]
     restart: unless-stopped
     expose:
@@ -892,14 +892,14 @@ curl -s "http://hound:6080/api/v1/search?q=class.*Handler&files=*.ts&repos=*" | 
 ### Service E.2: Piston Code Execution Sandbox
 * **Service Identity**: Piston (`engineer-man/piston`)
 * **Repository**: [https://github.com/engineer-man/piston](https://github.com/engineer-man/piston)
-* **Image Tag**: `ghcr.io/engineer-man/piston:v2.0.0`
+* **Image Tag**: `ghcr.io/engineer-man/piston@sha256:2f66…127a` (digest of upstream `latest`; vendor to `ghcr.io/heretek-ai/piston:<semver>` tracked)
 * **Core Value Proposition**: When agents write and test code snippets (Python, Rust, C++, Go, JavaScript), executing them directly in the agent container risks infinite loops, fork bombs, and filesystem corruption. Piston runs untrusted code inside isolated cgroups with strictly enforced CPU time limits (default 3s), memory caps, and process caps.
 * **Target Roles**: Programmer, QA Tester, Algorithm Specialist, Data Scientist.
 
 #### Docker Compose Service Block
 ```yaml
   piston:
-    image: ghcr.io/engineer-man/piston:v2.0.0
+    image: ghcr.io/engineer-man/piston@sha256:2f66b7456189c4d713aa986d98eccd0b6ee16d26c7ec5f21b30e942756fd127a
     profiles: ["qa-testing", "devsec"]
     restart: unless-stopped
     expose:
@@ -936,14 +936,14 @@ curl -s -X POST http://piston:2000/api/v2/execute \
 ### Service F.1: Qdrant Vector Database
 * **Service Identity**: Qdrant (`qdrant/qdrant`)
 * **Repository**: [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant)
-* **Image Tag**: `qdrant/qdrant:v1.12.5`
+* **Image Tag**: `qdrant/qdrant:v1.19.2` (Wave 4 P1-10; API-key auth via `QDRANT_API_KEY`)
 * **Core Value Proposition**: OpenCode agents have finite context windows. Storing project documentation, architecture decisions, and historical bug fixes in Qdrant enables sub-10ms semantic retrieval across millions of chunked embeddings. Qdrant is written in Rust, offering low memory overhead and payload filtering.
 * **Target Roles**: Memory Architect, Researcher, Technical PM, Lead Architect.
 
 #### Docker Compose Service Block
 ```yaml
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    image: qdrant/qdrant:v1.19.2
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -989,14 +989,14 @@ curl -s -X POST http://piston:2000/api/v2/execute \
 ### Service F.2: Neo4j Graph Database
 * **Service Identity**: Neo4j Community (`neo4j`)
 * **Repository**: [https://github.com/neo4j/neo4j](https://github.com/neo4j/neo4j)
-* **Image Tag**: `neo4j:5.26.0-community-bullseye`
+* **Image Tag**: `neo4j:5.26.32-community-trixie` (Wave 4 P1-10; 5.26 LTS kept, trixie base)
 * **Core Value Proposition**: Vector search finds semantically similar text, but fails to model structural relationships (e.g. "Which microservice imports this schema?" or "Who inherits from this abstract base class?"). Neo4j maintains codebase knowledge graphs, tracking call trees, module dependencies, and role permissions.
 * **Target Roles**: System Architect, Codebase Memory Maintainer, Refactoring Lead.
 
 #### Docker Compose Service Block
 ```yaml
   neo4j:
-    image: neo4j:5.26.0-community-bullseye
+    image: neo4j:5.26.32-community-trixie
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -1050,14 +1050,14 @@ curl -s -X POST http://piston:2000/api/v2/execute \
 ### Service G.1: LiteLLM Proxy
 * **Service Identity**: LiteLLM Proxy (`ghcr.io/berriai/litellm`)
 * **Repository**: [https://github.com/BerriAI/litellm](https://github.com/BerriAI/litellm)
-* **Image Tag**: `ghcr.io/berriai/litellm:v1.54.0`
+* **Image Tag**: `ghcr.io/berriai/litellm@sha256:eb14…d3f6d5` (tag `main-v1.54.0`)
 * **Core Value Proposition**: When 50 autonomous agents invoke LLMs simultaneously, they risk hitting API rate limits, provider outages, and uncontrollable costs. LiteLLM acts as an OpenAI-compatible routing gateway supporting 100+ backends (Anthropic, OpenAI, Gemini, Bedrock, Ollama). It provides automatic fallback routing, virtual team API keys with hard spend caps, and token usage telemetry.
 * **Target Roles**: All Agent Roles (Primary LLM Gateway for OpenCode).
 
 #### Docker Compose Service Block
 ```yaml
   litellm:
-    image: ghcr.io/berriai/litellm:v1.54.0
+    image: ghcr.io/berriai/litellm@sha256:eb14f07d08318e638459eecc811fc3b30282f6b2397df3a98150a7d6ffd3f6d5
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -1180,14 +1180,21 @@ curl -s "http://mailpit:8025/api/v1/messages" | jq '.messages[0] | {To, Subject,
 ### Service H.2: MinIO S3-Compatible Object Storage
 * **Service Identity**: MinIO (`minio/minio`)
 * **Repository**: [https://github.com/minio/minio](https://github.com/minio/minio)
-* **Image Tag**: `minio/minio:RELEASE.2024-11-07T00-52-20Z`
+* **Image Tag**: `quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z` (digest auth-gated, tracked; AGPLv3 — see §8 H.2 note)
 * **Core Value Proposition**: Cloud-native software expects AWS S3 for hosting build artifacts, binary releases, screenshots, and logs. MinIO provides high-performance, S3 API-compatible local object storage without cloud costs or latency.
 * **Target Roles**: Cloud Platform Specialist, Release Manager, CI/CD Automator.
+* **License note (Wave 4 P1-10):** MinIO is AGPLv3-only. Running the
+  unmodified image as a network sidecar triggers no source-distribution
+  duty for fleet code, but any modification or redistribution of the image
+  itself must ship source. Tracked product decision: evaluate an S3 mock
+  (e.g. localstack) at the next bump cycle. Digest pin stays PENDING until
+  an authed quay.io pull is available (anonymous manifest inspection is
+  auth-gated — re-verified 2026-10-17; no digest invented).
 
 #### Docker Compose Service Block
 ```yaml
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
     profiles: ["qa-testing", "core"]
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
@@ -1250,7 +1257,7 @@ curl -s "http://mailpit:8025/api/v1/messages" | jq '.messages[0] | {To, Subject,
 ### Service H.4: OpenTelemetry Collector & Jaeger Tracing
 * **Service Identity**: Jaeger All-In-One (`jaegertracing/all-in-one`) & OTel Collector (`otel/opentelemetry-collector-contrib`)
 * **Repository**: [https://github.com/jaegertracing/jaeger](https://github.com/jaegertracing/jaeger)
-* **Image Tag**: `jaegertracing/all-in-one:1.63.0`
+* **Image Tag**: `jaegertracing/jaeger:2.22.0` (Wave 4 P1-10: v1 EOL 2025-12-31)
 > **STATUS (P1-9): jaeger composed; otel-collector NOT composed.** Only the
 > `jaeger:` service exists in `docker-compose.sidecars.yml` (`observability`
 > profile). The OTel Collector has no compose block yet — add a pinned
@@ -1262,7 +1269,7 @@ curl -s "http://mailpit:8025/api/v1/messages" | jq '.messages[0] | {To, Subject,
 #### Docker Compose Service Block
 ```yaml
   jaeger:
-    image: jaegertracing/all-in-one:1.63.0
+    image: jaegertracing/jaeger:2.22.0
     profiles: ["observability"]
     restart: unless-stopped
     expose:
@@ -1342,12 +1349,38 @@ To ensure lean resource usage, services are segregated into logical Docker Compo
 | Profile Name | Included Supporting Services | Memory Budget (Idle / Peak) | Primary Use Case |
 | :--- | :--- | :--- | :--- |
 | **`default` / `core`** | `postgres`, `paperclip`, `docker-socket-proxy` | 1.2 GB / 4.5 GB | Standard agent workflow, local code editing, CLI tools |
-| **`--profile web-research`** | `searxng`, `searxng-redis`, `firecrawl`, `firecrawl-playwright`, `firecrawl-rabbitmq`, `firecrawl-nuq-postgres`, `firecrawl-redis`, `browserless`, `gotenberg` | 2.5 GB / 9.5 GB | Deep internet research, documentation extraction, web scraping |
-| **`--profile devsec`** | `ghidra`, `radare2`, `semgrep`, `hound`, `docker-socket-proxy` | 2.5 GB / 8.0 GB | Binary reverse engineering, vulnerability audits, firmware triage |
+| **`--profile web-research`** | `searxng`, `searxng-redis`, `firecrawl`, `firecrawl-playwright`, `firecrawl-rabbitmq`, `firecrawl-nuq-postgres`, `firecrawl-redis`, `browserless`, `gotenberg`, `hound` | 2.5 GB / 9.5 GB | Deep internet research, documentation extraction, web scraping |
+| **`--profile devsec`** | `ghidra`, `radare2`, `semgrep`, `hound`, `docker-socket-proxy`, `piston` | 2.5 GB / 8.0 GB | Binary reverse engineering, vulnerability audits, firmware triage |
 | **`--profile mobile`** | `docker-android` | 1.5 GB / 4.0 GB | Native Android app testing, ADB bridge, Artemis UI exploration |
-| **`--profile ai-gateway`** | `litellm`, `qdrant`, `neo4j`, `ollama` | 2.2 GB / 12.0 GB | Shared model routing, vector retrieval, codebase knowledge graph |
-| **`--profile qa-testing`** | `piston`, `mailpit`, `wiremock`, `minio`, `browserless` | 1.5 GB / 5.5 GB | Unit/integration testing, mocking APIs, sandboxed scripts |
-| **`--profile observability`**| `jaeger`, `otel-collector` | 0.8 GB / 2.0 GB | Telemetry, token usage tracking, distributed trace visualization |
+| **`--profile ai-gateway`** | `litellm`, `qdrant`, `neo4j` | 2.2 GB / 12.0 GB | Shared model routing, vector retrieval, codebase knowledge graph |
+| **`--profile qa-testing`** | `piston`, `mailpit`, `wiremock`, `minio`, `browserless`, `gotenberg`, `mitmproxy`, `semgrep`, `local-ci-runner` | 1.5 GB / 5.5 GB | Unit/integration testing, mocking APIs, sandboxed scripts |
+| **`--profile observability`**| `jaeger` | 0.8 GB / 2.0 GB | Telemetry, token usage tracking, distributed trace visualization |
+
+> NOTE: the Idle/Peak column above is historical prose (kept for trend
+> context). The authoritative per-profile footprint is the computed
+> `cpus`/`mem_limit` reservation table below (Wave 4 P2-9 — summed
+> directly from `docker-compose.sidecars.yml`, nothing invented; base
+> stack `postgres` 1.0 CPU/1g + `paperclip` 2.0 CPU/4g is extra).
+
+### 1a. Per-Profile Resource Reservations (computed from compose, Wave 4 P2-9)
+
+| Profile | Services (cpu / mem each) | Σ cpu | Σ mem_limit | Minimum-host guidance |
+| :--- | :--- | ---: | ---: | :--- |
+| `default` (base) | postgres 1.0/1g, paperclip 2.0/4g | 3.0 | 5.00g | 2 CPU / 8 GB RAM (always on) |
+| `web-research` | searxng-redis 0.2/256m, searxng 1.0/1g, firecrawl-redis 0.5/512m, firecrawl-rabbitmq 0.5/512m, firecrawl-nuq-postgres 0.5/768m, firecrawl-playwright 1.0/2g, firecrawl 1.5/2g, gotenberg 1.0/1.5g, browserless 2.0/3g, hound 1.0/2g | 9.2 | 13.50g | 10 CPU / 16 GB RAM free before `up` |
+| `devsec` | ghidra 2.0/4g, radare2 1.0/1g, hound 1.0/2g, semgrep 2.0/3g, docker-socket-proxy 0.2/128m, piston 2.0/2g | 8.2 | 12.13g | 8 CPU / 16 GB RAM free; trusted samples only |
+| `ai-gateway` | qdrant 1.5/2g, neo4j 1.5/2.5g, litellm 1.0/1.5g | 4.0 | 6.00g | 4 CPU / 8 GB RAM free |
+| `qa-testing` | gotenberg 1.0/1.5g, browserless 2.0/3g, mitmproxy 0.5/512m, semgrep 2.0/3g, piston 2.0/2g, mailpit 0.2/256m, minio 0.5/1g, wiremock 0.5/512m, local-ci-runner 2.0/4g | 10.7 | 15.75g | 12 CPU / 20 GB RAM free (heaviest profile — never with all others) |
+| `observability` | jaeger 0.5/1g | 0.5 | 1.00g | negligible |
+| `mobile` | docker-android 2.0/4g | 2.0 | 4.00g | dedicated test host; never with devsec/web-research (Makefile guard) |
+| `core` | docker-socket-proxy 0.2/128m, minio 0.5/1g, local-ci-runner 2.0/4g | 2.7 | 5.13g | schedules the proxy for `ci` |
+| `ci` | local-ci-runner 2.0/4g | 2.0 | 4.00g | always paired with `core` |
+
+These are `mem_limit` ceilings (worst case), not idle use — idle is a
+fraction of the above. `mem_limit` is the OOM-kill line: if the host cannot
+grant the Σ for the selected profiles plus the 5g base stack, the kernel
+kills the fattest container first (usually ghidra/browserless). When in
+doubt, bring up one profile, `docker stats`, then add the next.
 
 ---
 
@@ -1363,17 +1396,35 @@ profiles the current task needs and leave the rest down:
 docker compose -f docker-compose.yml -f docker-compose.sidecars.yml --profile web-research up -d
 ```
 
-**Version lag policy (P2-1): no blind bumps.** `redis:7.4.1-alpine` (×2),
-`qdrant:v1.12.5`, `wiremock:3.10.0-alpine`, `mailpit:v1.21.8`,
-`gotenberg:8.15.0`, and `neo4j:5.26.0-community-bullseye` all resolve and
-are functional, but sit 1–2 minors behind upstream (or on an oldstable base
-in neo4j's case — the 5.26 LTS line is a deliberate stability choice).
+**Version lag policy (P2-1): no blind bumps.** Wave 4 closed the lagging
+pins: `redis:7.4.1-alpine` (×2) → `7.4.11-alpine` + `requirepass` (P1-4),
+`qdrant:v1.12.5` → `v1.19.2` + API-key auth, `neo4j:5.26.0-community-bullseye`
+→ `5.26.32-community-trixie` (5.26 LTS line kept deliberately),
+`semgrep:1.97.0` → `1.181.0`, `jaegertracing/all-in-one:1.63.0` → `jaegertracing/jaeger:2.22.0`
+(v1 EOL 2025-12-31), `gotenberg:8.15.0` → `8.37.0` (Wave 1 CVE fix).
+Remaining scheduled items: `wiremock:3.10.0-alpine`, `mailpit:v1.21.8`
+(functional, next bump cycle), minio digest pin (quay.io auth-gated —
+tracked), piston vendoring to `ghcr.io/heretek-ai/piston:<semver>` (tracked).
 Cadence: review sidecar pins on a regular Renovate/Dependabot-style cycle
 (owned by the `dependency-patcher` fleet role), and before re-pinning any
 tag, verify it is live on the registry first — Stage 1 proved six "pinned"
 tags were already pruned upstream and broke pulls by construction. Until an
 automation bot lands, that check is manual: Hub tag API `200` (or GHCR
 manifest `200`) before the edit, `docker compose config` after.
+
+**MCP/plugin scope resolutions (Wave 4 P2-7/P2-8, verified live 2026-10-17).**
+`@modelcontextprotocol/server-github@2025.4.8` is already at target in all
+7 github-backed roles — confirmed, not regressed. `mcp-server-qdrant==0.8.1`
+is PyPI-latest and declares `qdrant-client>=1.12.0`, compatible with server
+`v1.19.2` — kept, not downgraded. Fleet Playwright is
+`@executeautomation/playwright-mcp-server@1.0.12` (5 consumers, npm-latest);
+the audit's `@playwright/mcp@0.0.83` names a DIFFERENT, unused package
+(npm-latest 0.0.83 exists, but nothing in the fleet consumes it) — no
+migration invented; the fleet pin is bumped only when its own upstream
+moves. `@prevalentware/opencode-goal-plugin` (npm-latest 0.1.64) is
+director-only by design (`exec-director` alone): goal tracking is an
+executive function, and fleet-wide milestone state would fragment across
+50 on-demand workers — smoke asserts exactly one consumer.
 
 ### 2. OpenCode v2 Role-to-Sidecar Mapping Matrix
 
@@ -1399,6 +1450,13 @@ The following matrix cross-references the 9 functional departments and key speci
 
 ## 11. Master `docker-compose.sidecars.yml`
 
+> AUTHORITATIVE-SOURCE NOTE: the `image:` pins in this section are synced
+> with `docker-compose.sidecars.yml` (Wave 4), but the mirrored blocks are
+> illustrative excerpts — env `:?` guards, healthchecks, and newer wiring
+> (redis `requirepass`, qdrant API key, segment nets) live in the compose
+> files, which are authoritative. Do not copy-paste from here; read the
+> compose files.
+
 This file is designed to be composed seamlessly with `docker-compose.yml`:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.sidecars.yml --profile web-research --profile devsec up -d
@@ -1415,7 +1473,7 @@ services:
   # CATEGORY A: WEB INGESTION, CRAWLING & SEARCH
   # ============================================================================
   searxng-redis:
-    image: redis:7.4.1-alpine
+    image: redis:7.4.11-alpine
     profiles: ["web-research"]
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
@@ -1432,7 +1490,7 @@ services:
     mem_limit: 256m
 
   searxng:
-    image: searxng/searxng:2024.10.16-ac56c663b
+    image: searxng/searxng@sha256:13de9d465bd2d9da6a6718f2a57d96e6e5fa3b8aba3c0bec077a5b7e5f24e4e9
     profiles: ["web-research"]
     restart: unless-stopped
     depends_on:
@@ -1456,7 +1514,7 @@ services:
     mem_limit: 1g
 
   firecrawl-redis:
-    image: redis:7.4.1-alpine
+    image: redis:7.4.11-alpine
     profiles: ["web-research"]
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
@@ -1475,7 +1533,7 @@ services:
     mem_limit: 512m
 
   firecrawl-rabbitmq:
-    image: rabbitmq:3.13.7-management-alpine
+    image: rabbitmq:4.3.6-management-alpine
     profiles: ["web-research"]
     restart: unless-stopped
     command: rabbitmq-server
@@ -1599,7 +1657,7 @@ services:
     mem_limit: 2g
 
   gotenberg:
-    image: gotenberg/gotenberg:8.15.0
+    image: gotenberg/gotenberg:8.37.0
     profiles: ["web-research", "qa-testing"]
     restart: unless-stopped
     expose:
@@ -1700,7 +1758,7 @@ services:
     mem_limit: 4g
 
   radare2:
-    image: radare/radare2:6.0.0
+    image: radare/radare2@sha256:88b7ff67710e12f430b269abc7714490e3a0c37e391521523148cbd6f9d2ae37
     profiles: ["devsec"]
     restart: unless-stopped
     expose:
@@ -1723,7 +1781,7 @@ services:
   # CATEGORY D: FAST CODEBASE SEARCH & AST ANALYSIS
   # ============================================================================
   hound:
-    image: ghcr.io/hound-search/hound:v0.6.0
+    image: ghcr.io/hound-search/hound@sha256:5b7fd0982ce12ebf41cfdbb8ab7aac081679667e778a8641bcd3026c98fc470e
     profiles: ["devsec", "web-research"]
     restart: unless-stopped
     expose:
@@ -1744,7 +1802,7 @@ services:
     mem_limit: 2g
 
   semgrep:
-    image: semgrep/semgrep:1.97.0
+    image: semgrep/semgrep:1.181.0
     profiles: ["devsec", "qa-testing"]
     restart: unless-stopped
     volumes:
@@ -1789,7 +1847,7 @@ services:
     mem_limit: 128m
 
   piston:
-    image: ghcr.io/engineer-man/piston:v2.0.0
+    image: ghcr.io/engineer-man/piston@sha256:2f66b7456189c4d713aa986d98eccd0b6ee16d26c7ec5f21b30e942756fd127a
     profiles: ["qa-testing", "devsec"]
     restart: unless-stopped
     expose:
@@ -1810,7 +1868,7 @@ services:
   # CATEGORY F: AGENT MEMORY, VECTOR STORES & KNOWLEDGE GRAPHS
   # ============================================================================
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    image: qdrant/qdrant:v1.19.2
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -1834,7 +1892,7 @@ services:
     mem_limit: 2g
 
   neo4j:
-    image: neo4j:5.26.0-community-bullseye
+    image: neo4j:5.26.32-community-trixie
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -1866,7 +1924,7 @@ services:
   # CATEGORY G: LLM GATEWAYS & CACHING
   # ============================================================================
   litellm:
-    image: ghcr.io/berriai/litellm:v1.54.0
+    image: ghcr.io/berriai/litellm@sha256:eb14f07d08318e638459eecc811fc3b30282f6b2397df3a98150a7d6ffd3f6d5
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -1913,7 +1971,7 @@ services:
     mem_limit: 256m
 
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
     profiles: ["qa-testing", "core"]
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
@@ -1957,7 +2015,7 @@ services:
     mem_limit: 512m
 
   jaeger:
-    image: jaegertracing/all-in-one:1.63.0
+    image: jaegertracing/jaeger:2.22.0
     profiles: ["observability"]
     restart: unless-stopped
     expose:
@@ -2050,7 +2108,30 @@ networks:
    Services exposing management or browser UIs (Jaeger, Mailpit, SearXNG, WireMock, MinIO Console) are strictly mapped to `127.0.0.1:<port>`. They must never be published to `0.0.0.0` where they could be accessed over local LAN or public networks without authentication.
 2. **Read-Only Root Filesystems & Capabilities Dropping**:
    For adversarial reverse engineering (Ghidra, Radare2) and code scanning (Semgrep), containers mount host workspaces as read-only (`:ro`). Containers drop all root capabilities (`cap_drop: ["ALL"]`) and add only required primitives (`NET_BIND_SERVICE`).
-3. **Internal Network Segmentation**:
-   Paperclip and the OpenCode v2 agent fleet share the single isolated `heretek` bridge network. Sidecars communicate over DNS aliases (e.g. `http://firecrawl:3002`, `bolt://neo4j:7687`), preventing container-to-host network leakage.
-4. **Daemon Protection via Socket Proxy (Wave 3 P1-3, option a — read-only observer)**:
+3. **Internal Network Segmentation (Wave 4 P1-12 — minimal viable)**:
+   The highest-risk segments are isolated on dedicated bridge nets while
+   Paperclip joins each of them (star topology — only Paperclip bridges
+   segments): `heretek-devsec` carries `ghidra` + `radare2` (untrusted
+   samples); `heretek-mobile` carries `docker-android` (privileged +
+   `/dev/kvm`). Everything else stays on the shared `heretek` bridge
+   deliberately: full per-category segmentation would split meshes that
+   must stay connected at runtime (`firecrawl` → redis/rabbitmq/nuq-postgres/
+   playwright; `local-ci-runner` → socket proxy) and cannot be boot-verified
+   without a live stack — tracked, not chased at the cost of breaking the
+   tree. Sidecars otherwise communicate over DNS aliases (e.g.
+   `http://firecrawl:3002`, `bolt://neo4j:7687`). Co-scheduling of
+   `--profile mobile` with `devsec`/`web-research` is additionally refused
+   by the Makefile `guard-profiles` target (fail-closed).
+4. **Service auth (Wave 4 P1-4/P1-6/P1-10)**: both redis services enforce
+   `--requirepass ${REDIS_PASSWORD}` (fail-closed `:?` guard; authed
+   healthchecks; `SEARXNG_REDIS_URL`/`REDIS_URL` carry the password — no
+   bare `redis://` URLs remain); `qdrant` enforces `QDRANT__SERVICE__API_KEY`
+   (sent by `vector-rag-spec`'s `mcp-server-qdrant==0.8.1` as `QDRANT_API_KEY`).
+   Open `curl` shell allows were removed fleet-wide (P1-6 SSRF): the only
+   sanctioned curl shape is `sabotage-qa-tester`'s exact-host piston pins.
+5. **Runner confinement (Wave 4 P1-12)**: `local-ci-runner` mounts
+   `./workspaces:/paperclip/workspaces:ro` plus exactly one writable path,
+   `./workspaces/scratch:/scratch:rw`. It can no longer write into live
+   agent checkouts.
+6. **Daemon Protection via Socket Proxy (Wave 3 P1-3, option a — read-only observer)**:
    The `docker-socket-proxy` sidecar eliminates the catastrophic vulnerability of mounting `/var/run/docker.sock` into agent containers. The proxy is GET-only by design (`POST/BUILD/EXEC/AUTH=0`, never weakened): the `local-ci-runner` container behind it is a quarantined read-only observer — it may inspect/list the daemon (containers, images, version/info) and read CI state, but cannot create, build, exec, or authenticate. Mutating CI work runs on the HOST via host-installed `act` against the host Docker daemon, never through the proxy and never from inside the runner container.

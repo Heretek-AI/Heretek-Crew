@@ -5,10 +5,13 @@
 # Usage:
 #   FILE=backups/backup-YYYYMMDD-HHMMSS.sql.gz ./scripts/restore-db.sh [--yes]
 #   ./scripts/restore-db.sh --file backups/backup-....sql.gz [--yes] [--help]
+#   FILE=backups/backup-YYYYMMDD-HHMMSS.sql.gz.age ./scripts/restore-db.sh [--yes]
+#     (age-encrypted dumps from BACKUP_AGE_RECIPIENT backups; needs
+#     BACKUP_AGE_IDENTITY=<identity-file> and the `age` binary)
 #
 # What it does:
 #   1. Requires FILE (fail-closed: refuses to guess which dump to restore).
-#   2. Requires the file to exist and end in .sql.gz or .sql.
+#   2. Requires the file to exist and end in .sql.gz, .sql, .sql.gz.age or .sql.age.
 #   3. Asks for explicit typed confirmation unless --yes / RESTORE_YES=1
 #      (restores are DESTRUCTIVE: the dump was taken with --clean, so existing
 #      objects are dropped and recreated). Without a TTY and without --yes,
@@ -26,6 +29,9 @@
 #   POSTGRES_USER ............ default: paperclip (matches docker-compose.yml)
 #   POSTGRES_DB .............. default: paperclip
 #   HEALTH_TIMEOUT_SEC ....... default: 120
+#   BACKUP_AGE_IDENTITY ...... path to the age identity file that decrypts
+#      *.age dumps (required only for age-encrypted dumps; fail-closed if
+#      absent/unreadable or if `age` is missing).
 #
 set -euo pipefail
 
@@ -63,8 +69,8 @@ if [[ ! -f "${FILE}" ]]; then
   exit 1
 fi
 case "${FILE}" in
-  *.sql.gz|*.sql) ;;
-  *) echo "error: unsupported dump extension (want .sql.gz or .sql): ${FILE}" >&2; exit 1 ;;
+  *.sql.gz|*.sql|*.sql.gz.age|*.sql.age) ;;
+  *) echo "error: unsupported dump extension (want .sql.gz, .sql, .sql.gz.age or .sql.age): ${FILE}" >&2; exit 1 ;;
 esac
 
 if [[ -f .env ]]; then
@@ -81,7 +87,23 @@ HEALTH_TIMEOUT_SEC="${HEALTH_TIMEOUT_SEC:-120}"
 command -v docker >/dev/null 2>&1 || { echo "error: docker is required" >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "error: 'docker compose' plugin is required" >&2; exit 1; }
 case "${FILE}" in
-  *.gz) command -v gunzip >/dev/null 2>&1 || { echo "error: gunzip is required" >&2; exit 1; } ;;
+  *.gz|*.gz.age) command -v gunzip >/dev/null 2>&1 || { echo "error: gunzip is required" >&2; exit 1; } ;;
+esac
+# Wave 4 P2-12: age-encrypted dumps need the identity up front (fail-closed
+# before the destructive confirmation prompt, not after it).
+BACKUP_AGE_IDENTITY="${BACKUP_AGE_IDENTITY:-}"
+case "${FILE}" in
+  *.age)
+    command -v age >/dev/null 2>&1 || { echo "error: dump is age-encrypted but 'age' is not installed" >&2; exit 1; }
+    if [[ -z "${BACKUP_AGE_IDENTITY}" ]]; then
+      echo "error: dump is age-encrypted but BACKUP_AGE_IDENTITY is unset (path to the age identity file)" >&2
+      exit 1
+    fi
+    if [[ ! -r "${BACKUP_AGE_IDENTITY}" ]]; then
+      echo "error: BACKUP_AGE_IDENTITY is not readable: ${BACKUP_AGE_IDENTITY}" >&2
+      exit 1
+    fi
+    ;;
 esac
 
 if [[ "${ASSUME_YES}" != "1" ]]; then
@@ -118,6 +140,8 @@ docker compose exec -T postgres psql -U "${POSTGRES_USER}" -d postgres \
   -v ON_ERROR_STOP=1 -q \
   -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${POSTGRES_DB}' AND pid <> pg_backend_pid();"
 case "${FILE}" in
+  *.sql.gz.age) age --decrypt -i "${BACKUP_AGE_IDENTITY}" -- "${FILE}" | gunzip -c - ;;
+  *.sql.age) age --decrypt -i "${BACKUP_AGE_IDENTITY}" -- "${FILE}" ;;
   *.gz) gunzip -c -- "${FILE}" ;;
   *) cat -- "${FILE}" ;;
 esac | docker compose exec -T postgres psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \

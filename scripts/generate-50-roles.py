@@ -669,6 +669,24 @@ def normalize_config(role):
             die("role '%s' mcp server '%s' is not a mapping" % (role_id, server_name))
         server["command"] = pin_mcp_command(role_id, server_name, server.get("command"))
 
+    # Wave 4 (P1-7) glob-specificity: fs:write allows starting with a
+    # SINGLE `*` (unanchored `*substring*`/`*.md`) match repo-wide and are
+    # rejected here at generation time (the smoke gate enforces the same
+    # rule on disk). Legitimate: `**/`-anchored globs, exact filenames,
+    # leading-literal globs (`go.*`), and the deny-tail `*`.
+    for p in cfg.get("permissions", []):
+        if (
+            isinstance(p, dict)
+            and p.get("action") == "fs:write"
+            and p.get("effect") == "allow"
+        ):
+            res = str(p.get("resource", ""))
+            if res != "*" and res.startswith("*") and not res.startswith("**/"):
+                die(
+                    "role '%s' has unanchored fs:write glob %r "
+                    "(anchor to **/ or a path prefix)" % (role_id, res)
+                )
+
     ordered = {
         "$schema": cfg["$schema"],
         "model": cfg["model"],

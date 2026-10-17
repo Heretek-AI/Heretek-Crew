@@ -16,6 +16,26 @@
 export
 
 COMPOSE := docker compose
+# Wave 4 P1-12: privileged/high-capability sidecars must never share a
+# scheduler invocation with the sensitive profiles. The `mobile` profile
+# (privileged docker-android + /dev/kvm) is refused together with
+# `devsec` (untrusted-sample RE tooling) or `web-research` (untrusted
+# remote content ingestion). Fail-closed: any sidecar-up invocation
+# listing mobile alongside devsec/web-research exits 1 before docker runs.
+# Static gate: scripts/smoke-test.sh asserts this guard text is present.
+SIDECAR_PROFILES ?=
+guard-profiles: ## Fail-closed guard: refuse mobile+devsec/web-research co-scheduling.
+	@case " $(SIDECAR_PROFILES) " in \
+	  *" mobile "*|*"mobile,"*|*",mobile"*) \
+	    case " $(SIDECAR_PROFILES) " in \
+	      *" devsec "*|*"devsec,"*|*",devsec"*|*" web-research "*|*"web-research,"*|*",web-research"*) \
+	        echo "error: refusing to co-schedule --profile mobile with devsec/web-research (P1-12: privileged emulator must stay isolated; run mobile alone on a dedicated host)" >&2; \
+	        exit 1;; \
+	    esac;; \
+	esac
+
+sidecars-up: guard-profiles ## Start sidecars: make sidecars-up SIDECAR_PROFILES="web-research" (mobile isolated; see guard-profiles).
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.sidecars.yml $(foreach p,$(SIDECAR_PROFILES),--profile $(p)) up -d
 COMPOSE_PREBUILT := $(COMPOSE) -f docker-compose.yml -f docker-compose.prebuilt.yml
 BACKUP_SCRIPT := ./scripts/backup-db.sh
 RESTORE_SCRIPT := ./scripts/restore-db.sh
@@ -24,7 +44,7 @@ GENERATE_ROLES_SCRIPT := ./scripts/generate-50-roles.py
 SMOKE_SCRIPT := ./scripts/smoke-test.sh
 
 .DEFAULT_GOAL := help
-.PHONY: help build up down logs seed-50 generate-roles backup restore test prebuilt-pull prebuilt-up prebuilt-config
+.PHONY: help build up down logs seed-50 generate-roles backup restore test prebuilt-pull prebuilt-up prebuilt-config guard-profiles sidecars-up
 
 help: ## Show this help (lists all documented targets).
 	@echo "Heretek-Crew — Paperclip + OpenCode v2 stack"

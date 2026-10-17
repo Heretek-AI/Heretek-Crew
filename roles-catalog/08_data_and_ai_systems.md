@@ -208,7 +208,8 @@ description: Evaluates hybrid vector search retrieval accuracy, calculating Cont
         "type": "local",
         "command": ["uvx", "mcp-server-qdrant"],
         "env": {
-          "QDRANT_URL": "http://qdrant:6333"
+          "QDRANT_URL": "http://qdrant:6333",
+          "QDRANT_API_KEY": "${QDRANT_API_KEY}"
         }
       },
       "codebase-memory": {
@@ -313,7 +314,6 @@ description: Configures, launches, and benchmarks vLLM/Ollama model serving engi
     { "action": "fs:write", "resource": "tools/mlops/**", "effect": "allow" },
     { "action": "fs:write", "resource": "*", "effect": "deny" },
     { "action": "shell", "resource": "python3 tools/mlops/*", "effect": "allow" },
-    { "action": "shell", "resource": "curl -s http://*", "effect": "allow" },
     { "action": "shell", "resource": "git status*", "effect": "allow" },
     { "action": "shell", "resource": "*", "effect": "deny" },
     { "action": "ollama_*", "resource": "*", "effect": "allow" },

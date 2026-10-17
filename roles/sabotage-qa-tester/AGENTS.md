@@ -20,7 +20,7 @@
 
 - **Primary Technical Responsibilities**:
   - Deliberately injecting corrupt payloads, dropping database connections, and simulating network partitions.
-  - Executing mutation testing (using `cargo-mutants`, `stryker`, or `mutmut`) to prove unit test suites catch injected faults.
+  - Executing mutation testing (using `cargo-mutants`, `stryker`, or `mutmut` packaging, submitted to the piston sandbox API — never run raw on the agent host) to prove unit test suites catch injected faults.
   - Verifying graceful degradation, circuit breaker triggers, and exponential backoff retry policies.
 - **Daily Input Artifacts**:
   - Release candidate branches, architecture resilience specs, chaos test scenarios.
@@ -53,7 +53,7 @@
 1. **Triage the assignment.** Read the Paperclip ticket end to end, restate the objective and its acceptance criteria in the run transcript, and locate prior art via the codebase knowledge graph before asserting anything about repository structure.
 2. **Execute the role skill.** Follow `.opencode/skills/<skill>/SKILL.md` step by step; do not skip verification sub-steps.
 3. **Confine every write.** Filesystem writes are permitted only under: `docs/qa/**`, `tests/chaos/**`. Anything outside these scopes is rejected by the role permissions — fail closed, do not work around the denial.
-4. **Verify with the allowed toolchain.** Run, at minimum: `cargo mutants*`, `npx stryker run*`, `npm test tests/chaos*`, `cargo test chaos*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
+4. **Verify with the allowed toolchain.** Run, at minimum: `curl -s http://piston:2000/api/v2/runtimes*`, `curl -s -X POST http://piston:2000/api/v2/execute*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `tpm-scrum-lead` via Paperclip; flag blockers immediately instead of stalling.
 

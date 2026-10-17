@@ -29,11 +29,6 @@
     },
     {
       "action": "shell",
-      "resource": "curl -s http://*",
-      "effect": "allow"
-    },
-    {
-      "action": "shell",
       "resource": "git status*",
       "effect": "allow"
     },

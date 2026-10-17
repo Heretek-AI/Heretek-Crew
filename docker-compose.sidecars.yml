@@ -7,18 +7,17 @@ services:
   # CATEGORY A: WEB INGESTION, CRAWLING & SEARCH
   # ============================================================================
   searxng-redis:
-    image: redis:7.4.1-alpine
+    # Wave 4 P1-4: redis:7.4.1-alpine -> 7.4.11-alpine (fixes CVE-2025-49844
+    # RCE <7.4.6; Hub tag 7.4.11-alpine verified live 2026-10-17). Authenticated
+    # via REDIS_PASSWORD (fail-closed :? guard); healthcheck authenticates.
+    image: redis:7.4.11-alpine
     profiles: ["web-research"]
     restart: unless-stopped
-    # AUTH NOTE (P1-6): no Redis password set (no requirepass) — reachable
-    # unauthenticated from any heretek-networked container. Same posture as
-    # firecrawl-redis below. Mitigation: keep untrusted workloads off this
-    # network; adding requirepass + client secrets is a tracked item.
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"]
     expose:
       - "6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD:?} ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -41,7 +40,7 @@ services:
       - "127.0.0.1:8888:8080"
     environment:
       SEARXNG_BASE_URL: "http://searxng:8080/"
-      SEARXNG_REDIS_URL: "redis://searxng-redis:6379/0"
+      SEARXNG_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@searxng-redis:6379/0"
       SEARXNG_SECRET: "${SEARXNG_SECRET:?SEARXNG_SECRET must be set in .env}"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
@@ -54,14 +53,17 @@ services:
     mem_limit: 1g
 
   firecrawl-redis:
-    image: redis:7.4.1-alpine
+    # Wave 4 P1-4: redis:7.4.1-alpine -> 7.4.11-alpine (CVE-2025-49844).
+    # Authenticated via REDIS_PASSWORD (shared with searxng-redis; one
+    # secret, fail-closed :? guard); healthcheck authenticates.
+    image: redis:7.4.11-alpine
     profiles: ["web-research"]
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"]
     expose:
       - "6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD:?} ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -179,8 +181,8 @@ services:
       LOGGING_LEVEL: "warn"
       USE_DB_AUTHENTICATION: "false"
       HARNESS_STARTUP_TIMEOUT_MS: "60000"
-      REDIS_URL: "redis://firecrawl-redis:6379"
-      REDIS_RATE_LIMIT_URL: "redis://firecrawl-redis:6379"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@firecrawl-redis:6379"
+      REDIS_RATE_LIMIT_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@firecrawl-redis:6379"
       PLAYWRIGHT_MICROSERVICE_URL: "http://firecrawl-playwright:3000/scrape"
       NUQ_RABBITMQ_URL: "amqp://firecrawl-rabbitmq:5672"
       POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
@@ -294,6 +296,13 @@ services:
     image: blacktop/ghidra:11.2
     profiles: ["devsec"]
     restart: unless-stopped
+    # Wave 4 P1-12 SEGMENTATION: untrusted-sample workloads (ghidra,
+    # radare2) move off the shared heretek bridge onto the isolated
+    # heretek-devsec net. paperclip joins that net too (see the paperclip
+    # extension at the end of this file), so agent reachability is
+    # preserved while lateral movement to web-research/ai-gateway/qa
+    # sidecars is cut. Remaining single-net services are tracked (see
+    # NETWORKS block rationale below).
     expose:
       - "1337"
     environment:
@@ -313,7 +322,7 @@ services:
       retries: 3
       start_period: 30s
     networks:
-      - heretek
+      - heretek-devsec
     cpus: "2.0"
     mem_limit: 4g
 
@@ -338,7 +347,7 @@ services:
       timeout: 3s
       retries: 3
     networks:
-      - heretek
+      - heretek-devsec
     cpus: "1.0"
     mem_limit: 1g
 
@@ -369,10 +378,9 @@ services:
     mem_limit: 2g
 
   semgrep:
-    image: semgrep/semgrep:1.97.0
-    # VERSION PLAN (P1-9): ~1yr behind upstream; security-scanner drift
-    # matters. Bump is scheduled with rule-parity verification, NOT done
-    # here — no breaking bump without testing (see REMEDIATION_LOG.md).
+    # Wave 4 P1-10: semgrep/semgrep:1.97.0 -> 1.181.0 (Hub tag verified
+    # live 2026-10-17; ~84 releases of rule/detection drift closed).
+    image: semgrep/semgrep:1.181.0
     profiles: ["devsec", "qa-testing"]
     restart: unless-stopped
     volumes:
@@ -432,6 +440,15 @@ services:
     # Pinned by digest of upstream 'latest' 2026-10-17 (skopeo inspect → sha256:2f66b745...).
     # Upstream publishes ONLY the 'latest' tag (v2.0.0 was GHCR 404); per zero-:latest
     # policy the mutable tag is NOT used — the digest above is exact and immutable.
+    # Wave 4 P1-10 (piston vendoring): a digest/vendor under
+    # ghcr.io/heretek-ai/piston:<semver> CANNOT be minted from this env
+    # (GHCR package-versions API -> 401 without auth; nothing can be pushed
+    # from here — same fail-closed pattern as Wave 3 P1-9). Maintainer
+    # release step (needs network + push rights): build piston from source
+    # at a pinned release tag, `docker tag piston ghcr.io/heretek-ai/piston:<semver>`,
+    # `docker push`, then replace the digest below with the pushed digest
+    # (verify with `docker manifest inspect` first). Until then the exact
+    # upstream digest pin stays (no :latest tag used, no digest invented).
     # DECISION NEEDED (product): vendor/self-build piston to ghcr.io/heretek-ai/piston:<semver>
     # to remove dependence on a floating upstream tag (see AUDIT_REPORT_FINDINGS.md P0-1e).
     image: ghcr.io/engineer-man/piston@sha256:2f66b7456189c4d713aa986d98eccd0b6ee16d26c7ec5f21b30e942756fd127a
@@ -455,20 +472,22 @@ services:
   # CATEGORY F: AGENT MEMORY, VECTOR STORES & KNOWLEDGE GRAPHS
   # ============================================================================
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    # Wave 4 P1-10: qdrant/qdrant:v1.12.5 -> v1.19.2 (Hub tag verified live
+    # 2026-10-17; 7 minors). Auth: QDRANT__SERVICE__API_KEY (OSS image
+    # supports it; fail-closed :? guard). Clients must send the key:
+    # vector-rag-spec's mcp-server-qdrant==0.8.1 already passes it via
+    # QDRANT_API_KEY env (PyPI latest 0.8.1, requires qdrant-client>=1.12.0
+    # — compatible with server v1.19; no downgrade).
+    image: qdrant/qdrant:v1.19.2
     profiles: ["ai-gateway"]
     restart: unless-stopped
-    # AUTH NOTE (P1-6): qdrant serves unauthenticated on the heretek
-    # network (no API key set — upstream gates keys behind paid tiers).
-    # Any compromised heretek-networked container can read/write collections.
-    # Mitigation: never attach untrusted workloads to this network; API-key
-    # or network-policy enforcement is a tracked hardening item.
     expose:
       - "6333"
       - "6334"
     ports:
       - "127.0.0.1:6333:6333"
     environment:
+      QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY:?QDRANT_API_KEY must be set in .env}"
       QDRANT__SERVICE__ENABLE_TLS: "false"
       QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS: "4"
     volumes:
@@ -484,7 +503,11 @@ services:
     mem_limit: 2g
 
   neo4j:
-    image: neo4j:5.26.0-community-bullseye
+    # Wave 4 P1-10: neo4j:5.26.0-community-bullseye ->
+    # 5.26.32-community-trixie (Hub tag verified live 2026-10-17; bullseye
+    # oldstable EOL ~2026, misses Bouncy Castle/log4j fixes; 5.26 LTS line
+    # kept deliberately, newest 5.26.x patch taken).
+    image: neo4j:5.26.32-community-trixie
     profiles: ["ai-gateway"]
     restart: unless-stopped
     expose:
@@ -567,12 +590,18 @@ services:
   minio:
     # Migrated to quay.io 2026-10-17: Docker Hub minio/minio is withdrawn
     # (Hub API returns {"message":"object not found"} for repo and all tags).
-    # NOTE: quay.io auth-gates anonymous manifest inspection (401 even for the
-    # public repo page/registry token flow), so no digest could be resolved
-    # without quay credentials — exact RELEASE tag pin retained, digest PENDING
-    # until authed pulls are available (quay.io auth-gates anonymous manifest
-    # inspection; see REMEDIATION_LOG.md P0-1f). Not a stub: the tag pin is
-    # exact and the image pulls wherever quay credentials exist.
+    # Wave 4 P1-10: authed skopeo digest-pin ATTEMPTED 2026-10-17 and
+    # re-confirmed auth-gated (`skopeo inspect
+    # docker://quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z` ->
+    # "unauthorized: access to the requested resource is not authorized";
+    # quay.io API -> 401; no quay credentials exist in this env). Exact
+    # RELEASE tag pin retained, digest PENDING until authed pulls exist —
+    # no digest invented. AGPLv3 IMPLICATION: minio/minio is AGPLv3-only;
+    # running it as an unmodified sidecar over the network triggers no
+    # source-distribution duty for our code, but any modification/redistribution
+    # of the image itself must ship source (tracked product decision: evaluate
+    # an S3 mock such as localstack at the next bump cycle).
+    # Not a stub: the tag pin is exact and pulls wherever quay credentials exist.
     image: quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
     profiles: ["qa-testing", "core"]
     restart: unless-stopped
@@ -617,10 +646,13 @@ services:
     mem_limit: 512m
 
   jaeger:
-    image: jaegertracing/all-in-one:1.63.0
-    # VERSION PLAN (P1-9): upstream v1 is deprecated in favor of
-    # jaegertracing/jaeger:2.x. v2 migration is scheduled medium-term, NOT
-    # done here — no breaking bump without testing (see REMEDIATION_LOG.md).
+    # Wave 4 P1-10: jaegertracing/all-in-one:1.63.0 (v1 EOL 2025-12-31) ->
+    # jaegertracing/jaeger:2.22.0 (Hub tag verified live 2026-10-17). v2
+    # keeps the all-in-one UI on :16686 and OTLP on :4317/:4318; the
+    # COLLECTOR_OTLP_ENABLED env is v1-era (harmless if ignored by v2 —
+    # retained so a v2 boot that rejects unknown envs fails visibly, not
+    # silently; verify on first observability-profile up).
+    image: jaegertracing/jaeger:2.22.0
     profiles: ["observability"]
     restart: unless-stopped
     expose:
@@ -649,6 +681,11 @@ services:
     # PROFILE GATING (P1-6): privileged + /dev/kvm. Enable --profile mobile
     # only on dedicated test hosts, never alongside untrusted workloads or
     # with the devsec profile on shared infrastructure.
+    # Wave 4 P1-12 SEGMENTATION: the privileged emulator moves off the
+    # shared heretek bridge onto the isolated heretek-mobile net (paperclip
+    # joins it too — see the paperclip extension at the end of this file).
+    # Enforced additionally by the Makefile co-scheduling guard, which
+    # refuses --profile mobile together with devsec/web-research.
     profiles: ["mobile"]
     restart: unless-stopped
     privileged: true
@@ -672,7 +709,7 @@ services:
       retries: 5
       start_period: 60s
     networks:
-      - heretek
+      - heretek-mobile
     cpus: "2.0"
     mem_limit: 4g
 
@@ -704,13 +741,35 @@ services:
     command: ["sleep", "infinity"]
     environment:
       DOCKER_HOST: "tcp://docker-socket-proxy:2375"
+    # Wave 4 P1-12 (runner hardening): the shared checkout mounts
+    # read-only; the runner gets exactly one writable path, the dedicated
+    # /scratch volume (bind-mounted from ./workspaces/scratch, created by
+    # compose on first up). Anything the runner must persist goes to
+    # /scratch — the quarantined observer can no longer write into live
+    # agent checkouts.
     volumes:
       - ./.github/workflows:/workflows:ro
-      - ./workspaces:/paperclip/workspaces
+      - ./workspaces:/paperclip/workspaces:ro
+      - ./workspaces/scratch:/scratch:rw
     networks:
       - heretek
     cpus: "2.0"
     mem_limit: 4g
+
+  # ----------------------------------------------------------------------------
+  # WAVE 4 P1-12: PAPERCLIP SEGMENT ATTACHMENT (compose-merge extension)
+  # ----------------------------------------------------------------------------
+  # paperclip is defined in docker-compose.yml (base heretek net only). This
+  # merge entry attaches it to the two isolated segment nets (heretek-devsec,
+  # heretek-mobile declared below) so agent reachability into ghidra/radare2
+  # and docker-android is preserved after those services leave the shared
+  # bridge. Compose merges the networks lists across the -f files; `config`
+  # on every profile combo must stay green (Wave 4 acceptance).
+  paperclip:
+    networks:
+      - heretek
+      - heretek-devsec
+      - heretek-mobile
 
 # ==============================================================================
 # VOLUMES
@@ -744,5 +803,20 @@ volumes:
 networks:
   heretek:
     name: heretek
+    driver: bridge
+  # Wave 4 P1-12 SEGMENTATION (minimal viable): the two highest-risk
+  # segments get isolated bridge nets (ghidra+radare2 handle untrusted
+  # samples; docker-android is privileged + /dev/kvm). paperclip joins both
+  # (extension above) so only it bridges the segments. Everything else stays
+  # on the shared heretek bridge deliberately: full per-category segmentation
+  # (web/ai/qa/obs) would split meshes that must stay connected at runtime
+  # (firecrawl -> redis/rabbitmq/nuq-postgres/playwright; runner -> proxy)
+  # and cannot be boot-verified without a live stack — tracked hardening
+  # item, NOT chased here at the cost of breaking the tree.
+  heretek-devsec:
+    name: heretek-devsec
+    driver: bridge
+  heretek-mobile:
+    name: heretek-mobile
     driver: bridge
 

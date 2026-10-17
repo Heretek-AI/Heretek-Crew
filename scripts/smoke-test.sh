@@ -29,7 +29,8 @@
 #                       verbs + deny tails, negative prefix-chain probes
 #                       denied by the reference matcher, seed sets
 #                       dangerouslySkipPermissions False, socket proxy
-#                       denies POST/BUILD/EXEC)
+#                       denies POST/BUILD/EXEC, fs:write glob-specificity
+#                       (no unanchored *substring* allows))
 #                    4. seed dry-run emits company + agent payloads:
 #                       seed-50-fleet.sh (1 company + 50 agents =
 #                       51 payloads, fleet total == cap with no WARNING)
@@ -142,7 +143,7 @@ section "2. docker compose config"
 # POSTGRES_READONLY_URL, GITHUB_TOKEN, KUBECONFIG_READONLY_PATH) need
 # dummies too; the kubeconfig dummy points at a real repo file so the
 # bind-mount source exists. Defined once for every config invocation below.
-SMOKE_DUMMY_ENV=(POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ POSTGRES_READER_PASSWORD=__smoke_only__ POSTGRES_READONLY_URL=postgres://paperclip_reader:__smoke_only__@postgres:5432/paperclip GITHUB_TOKEN=__smoke_only__ KUBECONFIG_READONLY_PATH=./secrets/.gitkeep)
+SMOKE_DUMMY_ENV=(POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ POSTGRES_READER_PASSWORD=__smoke_only__ POSTGRES_READONLY_URL=postgres://paperclip_reader:__smoke_only__@postgres:5432/paperclip GITHUB_TOKEN=__smoke_only__ KUBECONFIG_READONLY_PATH=./secrets/.gitkeep REDIS_PASSWORD=__smoke_only__ QDRANT_API_KEY=__smoke_only__ SEARXNG_SECRET=__smoke_only__ FIRECRAWL_DB_PASSWORD=__smoke_only__ BROWSERLESS_TOKEN=__smoke_only__ NEO4J_PASSWORD=__smoke_only__ LITELLM_MASTER_KEY=__smoke_only__ MINIO_ROOT_USER=__smoke_only__ MINIO_ROOT_PASSWORD=__smoke_only__)
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   skip "'docker compose' not available; config validation skipped"
 else
@@ -413,6 +414,126 @@ else
   bad "non-root runtime note missing from docker/Dockerfile"
 fi
 
+# --- 3a. Wave 4 image pins + service auth (P1-4, P1-10, P1-6, P1-12) -----------
+# Every bumped tag is asserted present AND its predecessor absent (fail
+# closed on drift back). Auth guards (requirepass, API keys, authed URLs)
+# and segmentation nets are asserted alongside — a bump without its auth
+# wiring is a regression, not a fix.
+section "3a. Wave 4 image pins + service auth"
+# P1-4: redis 7.4.11-alpine x2, old 7.4.1 gone (bare tag, not the
+# 7.4.11-alpine substring — anchored with a trailing quote/space guard).
+if [[ "$(grep -c 'image: redis:7.4.11-alpine' docker-compose.sidecars.yml)" -eq 2 ]] \
+  && ! grep -qE 'image: redis:7\.4\.1-alpine' docker-compose.sidecars.yml; then
+  ok "pin present: redis:7.4.11-alpine x2 (no 7.4.1-alpine remains)"
+else
+  bad "pin MISSING or REGRESSED: want exactly 2x redis:7.4.11-alpine, zero redis:7.4.1-alpine"
+fi
+for w4pin in 'semgrep/semgrep:1.181.0' 'qdrant/qdrant:v1.19.2' 'neo4j:5.26.32-community-trixie' 'jaegertracing/jaeger:2.22.0'; do
+  if grep -q "${w4pin}" docker-compose.sidecars.yml; then ok "pin present: ${w4pin}"; else bad "pin MISSING: ${w4pin}"; fi
+done
+for w4old in 'semgrep/semgrep:1.97.0' 'qdrant/qdrant:v1.12.5' 'neo4j:5.26.0-community-bullseye' 'jaegertracing/all-in-one:1.63.0'; do
+  # (image: lines only — migration comments above legitimately name the
+  # predecessor for provenance; only a live pin may not drift back).
+  if grep -E '^[[:space:]]*image:' docker-compose.sidecars.yml | grep -q "${w4old}"; then bad "pin REGRESSED: ${w4old} still present"; else ok "predecessor gone: ${w4old}"; fi
+done
+# minio: exact quay RELEASE tag retained (digest auth-gated, tracked) + AGPL note.
+if grep -q 'quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z' docker-compose.sidecars.yml \
+  && grep -q 'AGPL' docker-compose.sidecars.yml; then
+  ok "minio exact RELEASE tag pin retained + AGPL implication noted (digest pending authed pull)"
+else
+  bad "minio pin or AGPL note MISSING in docker-compose.sidecars.yml"
+fi
+# piston: upstream digest pin retained, vendoring release step documented, no :latest.
+if grep -q 'ghcr.io/engineer-man/piston@sha256:' docker-compose.sidecars.yml \
+  && grep -q 'ghcr.io/heretek-ai/piston' docker-compose.sidecars.yml \
+  && ! grep -qE 'image: ghcr.io/engineer-man/piston:[a-z]' docker-compose.sidecars.yml; then
+  ok "piston digest pin retained + ghcr.io/heretek-ai vendoring step documented (no floating tag)"
+else
+  bad "piston pin or vendoring note MISSING/REGRESSED in docker-compose.sidecars.yml"
+fi
+# P1-4/P1-6 auth: requirepass on both redises, authed healthchecks, authed URLs (fail-closed, no bare redis://).
+if grep -c -- '--requirepass' docker-compose.sidecars.yml | grep -qx '2' \
+  && grep -q 'redis-cli -a' docker-compose.sidecars.yml \
+  && grep -q 'SEARXNG_REDIS_URL: "redis://:${REDIS_PASSWORD:?' docker-compose.sidecars.yml \
+  && grep -q 'REDIS_URL: "redis://:${REDIS_PASSWORD:?' docker-compose.sidecars.yml \
+  && ! grep -qE 'redis://(searxng-redis|firecrawl-redis):6379' docker-compose.sidecars.yml; then
+  ok "redis auth wired: requirepass x2 + authed healthchecks + authed SEARXNG/REDIS URLs (no bare redis://)"
+else
+  bad "redis auth REGRESSED: requirepass/healthcheck/authed-URL wiring incomplete"
+fi
+# P1-10/P1-6 auth: qdrant API key enforced + MCP client sends it.
+if grep -q 'QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY:?' docker-compose.sidecars.yml \
+  && grep -q '"QDRANT_API_KEY": "${QDRANT_API_KEY}"' roles/vector-rag-spec/opencode/opencode.json; then
+  ok "qdrant auth wired: QDRANT__SERVICE__API_KEY enforced + vector-rag-spec MCP sends QDRANT_API_KEY"
+else
+  bad "qdrant auth REGRESSED: server key or MCP client key wiring missing"
+fi
+# P1-6/P1-12: open curl allows gone fleet-wide (exact-host piston pins are
+# the only sanctioned curl shape); segmentation nets + paperclip attachment
+# present; runner workspaces ro + dedicated scratch rw.
+if grep -rn '"resource": "curl -s http://\*"' roles/*/opencode/opencode.json 2>/dev/null | grep -q .; then
+  bad "open curl allow 'curl -s http://*' still present (P1-6 SSRF primitive)"
+else
+  ok "open curl 'curl -s http://*' gone fleet-wide"
+fi
+if grep -rn '"resource": "curl -sI\*"' roles/*/opencode/opencode.json 2>/dev/null | grep -q .; then
+  bad "open curl allow 'curl -sI*' still present (P1-6 SSRF primitive)"
+else
+  ok "open curl 'curl -sI*' gone fleet-wide"
+fi
+if grep -q 'heretek-devsec:' docker-compose.sidecars.yml \
+  && grep -q 'heretek-mobile:' docker-compose.sidecars.yml \
+  && grep -q 'networks:' docker-compose.sidecars.yml; then
+  ok "segmentation nets heretek-devsec + heretek-mobile declared"
+else
+  bad "segmentation nets MISSING in docker-compose.sidecars.yml"
+fi
+if grep -q 'refusing to co-schedule --profile mobile' Makefile \
+  && grep -q '^guard-profiles:' Makefile \
+  && grep -q '^sidecars-up: guard-profiles' Makefile; then
+  ok "Makefile co-scheduling guard present (mobile+devsec/web-research refused)"
+else
+  bad "Makefile co-scheduling guard MISSING (P1-12)"
+fi
+if grep -q '\./workspaces:/paperclip/workspaces:ro' docker-compose.sidecars.yml \
+  && grep -q '\./workspaces/scratch:/scratch:rw' docker-compose.sidecars.yml; then
+  ok "runner workspaces ro + dedicated /scratch rw (P1-12)"
+else
+  bad "runner workspace hardening MISSING (want :ro + /scratch:rw)"
+fi
+# P2-7/P2-8 + goal-plugin scope: server-github already at target (confirm,
+# do not regress); fleet playwright is @executeautomation (NOT @playwright/mcp);
+# goal-plugin is director-only.
+if grep -q '@modelcontextprotocol/server-github@2025.4.8' roles/exec-director/opencode/opencode.json; then
+  ok "server-github@2025.4.8 confirmed at target (no regression)"
+else
+  bad "server-github pin REGRESSED (want @2025.4.8)"
+fi
+if grep -rln '@playwright/mcp' roles/*/opencode/opencode.json 2>/dev/null | grep -q .; then
+  bad "@playwright/mcp present in fleet (fleet standard is @executeautomation/playwright-mcp-server)"
+else
+  ok "no @playwright/mcp in fleet (fleet uses @executeautomation/playwright-mcp-server@1.0.12; P2-8 discrepancy documented)"
+fi
+if [[ "$(grep -rln 'opencode-goal-plugin' roles/*/opencode/opencode.json | wc -l)" -eq 1 ]] \
+  && grep -q 'opencode-goal-plugin' roles/exec-director/opencode/opencode.json; then
+  ok "goal-plugin scope confirmed director-only (exec-director)"
+else
+  bad "goal-plugin scope DRIFTED (want exactly exec-director)"
+fi
+# sabotage-qa-tester pinned to piston/CI (no raw toolchain exec on host).
+if ! python3 -c '
+import json
+perms = json.load(open("roles/sabotage-qa-tester/opencode/opencode.json"))["permissions"]
+shell = [p["resource"] for p in perms if p.get("action")=="shell" and p.get("effect")=="allow"]
+banned = [s for s in shell if s.startswith(("cargo mutants", "npx stryker", "npm test tests/chaos", "cargo test chaos"))]
+assert not banned, "raw toolchain exec remains: %s" % banned
+assert any("piston:2000/api/v2/execute" in s for s in shell), "no piston execute pin"
+' 2>"${TMP}/sabotage.err"; then
+  bad "sabotage-qa-tester NOT pinned to piston/CI: $(head -c 200 "${TMP}/sabotage.err")"
+else
+  ok "sabotage-qa-tester executes via piston API (no raw host toolchain)"
+fi
+
 # --- 3b. permission deny enforcement (static denied-tool simulation) -----------
 # Simulates the denied-tool probe: asserts no role carries a bare
 # allow-all, every role ends in an explicit shell deny, the seed payload
@@ -515,7 +636,7 @@ for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
         problems.append("%s: harness allows without the harness plugin" % role)
 if problems:
     sys.exit("; ".join(problems))
-print("51 roles allow exactly the 14-tool manifest + deny tail")
+print("50 roles allow exactly the 14-tool manifest + deny tail")
 ' >"${TMP}/harness.out" 2>"${TMP}/harness.err"; then
   ok "harness manifest enforced ($(cat "${TMP}/harness.out"))"
 else
@@ -594,6 +715,35 @@ print("filesystem MCP roots re-rooted off the shared workspace")
   ok "$(cat "${TMP}/fsroot.out")"
 else
   bad "filesystem MCP root VIOLATION: $(head -c 300 "${TMP}/fsroot.err")"
+fi
+# Wave 4 P1-7: fs:write glob-specificity lint. Any fs:write ALLOW whose
+# resource starts with a SINGLE `*` (unanchored `*substring*`, `*.md`,
+# `*config*`) FAILs closed — such globs match repo-wide. Legitimate shapes
+# that must NOT trip the gate: `**/`-anchored globs (`**/package-lock.json`,
+# `docs/**/*.md`), exact filenames (`package.json`, `go.mod`), bare
+# filename prefixes WITHOUT a leading star (`go.*`, `playwright.config.*`,
+# `build.gradle*` — cwd-scoped, narrowed separately), the deny-tail `*`,
+# and shell prefix allows (out of scope — this gate scans fs:write exactly).
+if python3 -c '
+import glob, json, sys
+problems = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    for p in json.load(open(f)).get("permissions", []):
+        if p.get("action") != "fs:write" or p.get("effect") != "allow":
+            continue
+        res = str(p.get("resource", ""))
+        if res == "*":
+            continue
+        if res.startswith("*") and not res.startswith("**/"):
+            problems.append("%s: unanchored fs:write glob %r (anchor to **/ or a path prefix)" % (role, res))
+if problems:
+    sys.exit("; ".join(problems))
+print("all fs:write allows anchored (**/, path prefix, or exact filename)")
+' >"${TMP}/globlint.out" 2>"${TMP}/globlint.err"; then
+  ok "fs:write glob-specificity lint ($(cat "${TMP}/globlint.out"))"
+else
+  bad "glob-specificity VIOLATION: $(head -c 400 "${TMP}/globlint.err")"
 fi
 # Wave 2 P0-5: git-drift-coord must not hold history-rewrite primitives.
 if python3 -c '

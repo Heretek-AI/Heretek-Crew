@@ -24,11 +24,6 @@
     },
     {
       "action": "shell",
-      "resource": "curl -sI*",
-      "effect": "allow"
-    },
-    {
-      "action": "shell",
       "resource": "git status*",
       "effect": "allow"
     },

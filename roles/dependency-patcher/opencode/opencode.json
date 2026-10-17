@@ -9,7 +9,12 @@
     },
     {
       "action": "fs:write",
-      "resource": "*lock*",
+      "resource": "**/package-lock.json",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/pnpm-lock.yaml",
       "effect": "allow"
     },
     {

@@ -9,7 +9,12 @@
     },
     {
       "action": "fs:write",
-      "resource": "*lint*",
+      "resource": "**/.eslintrc.json",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/eslint.config.js",
       "effect": "allow"
     },
     {

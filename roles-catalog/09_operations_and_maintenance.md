@@ -67,7 +67,8 @@ description: Upgrades dependencies in lockfiles, executes test suites, and verif
   "$schema": "https://opencode.ai/config.json",
   "permissions": [
     { "action": "fs:read", "resource": "**", "effect": "allow" },
-    { "action": "fs:write", "resource": "*lock*", "effect": "allow" },
+    { "action": "fs:write", "resource": "**/package-lock.json", "effect": "allow" },
+    { "action": "fs:write", "resource": "**/pnpm-lock.yaml", "effect": "allow" },
     { "action": "fs:write", "resource": "package.json", "effect": "allow" },
     { "action": "fs:write", "resource": "Cargo.toml", "effect": "allow" },
     { "action": "fs:write", "resource": "Cargo.lock", "effect": "allow" },

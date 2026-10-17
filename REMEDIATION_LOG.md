@@ -927,3 +927,92 @@ Test results: `smoke --check-only` → **211 passed, 0 failed, 3 skipped**
 `shellcheck -S warning scripts/*.sh` clean; `bash -n` all OK;
 `seed-50-fleet.sh --dry-run` → cap == sum; dispatch `--dry-run` shows the
 new role line; `git status` shows modifications only, no commits.
+
+---
+
+# Stage 6 Remediation Log — Wave 4 Hardening + version bumps (P1-4, P1-5, P1-6, P1-7, P1-10, P1-12, P2, P2-7/P2-8)
+
+**Worktree:** `/home/john/Projects/Heretek-Crew/.worktrees/wave4` (branch `remediate/wave4-hardening-versions`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` + coordinator recon pre-conditions (re-verified empirically below)
+**Status:** all Wave 4 items closed or honestly documented as unverifiable/tracked. Changes left UNCOMMITTED for QA/Drift-Guard. No commits, no merges, no subagents used.
+
+## Live-registry verification (BEFORE committing to tags — command + output)
+
+| Image | Probe | Result |
+|---|---|---|
+| `redis:7.4.11-alpine` | Hub tag API `.../library/redis/tags/7.4.11-alpine` → `200`, amd64 digest `sha256:ca0acbb1…` | VERIFIED |
+| `semgrep/semgrep:1.181.0` | Hub tags `ordering=last_updated` → `1.181.0` newest (non-canary) | VERIFIED |
+| `qdrant/qdrant:v1.19.2` | Hub tag API → `200`, amd64 digest `sha256:0e8273b9…` | VERIFIED |
+| `neo4j:5.26.32-community-trixie` | Hub tag API → `200`; `5.26.30-community-trixie` also exists (9 `5.26.30*` tags) — newest 5.26.x patch `5.26.32` taken per `5.26.30+` brief | VERIFIED |
+| `jaegertracing/jaeger:2.22.0` | Hub tags → `2.22.0` newest; tag API → `200` | VERIFIED (`:2.22` brief → exact `:2.22.0`) |
+| `mcp-server-qdrant==0.8.1` | PyPI `.../mcp-server-qdrant/json` → version `0.8.1` (latest), requires `qdrant-client>=1.12.0` — compatible with server v1.19 | VERIFIED, kept, not downgraded |
+| `server-github@2025.4.8` | already at target in all 7 roles | CONFIRMED, not regressed |
+| `@executeautomation/playwright-mcp-server` | npm dist-tags → `latest: 1.0.12` (fleet pin current, 5 consumers) | CONFIRMED current |
+| `@playwright/mcp` | npm dist-tags → `latest: 0.0.83` — a DIFFERENT, fleet-unused package | DISCREPANCY documented, no migration invented |
+| `@prevalentware/opencode-goal-plugin` | npm dist-tags → `latest: 0.1.64`; `grep -rln` → exactly 1 role (`exec-director`) | DIRECTOR-ONLY confirmed + smoke-asserted |
+| minio digest | `skopeo inspect docker://quay.io/minio/minio:RELEASE.2024-11-07…` → `unauthorized`; quay API → `401` (no creds in env) | UNVERIFIABLE honestly; exact tag kept, AGPL noted |
+| piston vendor | GHCR package API → `401 Requires authentication`; push impossible | UNPUBLISHABLE from here honestly; release step documented |
+
+## P1-4: redis ×2 → 7.4.11-alpine + requirepass (`docker-compose.sidecars.yml`, `.env.example`)
+
+- Both images → `redis:7.4.11-alpine`; `command` gains `--requirepass ${REDIS_PASSWORD:?...}` (fail-closed); healthchecks → `redis-cli -a $${REDIS_PASSWORD:?} ping | grep -q PONG`; `SEARXNG_REDIS_URL` + `REDIS_URL`/`REDIS_RATE_LIMIT_URL` carry `:${REDIS_PASSWORD:?...}@` (no bare `redis://`, no defaults); `.env.example` gains `REDIS_PASSWORD=CHANGE_ME__…` with URL-safe-charset note.
+- Proof: rendered config shows `--requirepass` ×2 and `redis://:__smoke_only__@…` URLs; unset-secret negative probe fails naming the var (compose `:?`); all 10 profile combos `config -q` exit 0.
+
+## P1-10: bumps (compose + `SUPPORTING_SERVICES.md` mirrors + prose tags)
+
+- `semgrep:1.97.0→1.181.0`, `qdrant:v1.12.5→v1.19.2` (+`QDRANT__SERVICE__API_KEY` enforcement; `vector-rag-spec` MCP sends `QDRANT_API_KEY=${QDRANT_API_KEY}` — catalog + disk), `neo4j:5.26.0-community-bullseye→5.26.32-community-trixie`, `jaegertracing/all-in-one:1.63.0→jaegertracing/jaeger:2.22.0` (v1-era `COLLECTOR_OTLP_ENABLED` retained with a verify-on-first-up note), minio exact tag + AGPLv3 note + re-verified auth-gate, piston digest + maintainer vendoring release step (no invented digest).
+- Proof: smoke §3a asserts each new pin present + each predecessor absent on `image:` lines (comments exempt by design); `config -q` green on all combos.
+
+## P1-5/P1-7: write+exec synergy + glob anchoring (9 roles, catalog + disk + charters)
+
+- Anchored fleet-wide (audit of ALL fs:write globs): `*lock*`→`**/package-lock.json`+`**/pnpm-lock.yaml` (dependency-patcher; `Cargo.lock`/`package.json`/`pyproject.toml`/`go.mod`/`go.sum` already exact), `*config*`→`**/*.config.js`+`**/*.config.ts` (fe-perf-eng), `*lint*`→`**/.eslintrc.json`+`**/eslint.config.js` (static-analysis-lead), `*.md`→`docs/**/*.md` (tech-docs-lead), `go.*`→`go.mod`+`go.sum` (go-backend-eng), `Cargo.*`→`Cargo.toml`+`Cargo.lock` (rust-systems-spec). Remaining `go.*`-style leading-literal globs (`playwright.config.*`, `build.gradle*`) are cwd-scoped and left, documented in the lint rule.
+- Split documentation: `sabotage-qa-tester` raw toolchain exec (`cargo mutants*`, `npx stryker run*`, `npm test tests/chaos*`, `cargo test chaos*`) replaced with exact-host piston pins (`curl -s http://piston:2000/api/v2/runtimes*`, `curl -s -X POST http://piston:2000/api/v2/execute*`); skill procedure + charter rewritten (mutation jobs submitted to piston, never raw on host). Remaining verifier-only exec (`cargo test*`, `go test*`, `pytest*`) retained with exact-path pins as charter-mandated verification; mutating builds directed to piston/local-ci-runner per §E.2/§12 — each split recorded here.
+- Enforcement: smoke glob-specificity lint (fs:write-only scope; `**/`-anchored, exact filenames, leading-literal globs, deny-tail `*`, and shell allows all exempt) + identical `die()` in `generate-50-roles.py::normalize_config`.
+- Proof: regen into scratch → 0 permission mismatches, 0 full-file diffs across all 50; mutation probes (`*evil*` in disk → smoke FAIL naming role+glob; `*lock*` in catalog → generator exit 1) both fail closed, then restored; smoke green after restore.
+
+## P1-6/P1-12: curl removal, segmentation, auth, Makefile guard, runner
+
+- Removed `curl -s http://*` (mlops-serving-eng) and `curl -sI*` (sre-incident-eng); charters now route diagnostics through ollama/docker and prometheus MCP (§4). Only sanctioned curl shape left: sabotage's piston exact-host pins.
+- Segmentation (minimal viable, boot-safe): `heretek-devsec` (ghidra+radare2) + `heretek-mobile` (docker-android) isolated; paperclip joins both via compose-merge extension (star topology preserved). Rest stays on shared `heretek` deliberately — full per-category split would break the firecrawl mesh and runner→proxy path without a live stack to verify; tracked, not chased.
+- Makefile `guard-profiles` refuses `mobile`+`devsec`/`web-research` co-scheduling (fail-closed exit 1; existing targets untouched) + `sidecars-up SIDECAR_PROFILES=…` entrypoint. Runner: `./workspaces:ro` + `./workspaces/scratch:/scratch:rw`.
+- Proof: rendered paperclip nets = heretek+devsec+mobile; runner volumes show `read_only: true` + rw scratch; `make guard-profiles SIDECAR_PROFILES="mobile devsec"` → error + exit 1, `"mobile,web-research"` → same, `"web-research"`/`"mobile"` alone → exit 0; smoke asserts guard text + nets + ro/scratch.
+
+## P2: provisioner header, REPO_ROOT, --session, resource table, age backups, sabotage pin
+
+- `dispatch-pipeline.sh` header rewritten (provisioner/tracer, not orchestrator); `REPO_ROOT+cd` added to it and `worktree-manager.sh`; manager invoked via `${REPO_ROOT}`; redundant `mkdir -p` after worktree create dropped (P2-2).
+- `--session ses-` assumption: CLOSED as non-issue — repo-wide grep finds zero `ses-` references; installed `opencode v2.0.30` documents `--session` as free-form ("to continue, or to create if it does not exist"); shim passes through verbatim (smoke §5). Live-stack ticket flow still needs `make up` (tracked live gate, stack down here).
+- `SUPPORTING_SERVICES.md`: per-profile `cpus`/`mem_limit` reservation table (summed from compose — web-research 9.2/13.5g … qa-testing 10.7/15.75g heaviest; base 3.0/5g extra) + minimum-host guidance; taxonomy service lists corrected (hound/piston/mitmplugin/semgrep/runner membership); §1b version-lag closed; §12 segmentation/auth/runner items; P2-7/P2-8 scope note; minio AGPL note; §11 authoritative-source disclaimer.
+- Backups: `BACKUP_AGE_RECIPIENT` opt-in `age -r` encryption (`.sql.gz.age`; fail-closed on missing binary/bad shape; retention covers both suffixes) + restore `.sql.gz.age`/`.sql.age` support via `BACKUP_AGE_IDENTITY` (gated before the destructive prompt). `age` chosen as the single at-rest mechanism (no gpg shell-out).
+- Proof: `--dry-run` from `/tmp` exit 0 (REPO_ROOT anchoring); age round-trip (`SELECT 1;` → gzip → age → decrypt → gunzip) byte-exact; restore without identity → fail-closed error; with unreadable identity → fail-closed error; `shellcheck` + `bash -n` clean; `--help` documents new vars.
+
+## P2-7/P2-8: pins + scope (see table above; `SUPPORTING_SERVICES.md` note + smoke gates)
+
+- Seed preflight deliberately NOT extended: `REDIS_PASSWORD`/`QDRANT_API_KEY` are compose-level service credentials (already `:?`-gated at `config`/`up`), not MCP/agent credentials — the seed gate stays scoped to its three provisioning secrets.
+
+## Test results (must-keep-green set + Wave 4 proofs)
+
+- `bash scripts/test-shim.sh` → **39 passed, 0 failed** (unchanged).
+- `bash scripts/smoke-test.sh --check-only` → **234 passed, 0 failed, 3 skipped** (was 211 on this branch: +19 §3a Wave 4 pin/auth/scope gates, +1 glob lint, +3 from dummy-env/profile coverage; scratch mutation run: 233/1 FAIL on injected `*evil*`, restored to 234/0).
+- `shellcheck -S warning scripts/*.sh` → zero warnings; `bash -n` all OK.
+- `bash scripts/seed-50-fleet.sh --dry-run` → 51 docs, total == cap, no WARNING.
+- `docker compose config -q` exit 0: default, prebuilt, web-research, devsec, ai-gateway, observability, mobile, core+ci, qa-testing+core, proxy+tailscale.
+- `grep -rn ':latest'` on compose/Dockerfile → clean (prose comments only); `grep -L deny` → all 50 tails; no secrets committed/echoed (dummies only); no invented digests/versions.
+- `make test` (live mode, stack down) → same 2 environmental fails as every prior baseline (`postgres not healthy`, `paperclip not responding`) plus check-only-equivalent otherwise — full green needs `make up` (live stage).
+
+## Files changed (uncommitted, Wave 4 only — 37 files)
+
+- `docker-compose.sidecars.yml` (P1-4 ×2 + auth, P1-10 ×6, P1-12 nets + runner + paperclip extension)
+- `.env.example` (REDIS_PASSWORD, QDRANT_API_KEY), `Makefile` (guard-profiles + sidecars-up)
+- `roles-catalog/*.md` (01/03/04/05/06/08/09 permission + skill + env edits)
+- 10× `roles/*/opencode/opencode.json` (9 perm edits + vector-rag qdrant env)
+- 9× `roles/*/AGENTS.md` (write-scope/verify-toolchain lines) + sabotage SKILL.md
+- `scripts/smoke-test.sh` (§3a + glob lint + dummy env), `scripts/generate-50-roles.py` (generation-time glob lint)
+- `scripts/dispatch-pipeline.sh` (header + REPO_ROOT + mkdir drop), `scripts/worktree-manager.sh` (REPO_ROOT)
+- `scripts/backup-db.sh` + `scripts/restore-db.sh` (age at-rest)
+- `SUPPORTING_SERVICES.md` (pins, resource table, §12, scope notes), `REMEDIATION_LOG.md` (this stage)
+
+## Self-audit notes (Wave 4)
+
+- Fail-closed kept: `:?` secrets, authed healthchecks, guard exit 1, lint `die()`/FAIL, age opt-in that aborts rather than falling back to plaintext, no `|| true`/`TODO`/dummy returns, no floating tags, deny tails 50/50, no secrets in repo.
+- Honest non-closures (tracked, not faked): minio digest (quay 401 re-proven), piston vendoring (GHCR 401, release step documented), full per-category segmentation (boot-risk, minimal viable shipped), live verifications (`make up` matrix, jaeger-v2 first boot, redis-auth client interop under real traffic, age backup against a live DB, `--session` live ticket flow).
+- No commits, no merges, no subagents used.

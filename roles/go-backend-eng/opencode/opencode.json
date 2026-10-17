@@ -24,7 +24,12 @@
     },
     {
       "action": "fs:write",
-      "resource": "go.*",
+      "resource": "go.mod",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "go.sum",
       "effect": "allow"
     },
     {

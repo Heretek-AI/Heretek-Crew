@@ -323,7 +323,6 @@ description: Triages active production incidents using metric queries, identifie
     { "action": "fs:write", "resource": "docs/incidents/**", "effect": "allow" },
     { "action": "fs:write", "resource": "docs/runbooks/**", "effect": "allow" },
     { "action": "fs:write", "resource": "*", "effect": "deny" },
-    { "action": "shell", "resource": "curl -sI*", "effect": "allow" },
     { "action": "shell", "resource": "git status*", "effect": "allow" },
     { "action": "shell", "resource": "*", "effect": "deny" },
     { "action": "prometheus_*", "resource": "*", "effect": "allow" },

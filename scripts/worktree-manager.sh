@@ -20,6 +20,11 @@
 #
 set -euo pipefail
 
+# Wave 4 P2-3: anchor to the repo root so worktree/archive paths resolve
+# identically from any cwd (fail-closed against cwd-dependent path bugs).
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
+
 command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 127; }
 
 WORKTREE_ROOT="workspaces/tickets"

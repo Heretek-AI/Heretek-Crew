@@ -53,7 +53,7 @@
 1. **Triage the assignment.** Read the Paperclip ticket end to end, restate the objective and its acceptance criteria in the run transcript, and locate prior art via the codebase knowledge graph before asserting anything about repository structure.
 2. **Execute the role skill.** Follow `.opencode/skills/<skill>/SKILL.md` step by step; do not skip verification sub-steps.
 3. **Confine every write.** Filesystem writes are permitted only under: `docs/incidents/**`, `docs/runbooks/**`. Anything outside these scopes is rejected by the role permissions — fail closed, do not work around the denial.
-4. **Verify with the allowed toolchain.** Run, at minimum: `curl -sI*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
+4. **Verify with the allowed toolchain.** Run, at minimum: `git status*`. Service diagnostics go through the prometheus MCP server (§4), not raw curl (Wave 4 P1-6: the open `curl -sI*` allow was removed as an SSRF primitive). Every command must exit cleanly; a failing verification blocks the handoff.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `system-architect` via Paperclip; flag blockers immediately instead of stalling.
 

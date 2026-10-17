@@ -370,7 +370,7 @@ METHODOLOGY & HANDOFF:
 ### 2. Core Responsibilities & Workflows
 - **Primary Technical Responsibilities**:
   - Deliberately injecting corrupt payloads, dropping database connections, and simulating network partitions.
-  - Executing mutation testing (using `cargo-mutants`, `stryker`, or `mutmut`) to prove unit test suites catch injected faults.
+  - Executing mutation testing (using `cargo-mutants`, `stryker`, or `mutmut` packaging, submitted to the piston sandbox API — never run raw on the agent host) to prove unit test suites catch injected faults.
   - Verifying graceful degradation, circuit breaker triggers, and exponential backoff retry policies.
 - **Daily Input Artifacts**:
   - Release candidate branches, architecture resilience specs, chaos test scenarios.
@@ -406,9 +406,17 @@ description: Deliberately mutates conditions and injects network faults to verif
    - Malformed JSON/Protobuf payload with boundary-exceeding numbers or negative integers.
    - Downstream service returns continuous 503 or 10-second timeout.
 3. Author isolated chaos test in `tests/chaos/`.
-4. Run mutation testing:
-   - For Rust: `cargo mutants`.
-   - For TypeScript: `npx stryker run`.
+4. Run mutation testing inside the piston sandbox (Wave 4 P1-5/P2-11:
+   mutation runners execute via the piston code-execution API at
+   `http://piston:2000/api/v2/execute` — NEVER as raw toolchain commands
+   on the agent host):
+   - List available runtimes: `curl -s http://piston:2000/api/v2/runtimes`.
+   - Submit the chaos/mutation job: `curl -s -X POST
+     http://piston:2000/api/v2/execute` with the language, pinned version,
+     and test files as JSON (`run_timeout` capped at 3000ms).
+   - For Rust mutation runs use the `rust` runtime with `cargo mutants` as
+     the packaged command; for TypeScript use the `javascript`/`typescript`
+     runtime with the stryker run as the packaged command.
 5. Verify test suites catch the mutations (mutation score > 85%).
 6. Generate Resilience Audit Report in `docs/qa/RESILIENCE.md`.
 ```
@@ -425,10 +433,8 @@ description: Deliberately mutates conditions and injects network faults to verif
     { "action": "fs:write", "resource": "tests/chaos/**", "effect": "allow" },
     { "action": "fs:write", "resource": "docs/qa/**", "effect": "allow" },
     { "action": "fs:write", "resource": "*", "effect": "deny" },
-    { "action": "shell", "resource": "cargo mutants*", "effect": "allow" },
-    { "action": "shell", "resource": "npx stryker run*", "effect": "allow" },
-    { "action": "shell", "resource": "npm test tests/chaos*", "effect": "allow" },
-    { "action": "shell", "resource": "cargo test chaos*", "effect": "allow" },
+    { "action": "shell", "resource": "curl -s http://piston:2000/api/v2/runtimes*", "effect": "allow" },
+    { "action": "shell", "resource": "curl -s -X POST http://piston:2000/api/v2/execute*", "effect": "allow" },
     { "action": "shell", "resource": "git status*", "effect": "allow" },
     { "action": "shell", "resource": "*", "effect": "deny" },
     { "action": "codebase-memory_*", "resource": "*", "effect": "allow" },
@@ -541,7 +547,8 @@ description: Authors and tests custom Semgrep rules to detect proprietary anti-p
   "$schema": "https://opencode.ai/config.json",
   "permissions": [
     { "action": "fs:read", "resource": "**", "effect": "allow" },
-    { "action": "fs:write", "resource": "*lint*", "effect": "allow" },
+    { "action": "fs:write", "resource": "**/.eslintrc.json", "effect": "allow" },
+    { "action": "fs:write", "resource": "**/eslint.config.js", "effect": "allow" },
     { "action": "fs:write", "resource": "rules/**", "effect": "allow" },
     { "action": "fs:write", "resource": "biome.json", "effect": "allow" },
     { "action": "fs:write", "resource": "ruff.toml", "effect": "allow" },

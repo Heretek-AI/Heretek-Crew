@@ -14,7 +14,7 @@
     },
     {
       "action": "fs:write",
-      "resource": "*.md",
+      "resource": "docs/**/*.md",
       "effect": "allow"
     },
     {

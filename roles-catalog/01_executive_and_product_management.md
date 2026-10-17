@@ -555,7 +555,7 @@ description: Inspects recent codebase changes and updates corresponding document
   "permissions": [
     { "action": "fs:read", "resource": "**", "effect": "allow" },
     { "action": "fs:write", "resource": "docs/**", "effect": "allow" },
-    { "action": "fs:write", "resource": "*.md", "effect": "allow" },
+    { "action": "fs:write", "resource": "docs/**/*.md", "effect": "allow" },
     { "action": "fs:write", "resource": "*", "effect": "deny" },
     { "action": "shell", "resource": "git status*", "effect": "allow" },
     { "action": "shell", "resource": "git diff*", "effect": "allow" },

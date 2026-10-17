@@ -24,22 +24,12 @@
     },
     {
       "action": "shell",
-      "resource": "cargo mutants*",
+      "resource": "curl -s http://piston:2000/api/v2/runtimes*",
       "effect": "allow"
     },
     {
       "action": "shell",
-      "resource": "npx stryker run*",
-      "effect": "allow"
-    },
-    {
-      "action": "shell",
-      "resource": "npm test tests/chaos*",
-      "effect": "allow"
-    },
-    {
-      "action": "shell",
-      "resource": "cargo test chaos*",
+      "resource": "curl -s -X POST http://piston:2000/api/v2/execute*",
       "effect": "allow"
     },
     {

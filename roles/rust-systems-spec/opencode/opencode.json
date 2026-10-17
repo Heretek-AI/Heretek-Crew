@@ -24,7 +24,12 @@
     },
     {
       "action": "fs:write",
-      "resource": "Cargo.*",
+      "resource": "Cargo.toml",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "Cargo.lock",
       "effect": "allow"
     },
     {

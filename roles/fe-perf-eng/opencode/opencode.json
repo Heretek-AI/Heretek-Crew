@@ -9,7 +9,12 @@
     },
     {
       "action": "fs:write",
-      "resource": "*config*",
+      "resource": "**/*.config.js",
+      "effect": "allow"
+    },
+    {
+      "action": "fs:write",
+      "resource": "**/*.config.ts",
       "effect": "allow"
     },
     {

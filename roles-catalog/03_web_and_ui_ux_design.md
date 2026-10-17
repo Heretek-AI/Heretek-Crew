@@ -418,7 +418,8 @@ description: Runs automated Chrome DevTools performance profiling to identify re
   "$schema": "https://opencode.ai/config.json",
   "permissions": [
     { "action": "fs:read", "resource": "**", "effect": "allow" },
-    { "action": "fs:write", "resource": "*config*", "effect": "allow" },
+    { "action": "fs:write", "resource": "**/*.config.js", "effect": "allow" },
+    { "action": "fs:write", "resource": "**/*.config.ts", "effect": "allow" },
     { "action": "fs:write", "resource": "docs/perf/**", "effect": "allow" },
     { "action": "fs:write", "resource": "*", "effect": "deny" },
     { "action": "shell", "resource": "npx lighthouse*", "effect": "allow" },

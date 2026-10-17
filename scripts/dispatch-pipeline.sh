@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 #
-# scripts/dispatch-pipeline.sh — Multi-Agent Relay Pipeline Orchestrator for Heretek-Crew.
+# scripts/dispatch-pipeline.sh — Worktree Provisioner + Pipeline Tracer for Heretek-Crew.
+#
+# SCOPE (Wave 4 P2-2 header correction): despite the historical
+# "Orchestrator" name, this script does NOT dispatch agent work to Paperclip
+# (phases 1/2/4/5 only log what a human should assign; there are no
+# Paperclip/harness API calls here). What it REALLY does:
+#   - in --dry-run: trace all 6 phases and print the payloads (a planning aid);
+#   - in execute mode: provision ONE isolated git worktree + task_plan.md
+#     (phase 3), then stop fail-closed at phase 6 (no auto-merge).
+# Call it a provisioner/tracer, not an end-to-end factory relay.
 #
 # Automates the end-to-end autonomous factory relay:
 #   1. PRD: Product Director generates product requirements and user stories.
@@ -23,6 +32,12 @@
 #   --help, -h           Show this help message
 #
 set -euo pipefail
+
+# Wave 4 P2-3: anchor to the repo root so the script works from any cwd
+# (and a hostile same-named script earlier in PATH/cwd can never shadow
+# the worktree-manager call below — it is invoked via ${REPO_ROOT}).
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
 
 DRY_RUN="false"
 TICKET_ID="tkt-$(date +%Y%m%d%H%M%S)"
@@ -114,8 +129,10 @@ if [ "${DRY_RUN}" = "true" ]; then
   log_step "[DRY-RUN] Target directory: ${WORKTREE_DIR}"
   log_step "[DRY-RUN] Initialized planning-with-files ledger: ${WORKTREE_DIR}/task_plan.md"
 else
-  bash scripts/worktree-manager.sh create "${TICKET_ID}" "${BASE_BRANCH}"
-  mkdir -p "${WORKTREE_DIR}"
+  bash "${REPO_ROOT}/scripts/worktree-manager.sh" create "${TICKET_ID}" "${BASE_BRANCH}"
+  # (Wave 4 P2-2: no mkdir -p here — worktree-manager already created the
+  # directory; re-creating it would mask a failed provisioning. If the dir
+  # is absent the redirect below fails closed via set -e.)
   cat <<EOF > "${WORKTREE_DIR}/task_plan.md"
 # Sprint Task Plan: ${TICKET_ID}
 ## Goal
