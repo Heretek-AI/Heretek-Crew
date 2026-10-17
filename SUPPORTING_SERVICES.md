@@ -91,10 +91,15 @@ flowchart TB
 ## 1. Category A: Web Ingestion, Crawling & Search
 
 ### Service A.1: Firecrawl
-* **Service Identity**: Firecrawl (`mendableai/firecrawl`)
-* **Repository**: [https://github.com/mendableai/firecrawl](https://github.com/mendableai/firecrawl)
-* **Image Tag**: `ghcr.io/mendableai/firecrawl:v1.17.2`
-* **Core Value Proposition**: Monolithic scrapers struggle with JavaScript-heavy SPAs, paywalls, and cookie banners. Firecrawl orchestrates headless Playwright browsers behind a clean REST and WebSocket interface, automatically converting messy DOM structures into pristine, LLM-optimized Markdown while stripping advertising trackers, navigations, and styling scripts. Running Firecrawl as a sidecar keeps massive browser memory footprints and Playwright dependencies outside the agent runtime.
+* **Service Identity**: Firecrawl (`firecrawl/firecrawl`)
+* **Repository**: [https://github.com/firecrawl/firecrawl](https://github.com/firecrawl/firecrawl)
+* **Image Tags**:
+  * API / Workers Harness: `ghcr.io/firecrawl/firecrawl:2.10.19`
+  * Playwright Microservice: `ghcr.io/firecrawl/playwright-service@sha256:717699bf8a61d94451926c810d19ca1d36278192907e307bf5229a558b08fcc6`
+  * NuQ Postgres (Queue DB): `ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc`
+  * RabbitMQ (Queue Broker): `rabbitmq:3.13.7-management-alpine`
+  * Redis (Rate Limits & State): `redis:7.4.1-alpine`
+* **Core Value Proposition**: Monolithic scrapers struggle with JavaScript-heavy SPAs, paywalls, and cookie banners. Firecrawl orchestrates headless Playwright browsers behind a clean REST and WebSocket interface, automatically converting messy DOM structures into pristine, LLM-optimized Markdown while stripping advertising trackers, navigations, and styling scripts. Running Firecrawl as a dedicated sidecar cluster keeps massive browser memory footprints and Playwright dependencies outside the agent runtime.
 * **Target Roles**: Technical Researcher, Market Research Analyst, Competitive Intelligence Specialist, Documentation Lead, Bug Triage Specialist.
 
 #### Docker Compose Service Block
@@ -109,37 +114,134 @@ flowchart TB
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 3s
+      retries: 3
     volumes:
       - firecrawl-redis-data:/data
     networks:
       - heretek
     cpus: "0.5"
-    mem_limit: 768m
+    mem_limit: 512m
 
-  firecrawl:
-    image: ghcr.io/mendableai/firecrawl:v1.17.2
+  firecrawl-rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
     profiles: ["web-research"]
     restart: unless-stopped
+    command: rabbitmq-server
+    expose:
+      - "5672"
+      - "15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - firecrawl-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 512m
+
+  firecrawl-nuq-postgres:
+    image: ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc
+    profiles: ["web-research"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
+      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:-firecrawl_secret_nuq_2026}
+      POSTGRES_DB: postgres
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-firecrawl} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - firecrawl-nuq-data:/var/lib/postgresql/data
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 768m
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service@sha256:717699bf8a61d94451926c810d19ca1d36278192907e307bf5229a558b08fcc6
+    profiles: ["web-research"]
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      MAX_CONCURRENT_PAGES: "10"
+      BLOCK_MEDIA: "true"
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+    networks:
+      - heretek
+    cpus: "1.0"
+    mem_limit: 2g
+
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:2.10.19
+    profiles: ["web-research"]
+    restart: unless-stopped
+    command: node dist/src/harness.js --start-docker
     depends_on:
       firecrawl-redis:
         condition: service_healthy
+      firecrawl-rabbitmq:
+        condition: service_healthy
+      firecrawl-nuq-postgres:
+        condition: service_healthy
+      firecrawl-playwright:
+        condition: service_healthy
     expose:
       - "3002"
+    ports:
+      - "127.0.0.1:3002:3002"
     environment:
+      HOST: "0.0.0.0"
       PORT: "3002"
-      REDIS_URL: "redis://firecrawl-redis:6379"
-      USE_PUPPETEER_CACHE: "true"
-      PUPPETEER_WS_ENDPOINT: "ws://browserless:3000"
-      NUM_WORKERS_PER_QUEUE: "4"
+      INTERNAL_PORT: "3002"
+      EXTRACT_WORKER_PORT: "3004"
+      WORKER_PORT: "3005"
+      ENV: "local"
       LOGGING_LEVEL: "warn"
+      USE_DB_AUTHENTICATION: "false"
+      HARNESS_STARTUP_TIMEOUT_MS: "60000"
+      REDIS_URL: "redis://firecrawl-redis:6379"
+      REDIS_RATE_LIMIT_URL: "redis://firecrawl-redis:6379"
+      PLAYWRIGHT_MICROSERVICE_URL: "http://firecrawl-playwright:3000/scrape"
+      NUQ_RABBITMQ_URL: "amqp://firecrawl-rabbitmq:5672"
+      POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
+      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:-firecrawl_secret_nuq_2026}
+      POSTGRES_DB: postgres
+      POSTGRES_HOST: "firecrawl-nuq-postgres"
+      POSTGRES_PORT: "5432"
+      NUM_WORKERS_PER_QUEUE: "4"
+      CRAWL_CONCURRENT_REQUESTS: "10"
+      MAX_CONCURRENT_JOBS: "5"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 25s
     networks:
       - heretek
     cpus: "1.5"
@@ -182,7 +284,7 @@ flowchart TB
   ```
 
 #### Security, Sandboxing & Resource Footprint
-* **Resource Profile**: Idle: 120MB RAM, 0.05 CPU. Peak (during multi-page recursive crawling): 1.8GB RAM, 1.4 CPU.
+* **Resource Profile**: Idle: ~350MB RAM across all 5 containers, 0.1 vCPU. Peak (during multi-page recursive crawling): ~5.8GB RAM, 4.0 vCPU.
 * **Security Considerations**: Restrict crawling to external URLs and prevent Server-Side Request Forgery (SSRF) against internal metadata endpoints (e.g. `169.254.169.254` or internal Docker DNS) via Firecrawl's URL validation flags. Run as unprivileged user inside container.
 
 ---
@@ -1230,7 +1332,7 @@ To ensure lean resource usage, services are segregated into logical Docker Compo
 | Profile Name | Included Supporting Services | Memory Budget (Idle / Peak) | Primary Use Case |
 | :--- | :--- | :--- | :--- |
 | **`default` / `core`** | `postgres`, `paperclip`, `docker-socket-proxy` | 1.2 GB / 4.5 GB | Standard agent workflow, local code editing, CLI tools |
-| **`--profile web-research`** | `searxng`, `searxng-redis`, `firecrawl`, `firecrawl-redis`, `browserless`, `gotenberg` | 1.8 GB / 6.5 GB | Deep internet research, documentation extraction, web scraping |
+| **`--profile web-research`** | `searxng`, `searxng-redis`, `firecrawl`, `firecrawl-playwright`, `firecrawl-rabbitmq`, `firecrawl-nuq-postgres`, `firecrawl-redis`, `browserless`, `gotenberg` | 2.5 GB / 9.5 GB | Deep internet research, documentation extraction, web scraping |
 | **`--profile devsec`** | `ghidra`, `radare2`, `semgrep`, `hound`, `docker-socket-proxy` | 2.5 GB / 8.0 GB | Binary reverse engineering, vulnerability audits, firmware triage |
 | **`--profile mobile`** | `docker-android` | 1.5 GB / 4.0 GB | Native Android app testing, ADB bridge, Artemis UI exploration |
 | **`--profile ai-gateway`** | `litellm`, `qdrant`, `neo4j`, `ollama` | 2.2 GB / 12.0 GB | Shared model routing, vector retrieval, codebase knowledge graph |
@@ -1329,39 +1431,134 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 3s
+      retries: 3
     volumes:
       - firecrawl-redis-data:/data
     networks:
       - heretek
     cpus: "0.5"
-    mem_limit: 768m
+    mem_limit: 512m
 
-  firecrawl:
-    image: ghcr.io/mendableai/firecrawl:v1.17.2
+  firecrawl-rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
     profiles: ["web-research"]
     restart: unless-stopped
+    command: rabbitmq-server
+    expose:
+      - "5672"
+      - "15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - firecrawl-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 512m
+
+  firecrawl-nuq-postgres:
+    image: ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc
+    profiles: ["web-research"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
+      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:-firecrawl_secret_nuq_2026}
+      POSTGRES_DB: postgres
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-firecrawl} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - firecrawl-nuq-data:/var/lib/postgresql/data
+    networks:
+      - heretek
+    cpus: "0.5"
+    mem_limit: 768m
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service@sha256:717699bf8a61d94451926c810d19ca1d36278192907e307bf5229a558b08fcc6
+    profiles: ["web-research"]
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      MAX_CONCURRENT_PAGES: "10"
+      BLOCK_MEDIA: "true"
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+    networks:
+      - heretek
+    cpus: "1.0"
+    mem_limit: 2g
+
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:2.10.19
+    profiles: ["web-research"]
+    restart: unless-stopped
+    command: node dist/src/harness.js --start-docker
     depends_on:
       firecrawl-redis:
         condition: service_healthy
-      browserless:
+      firecrawl-rabbitmq:
+        condition: service_healthy
+      firecrawl-nuq-postgres:
+        condition: service_healthy
+      firecrawl-playwright:
         condition: service_healthy
     expose:
       - "3002"
+    ports:
+      - "127.0.0.1:3002:3002"
     environment:
+      HOST: "0.0.0.0"
       PORT: "3002"
-      REDIS_URL: "redis://firecrawl-redis:6379"
-      USE_PUPPETEER_CACHE: "true"
-      PUPPETEER_WS_ENDPOINT: "ws://browserless:3000"
-      NUM_WORKERS_PER_QUEUE: "4"
+      INTERNAL_PORT: "3002"
+      EXTRACT_WORKER_PORT: "3004"
+      WORKER_PORT: "3005"
+      ENV: "local"
       LOGGING_LEVEL: "warn"
+      USE_DB_AUTHENTICATION: "false"
+      HARNESS_STARTUP_TIMEOUT_MS: "60000"
+      REDIS_URL: "redis://firecrawl-redis:6379"
+      REDIS_RATE_LIMIT_URL: "redis://firecrawl-redis:6379"
+      PLAYWRIGHT_MICROSERVICE_URL: "http://firecrawl-playwright:3000/scrape"
+      NUQ_RABBITMQ_URL: "amqp://firecrawl-rabbitmq:5672"
+      POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
+      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:-firecrawl_secret_nuq_2026}
+      POSTGRES_DB: postgres
+      POSTGRES_HOST: "firecrawl-nuq-postgres"
+      POSTGRES_PORT: "5432"
+      NUM_WORKERS_PER_QUEUE: "4"
+      CRAWL_CONCURRENT_REQUESTS: "10"
+      MAX_CONCURRENT_JOBS: "5"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 25s
     networks:
       - heretek
     cpus: "1.5"
@@ -1784,6 +1981,8 @@ services:
 # ==============================================================================
 volumes:
   firecrawl-redis-data:
+  firecrawl-rabbitmq-data:
+  firecrawl-nuq-data:
   mitmproxy-certs:
   ghidra-projects:
   hound-data:

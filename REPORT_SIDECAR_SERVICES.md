@@ -98,10 +98,10 @@ flowchart TD
 ### 3.1 Domain A: Web Ingestion, Crawling & Search
 Autonomous agents rely heavily on up-to-date documentation, API specs, and technical forums.
 
-* **Firecrawl (`ghcr.io/mendableai/firecrawl:v1.17.2`)**:
+* **Firecrawl (`ghcr.io/firecrawl/firecrawl:2.10.19`)**:
   - *Architectural Role*: Deep crawling, SPA dynamic rendering, and conversion to LLM-ready clean Markdown.
-  - *Evaluation*: Firecrawl decouples headless browser lifecycle management from the agent. It integrates natively via the official `firecrawl-mcp` package.
-  - *Footprint*: 120MB idle / 1.8GB peak RAM; requires dedicated Redis (`redis:7.4.1-alpine`).
+  - *Evaluation*: Firecrawl decouples headless browser lifecycle management from the agent. It integrates natively via the official `firecrawl-mcp` package and operates as a 5-container cluster (`firecrawl` API harness, `firecrawl-playwright`, `firecrawl-rabbitmq`, `firecrawl-nuq-postgres`, `firecrawl-redis`).
+  - *Footprint*: ~350MB idle / ~5.8GB peak RAM across all 5 cluster services.
 * **Crawl4AI (`unclecode/crawl4ai:0.9.4`)**:
   - *Architectural Role*: Asynchronous, lightweight crawling with CSS selector extraction and structured JSON generation.
   - *Evaluation*: Lower overhead than Firecrawl for targeted page scraping; ideal for data-mining and doc-harvesting agents.
@@ -200,7 +200,7 @@ To ensure the fleet runs efficiently on hardware ranging from local workstations
 | Profile Tag | Target Services | Idle RAM | Peak RAM | Target Hardware Spec |
 | :--- | :--- | :--- | :--- | :--- |
 | **`default` / `core`** | `paperclip`, `postgres`, `docker-socket-proxy` | 1.1 GB | 4.0 GB | 4 vCPU, 8 GB RAM (Dev Laptop) |
-| **`web-research`** | `searxng`, `firecrawl`, `browserless`, `gotenberg` | 1.8 GB | 6.5 GB | 8 vCPU, 16 GB RAM (Workstation) |
+| **`web-research`** | `searxng`, `firecrawl` cluster, `browserless`, `gotenberg` | 2.5 GB | 9.5 GB | 8 vCPU, 16 GB RAM (Workstation) |
 | **`devsec`** | `ghidra`, `radare2`, `semgrep`, `hound` | 2.5 GB | 8.0 GB | 8 vCPU, 16 GB RAM (Workstation) |
 | **`ai-gateway`** | `litellm`, `qdrant`, `neo4j`, `ollama` | 2.2 GB | 12.0 GB | 16 vCPU, 32 GB RAM (Dedicated Server) |
 | **`qa-testing`** | `piston`, `mailpit`, `wiremock`, `minio` | 1.5 GB | 5.5 GB | 8 vCPU, 16 GB RAM (Workstation) |

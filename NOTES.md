@@ -275,4 +275,15 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 - `Makefile`: Added `prebuilt-pull`, `prebuilt-up`, and `prebuilt-config` operational targets.
 - `scripts/smoke-test.sh`: Extended static test suite to 225 assertions verifying prebuilt files, config parsing, and absence of `:latest` tags.
 
+## Wave 7 Execution Log — Firecrawl Self-Hosting Architecture Correction (2026-10-16)
+
+### Upstream Specification Alignment
+- Audited sidecar definition against official Firecrawl documentation (`SELF_HOST.md`, `docs.firecrawl.dev/contributing/self-host`, and root `docker-compose.yaml`).
+- Discovered and corrected 4 critical architectural flaws in the previous stub:
+  1. **Defunct Namespace**: Migrated from forbidden/defunct `ghcr.io/mendableai/firecrawl` to official `ghcr.io/firecrawl/firecrawl:2.10.19`.
+  2. **Browser Engine Microservice**: Decoupled Firecrawl from raw Browserless CDP (`ws://browserless:3000`), wiring it to the dedicated `ghcr.io/firecrawl/playwright-service@sha256:717699bf8a61d94451926c810d19ca1d36278192907e307bf5229a558b08fcc6` HTTP scraping microservice endpoint (`http://firecrawl-playwright:3000/scrape`). Browserless remains preserved in the stack for Taste and QA testing.
+  3. **Queue Broker & Database Harness**: Added `rabbitmq:3.13.7-management-alpine` (`firecrawl-rabbitmq`) and `ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc` (`firecrawl-nuq-postgres`, pre-configured with `pg_cron` and `010-nuq.sql`) to satisfy NuQ job processing requirements.
+  4. **Unattended Local Auth & Harness Command**: Configured `USE_DB_AUTHENTICATION=false` and entrypoint `command: node dist/src/harness.js --start-docker` for seamless, unauthenticated local agent access over the isolated `heretek` network.
+
+
 
