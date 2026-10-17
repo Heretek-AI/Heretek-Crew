@@ -1,7 +1,7 @@
 # Heretek-Crew — Paperclip + OpenCode v2 Agent Fleet
 
 Self-hosted Docker Compose stack where [Paperclip](https://github.com/paperclipai/paperclip)
-orchestrates a company-style fleet of **OpenCode v2** agents: **50
+orchestrates a company-style fleet of **OpenCode v2** agents: **51
 specialists** across 9 departments (Executive, Game Dev, Web/UI, Language
 Engineers, Cloud/SRE, QA, Security/Forensics, Data/AI, Ops) operating as
 "Heretek Autonomous Fleet".
@@ -250,7 +250,7 @@ the same four artifacts: `AGENTS.md`, `opencode/opencode.json`,
 `.opencode/agents/<role-id>.md`, and skill packs under
 `.opencode/skills/*/SKILL.md`.
 
-### Department breakdown (9 departments, 50 roles)
+### Department breakdown (9 departments, 51 roles)
 
 | Dept | Module | Roles | Count |
 |---|---|---|---|
@@ -260,7 +260,7 @@ the same four artifacts: `AGENTS.md`, `opencode/opencode.json`,
 | 4. Specialized Language Engineers | `04_specialized_language_engineers.md` | `rust-systems-spec`, `go-backend-eng`, `python-backend-spec`, `ts-node-fullstack`, `cpp-lowlevel-eng`, `java-kotlin-eng`, `ios-mobile-spec`, `android-mobile-spec` | 8 |
 | 5. Cloud, Platform & SRE | `05_cloud_platform_and_sre.md` | `cloud-platform-eng`, `k8s-orchestrator`, `sre-incident-eng`, `observability-eng`, `dba-specialist`, `cache-streaming-eng` | 6 |
 | 6. Quality Assurance & Verification | `06_quality_assurance_and_verification.md` | `e2e-browser-qa`, `api-contract-tester`, `load-stress-tester`, `sabotage-qa-tester`, `static-analysis-lead`, `release-qa-officer` | 6 |
-| 7. Defensive Security & Forensics | `07_defensive_security_and_forensics.md` | `appsec-engineer`, `cloud-sec-auditor`, `binary-reverse-eng`, `firmware-sec-analyst`, `threat-modeler`, `compliance-auditor` | 6 |
+| 7. Defensive Security & Forensics | `07_defensive_security_and_forensics.md` | `appsec-engineer`, `cloud-sec-auditor`, `binary-reverse-eng`, `firmware-sec-analyst`, `threat-modeler`, `compliance-auditor`, `ai-red-teamer` | 7 |
 | 8. Data & AI Systems | `08_data_and_ai_systems.md` | `data-pipeline-eng`, `vector-rag-spec`, `mlops-serving-eng`, `analytics-metrics-eng` | 4 |
 | 9. Operations & Maintenance | `09_operations_and_maintenance.md` | `dependency-patcher`, `git-drift-coord` | 2 |
 
@@ -390,14 +390,18 @@ scripts/
   opencode-shim.sh        v1→v2 CLI translation (--dir/--variant/--auto)
   generate-50-roles.py    50-role disk scaffolding generator (roles/<role-id>/)
   seed-50-fleet.sh        idempotent 50-agent fleet seeder (supports --dry-run)
+  spec-gate.sh            spec-driven development gate (PRD/ADR/task deltas in CI)
   backup-db.sh            timestamped pg_dump + retention
   restore-db.sh           confirmed, fail-closed restore
   smoke-test.sh           --check-only static suite + live ticket round-trip
-  test-shim.sh            shim unit matrix (wave 1)
-roles/<role>/            AGENTS.md charter + opencode/opencode.json v2 config
+  test-shim.sh            shim unit matrix (39 assertions)
+roles/<role>/            AGENTS.md charter + opencode/opencode.json v2 config + skills/
 workspaces/               agent checkouts (host-visible, backup-friendly)
 backups/                  timestamped dumps (git-ignored)
 ```
 
 Design notes, verified upstream facts, and the wave-by-wave execution log live
-in [`NOTES.md`](NOTES.md).
+in [`NOTES.md`](NOTES.md). Sovereign architecture and long-term milestones live in
+[`ROADMAP_LONG_TERM_GOALS.md`](ROADMAP_LONG_TERM_GOALS.md),
+[`HERETEK_ECOSYSTEM_INTEGRATION_PLAN.md`](HERETEK_ECOSYSTEM_INTEGRATION_PLAN.md), and
+[`RESEARCH_EXPANSION_REPORT.md`](RESEARCH_EXPANSION_REPORT.md).

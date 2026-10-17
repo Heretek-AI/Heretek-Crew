@@ -1,5 +1,5 @@
-# Enterprise Fleet Specification: 50 Autonomous Agent Roles
-**Platform**: OpenCode v2 (`@opencode/cli@2.0.31`)  
+# Enterprise Fleet Specification: 51 Autonomous Agent Roles
+**Platform**: OpenCode v2 (`@opencode/cli@2.0.32`)  
 **Orchestrator**: Paperclip (`paperclipai/paperclip`)  
 **Standard**: Production-Grade, Least-Privilege Isolated Fleet  
 **Status**: 100% Verified Real-World Tools & Maintained MCP Servers  
@@ -8,7 +8,7 @@
 
 ## 1. Executive Fleet Architecture Overview
 
-The **Heretek-Crew Autonomous Fleet** consists of **50 specialized, production-ready autonomous agent roles** orchestrated by Paperclip and powered by OpenCode v2. The fleet operates under the **Principle of Least Privilege (PoLP)**, ensuring no role possesses excessive permissions, unmonitored shell execution, or unrestricted filesystem access.
+The **Heretek-Crew Autonomous Fleet** consists of **51 specialized, production-ready autonomous agent roles** orchestrated by Paperclip and powered by OpenCode v2. The fleet operates under the **Principle of Least Privilege (PoLP)**, ensuring no role possesses excessive permissions, unmonitored shell execution, or unrestricted filesystem access.
 
 ```mermaid
 flowchart TD
@@ -31,7 +31,7 @@ flowchart TD
 
     subgraph Verification ["Quality & Security Gates"]
         QA["6. Quality Assurance (Roles 33-38)"]
-        SEC["7. Defensive Security & Forensics (Roles 39-44)"]
+        SEC["7. Defensive Security & Forensics (Roles 39-44, 51)"]
         OPS["9. Operations & Maintenance (Roles 49-50)"]
     end
 
@@ -109,6 +109,7 @@ flowchart TD
 | `firmware-sec-analyst` | Firmware & Embedded Security Analyst | Defensive Security, Binary Analysis & Forensics | `r2mcp` (Radare2), `@modelcontextprotocol/server-filesystem` | `binwalk`, `checksec`, ELF header audit | $300.00 |
 | `threat-modeler` | Threat Modeling & Hardening Engineer | Defensive Security, Binary Analysis & Forensics | `codebase-memory-mcp`, `@modelcontextprotocol/server-github` | STRIDE analysis, seccomp/AppArmor | $220.00 |
 | `compliance-auditor` | Compliance & License Auditor | Defensive Security, Binary Analysis & Forensics | `@cyanheads/git-mcp-server`, `@modelcontextprotocol/server-github` | Syft SBOM (CycloneDX), SPDX checks | $160.00 |
+| `ai-red-teamer` | Adversarial AI Red-Teamer | Defensive Security, Binary Analysis & Forensics | `codebase-memory-mcp`, `@upstash/context7-mcp` | `garak`, PyRIT, promptfoo, OWASP LLM Top-10 | $300.00 |
 | `data-pipeline-eng` | Data Pipeline & ETL Engineer | Data & AI Systems | `mcp-server-duckdb`, `codebase-memory-mcp` | `dbt run`, `dbt test`, Parquet pipelines | $280.00 |
 | `vector-rag-spec` | Vector Search & RAG Specialist | Data & AI Systems | `mcp-server-qdrant`, `codebase-memory-mcp` | Qdrant hybrid retrieval, Ragas benchmarks | $300.00 |
 | `mlops-serving-eng` | MLOps & Model Serving Engineer | Data & AI Systems | `ollama-mcp`, `docker-mcp` | vLLM/Ollama, AWQ/GGUF quantization | $350.00 |
@@ -116,7 +117,7 @@ flowchart TD
 | `dependency-patcher` | Dependency & CVE Patching Steward | Operations & Maintenance | `@cyanheads/git-mcp-server`, `codebase-memory-mcp` | SemVer lockfile updates, regression test | $220.00 |
 | `git-drift-coord` | Git & Worktree Drift Coordinator | Operations & Maintenance | `@cyanheads/git-mcp-server`, `codebase-memory-mcp` | Worktree isolation, rebase conflict sync | $200.00 |
 
-**Total Monthly Fleet Budget Cap**: **$12,700.00 USD** across 50 active specialist agents.
+**Total Monthly Fleet Budget Cap**: **$12,700.00 USD** across 50 active specialist agents (Role 51 `ai-red-teamer` budgeted at $300.00 USD pending seeder 52-payload promotion & budget allocation bump).
 
 ---
 
@@ -183,13 +184,14 @@ Navigate to the departmental specification modules:
   - Role 37: `static-analysis-lead` — Code Style & Static Analysis Lead
   - Role 38: `release-qa-officer` — Release QA & Acceptance Sign-off Officer
 
-- [Department 7: Defensive Security, Binary Analysis & Forensics (Roles 39–44)](file:///home/john/Projects/Heretek-Crew/roles-catalog/07_defensive_security_and_forensics.md)
+- [Department 7: Defensive Security, Binary Analysis & Forensics (Roles 39–44, 51)](file:///home/john/Projects/Heretek-Crew/roles-catalog/07_defensive_security_and_forensics.md)
   - Role 39: `appsec-engineer` — Application Security (AppSec) Engineer
   - Role 40: `cloud-sec-auditor` — Cloud Security & IAM Auditor
   - Role 41: `binary-reverse-eng` — Binary & Protocol Reverse Engineer
   - Role 42: `firmware-sec-analyst` — Firmware & Embedded Security Analyst
   - Role 43: `threat-modeler` — Threat Modeling & Hardening Engineer
   - Role 44: `compliance-auditor` — Compliance & License Auditor
+  - Role 51: `ai-red-teamer` — Adversarial AI Red-Teamer
 
 - [Department 8: Data & AI Systems (Roles 45–48)](file:///home/john/Projects/Heretek-Crew/roles-catalog/08_data_and_ai_systems.md)
   - Role 45: `data-pipeline-eng` — Data Pipeline & ETL Engineer
@@ -214,7 +216,7 @@ XDG_CONFIG_HOME="/roles/<role-id>"
 Inside the container, OpenCode v2 reads its base configuration from `/roles/<role-id>/opencode/opencode.json`. Paperclip's `prepareOpenCodeRuntimeConfig` copies this directory to a secure runtime directory (`/tmp/paperclip-opencode-config-XXXXXX/opencode`), injects any necessary runtime keys, and launches OpenCode v2 with strictly scoped tools, skills, and MCP servers.
 
 ### 4.2 Compatibility Shim Enforcement
-As established in `NOTES.md`, OpenCode v2 (`@opencode/cli@2.0.31`) strictly enforces:
+As established in `NOTES.md`, OpenCode v2 (`@opencode/cli@2.0.32`) strictly enforces:
 1. Process Working Directory: Working directory is inferred from process `cwd`; `--dir` is stripped by `/usr/local/bin/opencode` compatibility shim.
 2. Model Variants: Variants are merged into the model spec (`--model opencode/gemini-3.8-flash#high`).
 3. Auto Permissions: `--auto` flag is injected to prevent unattended runs from blocking on interactive prompts while enforcing the permissions declared in `opencode.json`.

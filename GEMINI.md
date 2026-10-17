@@ -24,11 +24,11 @@ When navigating or discovering code within this codebase:
 ## 2. Core Architecture & Operating Invariants
 
 - **Orchestration**: Paperclip (`paperclipai/paperclip`) running in Docker on `127.0.0.1:3100`.
-- **Runtime**: OpenCode v2 (`@opencode/cli@2.0.31`) invoked by Paperclip's `opencode_local` adapter.
+- **Runtime**: OpenCode v2 (`@opencode/cli@2.0.32` + `@opencode/client@2.0.32`) invoked by Paperclip's `opencode_local` adapter.
 - **CLI Translation Shim**: `scripts/opencode-shim.sh` intercepts `opencode run`, strips `--dir`, maps `--variant`, and injects `--auto`.
 - **Per-Role Config Isolation**: Each agent's runtime environment is defined in `roles/<role-id>/opencode/opencode.json` and mounted via `XDG_CONFIG_HOME = "/roles/<role-id>"`.
-- **Wake Strategy**: 48/50 roles are strictly on-demand (`heartbeat.enabled: false`, `intervalSec: 0`, `wakeOnAssignment: true`, `wakeOnMention: true`). Only `exec-director` (1800s) and `tpm-scrum-lead` (3600s) have recurring timers.
-- **Budget Control**: Fleet budget cap is $12,700.00 USD/mo (1,270,000 cents) across 50 specialist roles.
+- **Wake Strategy**: 49/51 roles are strictly on-demand (`heartbeat.enabled: false`, `intervalSec: 0`, `wakeOnAssignment: true`, `wakeOnMention: true`). Only `exec-director` (1800s) and `tpm-scrum-lead` (3600s) have recurring timers.
+- **Budget Control**: Fleet budget cap is $12,700.00 USD/mo (1,270,000 cents) across 51 specialist roles.
 
 ---
 
@@ -37,20 +37,23 @@ When navigating or discovering code within this codebase:
 Always run these verification commands before presenting changes or completing a task:
 
 ```bash
-# 1. Run the compatibility shim test suite (28 assertions)
+# 1. Run the compatibility shim test suite (39 assertions)
 bash scripts/test-shim.sh
 
-# 2. Run repository static validation (48+ assertions)
+# 2. Run the spec-driven development gate (7 checks)
+bash scripts/spec-gate.sh --check-only
+
+# 3. Run repository static validation (495+ assertions)
 bash scripts/smoke-test.sh --check-only
 
-# 3. Lint shell scripts
+# 4. Lint shell scripts
 shellcheck scripts/*.sh
 
-# 4. Validate Docker Compose configurations
-BETTER_AUTH_SECRET=dummy POSTGRES_PASSWORD=dummy docker compose config
-BETTER_AUTH_SECRET=dummy POSTGRES_PASSWORD=dummy docker compose -f docker-compose.yml -f docker-compose.sidecars.yml config
+# 5. Validate Docker Compose configurations (uses .env or environment from .env.example)
+env $(grep -v '^#' .env.example | xargs) docker compose config
+env $(grep -v '^#' .env.example | xargs) docker compose -f docker-compose.yml -f docker-compose.sidecars.yml config
 
-# 5. Verify seeding payload in dry-run mode (Wave 3 P1-11: fleet seeder only)
+# 6. Verify seeding payload in dry-run mode (Wave 3 P1-11: fleet seeder only)
 bash scripts/seed-50-fleet.sh --dry-run
 ```
 
@@ -62,7 +65,7 @@ bash scripts/seed-50-fleet.sh --dry-run
 2. **Strict Version Pinning**: Never use `:latest` or unpinned packages. Pinned versions:
    - Node: `node:24-trixie-slim`
    - Postgres: `postgres:17-alpine`
-   - CLI/SDK: `@opencode/cli@2.0.31`, `@opencode/client@2.0.31`
+   - CLI/SDK: `@opencode/cli@2.0.32`, `@opencode/client@2.0.32`
    - Playwright MCP: `@playwright/mcp@0.0.83`
    - Android Emulator: `budtmo/docker-android:emulator_14.0_v3.8.0-p1`
    - Caddy: `caddy:2.11.7-alpine`, Tailscale: `tailscale:v1.104.1`
