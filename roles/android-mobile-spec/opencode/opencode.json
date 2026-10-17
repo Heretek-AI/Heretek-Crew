@@ -30,6 +30,26 @@
     },
     {
       "action": "fs:read",
+      "resource": "**/secrets/**",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/kubeconfig*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.pem",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/id_rsa*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
       "resource": "**",
       "effect": "allow"
     },
@@ -75,7 +95,17 @@
     },
     {
       "action": "shell",
-      "resource": "adb connect*",
+      "resource": "adb connect 127.0.0.1*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "adb connect localhost*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "adb connect docker-android*",
       "effect": "allow"
     },
     {

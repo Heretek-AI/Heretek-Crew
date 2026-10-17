@@ -418,6 +418,16 @@ role_reports_to_parent() {
 # build_agent_payload ROLE REPORTS_TO_UUID_OR_EMPTY -> writes JSON to stdout.
 build_agent_payload() {
   local role="$1" reports_to="$2"
+  # Wave D P2-9 ROLE_DIR hazard guard: ROLE_DIR selects the staged
+  # opencode.json via adapterConfig.env.XDG_CONFIG_HOME=/roles/<ROLE_DIR>;
+  # a wrong value silently stamps every payload with one role's config.
+  # The env chain below sets ROLE_DIR="$1" explicitly (overriding any
+  # ambient export), and the python body asserts the chain delivered the
+  # iterated role — either mismatch aborts fail-closed, never silently.
+  if [ -n "${ROLE_DIR:-}" ] && [ "${ROLE_DIR}" != "$1" ]; then
+    echo "error: ROLE_DIR hazard: ambient ROLE_DIR='${ROLE_DIR}' != iterated role '$1' (refusing to stamp payloads with the wrong role config)" >&2
+    return 1
+  fi
   local timer_sec
   timer_sec="$(role_timer_sec "${role}")"
   local heartbeat_enabled="false"
@@ -438,7 +448,14 @@ build_agent_payload() {
   ROLE_HEARTBEAT_ENABLED="${heartbeat_enabled}" \
   ROLE_REPORTS_TO="${reports_to}" \
   python3 -c '
-import json, os
+import json, os, sys
+# Wave D P2-9: prove the env chain delivered the iterated role, not a
+# stale/wrong ROLE_DIR (fail-closed on mismatch).
+if os.environ["ROLE_DIR"] != sys.argv[1]:
+    sys.exit(
+        "ROLE_DIR hazard: env ROLE_DIR=%r != iterated role %r"
+        % (os.environ["ROLE_DIR"], sys.argv[1])
+    )
 timer = int(os.environ["ROLE_TIMER_SEC"])
 payload = {
     "name": os.environ["ROLE_NAME"],
@@ -467,7 +484,7 @@ payload = {
 if os.environ["ROLE_REPORTS_TO"]:
     payload["reportsTo"] = os.environ["ROLE_REPORTS_TO"]
 print(json.dumps(payload, indent=2))
-'
+' "${role}"
 }
 
 find_company_id() {
@@ -581,10 +598,22 @@ fi
 
 # Pass 1: ensure all 51 agents exist (reportsTo wired in pass 2, when every id
 # is known — keeps the script idempotent and order-independent).
+# Wave D P2-9: the agent list is fetched ONCE up front and reused from the
+# cache (previously one LIST per role, O(n²) at n=51). The cache is
+# refreshed only when a lookup misses (stale cache or genuine absence)
+# and after every create (server state mutated) — steady-state runs cost
+# exactly one LIST, and correctness never depends on cache freshness.
+api GET "/api/companies/${COMPANY_ID}/agents" > "${TMPDIR_WORK}/agents.json"
 for role in "${ROLE_LIST[@]}"; do
   name="$(role_display_name "${role}")"
-  api GET "/api/companies/${COMPANY_ID}/agents" > "${TMPDIR_WORK}/agents.json"
   existing="$(find_agent "${name}" < "${TMPDIR_WORK}/agents.json")"
+  if [ -z "${existing}" ]; then
+    # Miss against a possibly stale cache: refresh once before concluding
+    # the agent is absent (a 500-body can no longer masquerade as missing —
+    # find_agent exits nonzero on unparseable bodies via api --fail-with-body).
+    api GET "/api/companies/${COMPANY_ID}/agents" > "${TMPDIR_WORK}/agents.json"
+    existing="$(find_agent "${name}" < "${TMPDIR_WORK}/agents.json")"
+  fi
   if [ -n "${existing}" ]; then
     log "agent '${name}' exists; skipping create"
   else
@@ -598,6 +627,8 @@ for role in "${ROLE_LIST[@]}"; do
       exit 1
     fi
     log "created agent '${name}' (${created_id})"
+    # Server state mutated: refresh the cache so later lookups see it.
+    api GET "/api/companies/${COMPANY_ID}/agents" > "${TMPDIR_WORK}/agents.json"
   fi
 done
 

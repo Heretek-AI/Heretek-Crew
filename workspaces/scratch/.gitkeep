@@ -1,0 +1,6 @@
+Dedicated writable scratch space for the quarantined local-ci-runner
+(service `local-ci-runner`, profiles `ci`/`qa-testing`/`core`): bind-mounted
+at /scratch:rw while the shared checkout stays :ro (Wave 4 P1-12). Agent
+checkouts live in workspaces/tickets/, NOT here. This file keeps the
+directory present (and host-owned) so first `up` never creates a
+root-owned path that breaks the `node` runner (P2-7 gap 2).

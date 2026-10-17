@@ -80,12 +80,21 @@ services:
     # RabbitMQ 4.x enables quorum queues by default for newly declared
     # classic-compatible queues; Firecrawl's crawl-queue declarations must be
     # smoke-tested (see P0-7: run the crawl-queue smoke below) before prod use.
+    # Wave D P2-8: consider 1g mem_limit at the next rotation (512m is lean
+    # for management + quorum overhead — monitor for memory pressure).
+    # Wave D P3-3 (guest rotation, env-provided): default guest creds are
+    # disclosed in-file upstream and this service is expose-only, but any
+    # heretek-networked container can reach the broker — so auth is now
+    # env-provided (RABBITMQ_USER/RABBITMQ_PASSWORD, fail-closed :?; see
+    # .env.example). NOTE: these vars are read ONLY on first boot against a
+    # fresh volume — rotating them on an existing volume needs
+    # `rabbitmqctl add_user/change_password` inside the container, not just
+    # a re-up (tracked operator step).
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER must be set in .env (firecrawl broker user; replaces default guest)}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env (generate with openssl rand -base64 24)}
     profiles: ["web-research"]
     restart: unless-stopped
-    # AUTH NOTE (P1-6): default guest credentials on a closed management
-    # port (expose-only, no host ports). Reachable from any
-    # heretek-networked container — same lateral-movement posture as the
-    # Redis/Qdrant notes. Guest-credential rotation is tracked (see P1-6).
     command: rabbitmq-server
     expose:
       - "5672"
@@ -154,6 +163,13 @@ services:
     mem_limit: 2g
 
   firecrawl:
+    # Wave D P2-8 version plan (tracked, honest): `:2.10.19` is a mutable
+    # tag while 4 sibling deps are digest-pinned. The target is a digest
+    # pin with a `#:2.10.19` human-readable comment — but the digest MUST
+    # be resolved live (`docker manifest inspect
+    # ghcr.io/firecrawl/firecrawl:2.10.19`), never invented offline.
+    # Until that verification runs, the exact tag stays with this plan
+    # attached (no blind bump, no floating `latest`).
     image: ghcr.io/firecrawl/firecrawl:2.10.19
     profiles: ["web-research"]
     restart: unless-stopped
@@ -179,12 +195,22 @@ services:
       WORKER_PORT: "3005"
       ENV: "local"
       LOGGING_LEVEL: "warn"
+      # Wave D P1-5 auth decision (tracked, honest): unauthenticated local
+      # access stays ONLY because (a) :3002 is loopback-published
+      # (127.0.0.1:3002:3002 — never all-interfaces) AND expose-only on
+      # the heretek net, and (b) the crawl API fetches arbitrary URLs by
+      # design (SSRF primitive for anyone reaching :3002). The hardening
+      # path is USE_DB_AUTHENTICATION=true + a provisioned secret (needs a
+      # firecrawl user/secret bootstrap that does not exist upstream for
+      # the self-host harness — verify before flipping, or the service
+      # fails closed at boot). Until then: keep :3002 loopback-only (smoke
+      # §3a asserts it) and treat crawler access as host-trust-boundary.
       USE_DB_AUTHENTICATION: "false"
       HARNESS_STARTUP_TIMEOUT_MS: "60000"
       REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@firecrawl-redis:6379"
       REDIS_RATE_LIMIT_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@firecrawl-redis:6379"
       PLAYWRIGHT_MICROSERVICE_URL: "http://firecrawl-playwright:3000/scrape"
-      NUQ_RABBITMQ_URL: "amqp://firecrawl-rabbitmq:5672"
+      NUQ_RABBITMQ_URL: "amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@firecrawl-rabbitmq:5672"
       POSTGRES_USER: ${FIRECRAWL_DB_USER:-firecrawl}
       POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:?FIRECRAWL_DB_PASSWORD must be set in .env}
       POSTGRES_DB: postgres
@@ -293,6 +319,13 @@ services:
   # untrusted workloads on the same heretek network.
   # ============================================================================
   ghidra:
+    # Wave D P2-8 version plan (tracked, honest): `blacktop/ghidra:11.2`
+    # is a community image likely one minor behind. Target: verify :11.3+
+    # exists upstream, then digest-pin it (never float `latest`); the
+    # `pgrep -f ghidra` healthcheck below is weak (matches any ghidra
+    # string) — the stronger probe is an HTTP hit on :1337 once the
+    # server is up (verify on first devsec-profile boot). Until that
+    # verification runs, 11.2 stays with this plan attached.
     image: blacktop/ghidra:11.2
     profiles: ["devsec"]
     restart: unless-stopped
@@ -303,6 +336,16 @@ services:
     # preserved while lateral movement to web-research/ai-gateway/qa
     # sidecars is cut. Remaining single-net services are tracked (see
     # NETWORKS block rationale below).
+    # Wave D P1-5 fronting plan (tracked, honest): ghidra :1337 serves
+    # with no auth env upstream, and radare2 :9090 exposes /cmd/ code
+    # execution — both are expose-only on the isolated heretek-devsec net,
+    # but paperclip joins that net (agent reachability), so any
+    # agent-code-exec bridges the segment by design (paperclip-as-bridge
+    # residual, recorded in SUPPORTING_SERVICES.md). The structural fix is
+    # a shared-secret sidecar proxy (or per-request tokens mounted only
+    # into the roles that need RE tooling) in front of :1337/:9090 and the
+    # piston :2000 API. Until that lands: never publish these ports to the
+    # host, never co-schedule devsec with untrusted workloads.
     expose:
       - "1337"
     environment:
@@ -332,6 +375,13 @@ services:
     # BIND NOTE (P1-6): the HTTP server listens on 0.0.0.0 INSIDE the
     # container but the service is expose-only (no host ports published),
     # so it is reachable only from heretek-networked containers.
+    # Wave D P1-5 fronting plan: same paperclip-as-bridge residual as
+    # ghidra above — r2 /cmd/ is unauthenticated RCE by design (piston
+    # likewise has no upstream auth env; sabotage-qa-tester's exact-host
+    # curl pins are the advisory layer, the sandbox is the only
+    # enforcement layer). Front with a shared-secret proxy or
+    # per-request tokens mounted only into needing roles (tracked);
+    # until then: expose-only, isolated net, no untrusted co-scheduling.
     image: radare/radare2@sha256:88b7ff67710e12f430b269abc7714490e3a0c37e391521523148cbd6f9d2ae37
     profiles: ["devsec"]
     restart: unless-stopped
@@ -364,14 +414,20 @@ services:
     # volume/API contract re-verified; (b) vendor hound-search/hound at a
     # fleet tag and self-build from the archived source. Until either
     # lands, the exact digest pin stays (no floating tag) and hound stays
-    # on expose-only + loopback :6080 (blast radius: read-only index).
+    # on expose-only + loopback publish (blast radius: read-only index).
+    # Wave D P2-8 host-port remap: the HOST side moves 6080 -> 6081
+    # (container :6080 unchanged, so the healthcheck below still probes
+    # container-local :6080). docker-android's noVNC owns host :6080 in
+    # the mobile profile; the profiles are mutually exclusive and the
+    # Makefile guard enforces it, but distinct host ports remove the
+    # collision class entirely instead of relying on the guard alone.
     image: ghcr.io/hound-search/hound@sha256:5b7fd0982ce12ebf41cfdbb8ab7aac081679667e778a8641bcd3026c98fc470e
     profiles: ["devsec", "web-research"]
     restart: unless-stopped
     expose:
       - "6080"
     ports:
-      - "127.0.0.1:6080:6080"
+      - "127.0.0.1:6081:6080"
     volumes:
       - ./workspaces:/workspaces:ro
       - hound-data:/data
@@ -421,6 +477,12 @@ services:
       # `act`, never through this proxy; the local-ci-runner container is a
       # quarantined read-only observer (inspect/list/diagnose only — see its
       # comment). The read-only posture is never weakened to "fix" CI.
+      # Wave D P1-6 accepted-risk residual: `expose: 2375` (no host ports)
+      # still lets ANY container on the shared heretek net run unauthenticated
+      # GET-recon (list images/containers, info/version). Accepted because
+      # the net is compose-managed and every attached workload is fleet
+      # first-party — but never attach untrusted third-party containers to
+      # the heretek net, and never publish :2375 to the host.
       CONTAINERS: "1"
       IMAGES: "1"
       INFO: "1"
@@ -459,6 +521,16 @@ services:
     # upstream digest pin stays (no :latest tag used, no digest invented).
     # DECISION NEEDED (product): vendor/self-build piston to ghcr.io/heretek-ai/piston:<semver>
     # to remove dependence on a floating upstream tag (see AUDIT_REPORT_FINDINGS.md P0-1e).
+    # Wave D P1-5 fronting plan (tracked, honest): piston exposes an
+    # unauthenticated /api/v2/execute RCE-as-a-service (no upstream auth
+    # env exists — the sandbox is the only layer). sabotage-qa-tester's
+    # exact-host curl pins (`curl -s http://piston:2000/api/v2/runtimes*`,
+    # `curl -s -X POST http://piston:2000/api/v2/execute*`) are advisory
+    # prefix allows, not a sandbox boundary (see AGENTS.md §4) — any
+    # SSRF/prefix-bypass anywhere on the shared net reaches it. Front
+    # :2000 with a shared-secret proxy (or per-request tokens mounted only
+    # into sabotage-qa-tester) at the next hardening pass; until then:
+    # expose-only, qa-testing/devsec profiles only, no host ports.
     image: ghcr.io/engineer-man/piston@sha256:2f66b7456189c4d713aa986d98eccd0b6ee16d26c7ec5f21b30e942756fd127a
     profiles: ["qa-testing", "devsec"]
     restart: unless-stopped

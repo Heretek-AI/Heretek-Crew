@@ -13,6 +13,13 @@ secrets/*
 !secrets/.gitkeep
 workspaces/*
 !workspaces/.gitkeep
+# Wave D P2-7.2: the quarantined runner's dedicated /scratch bind source
+# must exist host-owned before first `up` (else compose creates it
+# root-owned and breaks the `node` runner). Only the placeholder is
+# tracked — runner outputs written here at runtime stay ignored.
+!workspaces/scratch/
+workspaces/scratch/*
+!workspaces/scratch/.gitkeep
 .worktrees/*
 !.worktrees/.gitkeep
 *.log

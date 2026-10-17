@@ -113,6 +113,20 @@ TARGET_CANON="${REAL_BIN}"
 if command -v realpath >/dev/null 2>&1; then
     SELF_CANON="$(realpath -m "$0" 2>/dev/null || printf '%s' "$0")"
     TARGET_CANON="$(realpath -m "${REAL_BIN}" 2>/dev/null || printf '%s' "${REAL_BIN}")"
+elif command -v stat >/dev/null 2>&1; then
+    # P3-1 fallback (no realpath, e.g. minimal images): compare device+inode
+    # instead of strings, so a symlink-aliased self-reference still trips
+    # the guard instead of exec-looping. -L dereferences aliases to the
+    # final target (matching realpath semantics); stat failure is
+    # non-fatal here — the string comparison below remains as the last
+    # resort.
+    SELF_ID="$(stat -L -c '%d:%i' "$0" 2>/dev/null || true)"
+    TARGET_ID="$(stat -L -c '%d:%i' "${REAL_BIN}" 2>/dev/null || true)"
+    if [[ -n "${SELF_ID}" && "${SELF_ID}" == "${TARGET_ID}" ]]; then
+        echo "opencode-shim: ERROR: real binary resolves to the shim itself (${REAL_BIN})." >&2
+        echo "opencode-shim: refusing to exec to avoid infinite recursion." >&2
+        exit 127
+    fi
 fi
 if [[ "${TARGET_CANON}" == "${SELF_CANON}" ]]; then
     echo "opencode-shim: ERROR: real binary resolves to the shim itself (${REAL_BIN})." >&2

@@ -19,6 +19,12 @@ name: heretek-crew
 
 services:
   postgres:
+    # Wave D P2-8 version plan (tracked, honest): `17-alpine` floats the
+    # minor. The target is an exact `17.<x>-alpine` + digest pin, refreshed
+    # quarterly by dependency-patcher — but the minor + digest MUST be
+    # resolved live against the registry (`docker manifest inspect`),
+    # never invented offline. Until that verification runs, the floating
+    # minor stays with this plan attached (no blind bump).
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -72,6 +78,14 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       args:
+        # Wave D P2-5: base-image digest pin plan. PAPERCLIP_BASE_IMAGE is a
+        # locally-built tag (paperclip:official-local) with no registry
+        # digest to pin — the pin that matters is the Paperclip SOURCE
+        # commit it was built from (recorded in docker/Dockerfile +
+        # NOTES.md; verify with `git -C /tmp/paperclip rev-parse HEAD`
+        # before building). If the base ever moves to a registry image,
+        # pin the immutable digest here (image@sha256:<digest>) and
+        # constrain HERETEK_IMAGE overrides to digest pins only.
         PAPERCLIP_BASE_IMAGE: ${PAPERCLIP_BASE_IMAGE:-paperclip:official-local}
     image: heretek-crew/paperclip:wave1
     restart: unless-stopped
@@ -83,6 +97,17 @@ services:
     ports:
       - "127.0.0.1:3100:3100"
     environment:
+      # Wave D P2-7.1 password-file plan (tracked, honest): the superuser
+      # password is embedded in this URL and therefore visible to
+      # `docker inspect`, /proc/<pid>/environ and transcript dumps.
+      # Preferred: Docker secret / password-file mounted at runtime with
+      # the URL assembled inside the entrypoint. Until then the
+      # compensating controls are: (a) agent-reachable database access
+      # goes ONLY through POSTGRES_READONLY_URL (paperclip_reader,
+      # SELECT-only + read-only transactions — the seed-50 preflight
+      # rejects superuser URLs in agent payloads); (b) this server-side
+      # URL never enters adapterConfig.env (smoke §4 asserts the seed
+      # payloads carry no DATABASE_URL/POSTGRES_PASSWORD).
       DATABASE_URL: postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-paperclip}
       # Defense-in-depth: stop agent runtimes from loading repository
       # workspace project configs (prevents workspace git pollution).
@@ -96,7 +121,11 @@ services:
       PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set in .env (generate with openssl rand -base64 48)}"
       # Independent secret for signed approval-gated tool actions.
-      PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: ${PAPERCLIP_TOOL_ACTION_SIGNING_SECRET:-}
+      # Wave D P2-7.3 (fail-closed): an empty default would silently
+      # DISABLE signature verification, so none is shipped — compose
+      # refuses to start until a real secret is provisioned (generate
+      # with openssl rand -base64 32; see .env.example).
+      PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: ${PAPERCLIP_TOOL_ACTION_SIGNING_SECRET:?PAPERCLIP_TOOL_ACTION_SIGNING_SECRET must be set in .env (generate with openssl rand -base64 32; empty disables tool-action signature verification)}
       # Wave 2 MCP credential scoping (P0-2/P1-8): the dba postgres MCP
       # server connects ONLY through this read-only-role URL (the seed gate
       # rejects superuser URLs), and the 7 github-backed roles authenticate
@@ -129,6 +158,15 @@ services:
       # ClusterRole. Fail-closed chain: :? requires the path, the seed gate
       # requires it to be a regular file (compose bind-mounts would otherwise
       # materialize a directory), :ro blocks container writes.
+      # Wave D P0-3a scoping plan (tracked, honest): this bind is visible
+      # to the whole paperclip server (one UID/mount namespace shared by
+      # all agents — XDG isolates config only), so every role carries
+      # fs:read denies for **/secrets/** + **/kubeconfig* (smoke §3b
+      # asserts them fleet-wide). The structural fix is to move the
+      # kubeconfig OUT of the filesystem entirely — into the MCP server
+      # env via a file descriptor the fs tools cannot address — so only
+      # k8s-orchestrator's server process ever sees it. Until that
+      # lands, the read-only ClusterRole binding is the containment.
       - ${KUBECONFIG_READONLY_PATH:?KUBECONFIG_READONLY_PATH must be set in .env (host path of the read-only kubeconfig)}:/paperclip/secrets/kubeconfig-readonly:ro
     networks:
       - heretek
@@ -172,12 +210,20 @@ services:
     # even with PROXY_DOMAIN empty/unset in .env. Set PROXY_DOMAIN to a real
     # public hostname when using `--profile proxy` to get automatic TLS;
     # leaving it unset under the proxy profile serves localhost only.
+    # Wave D P3-4 (optional, tracked): for multi-host or header/logging
+    # control, replace this one-liner with a mounted Caddyfile (more
+    # auditable); the single-host one-liner stays until that need arises.
     command: ["reverse-proxy", "--from", "${PROXY_DOMAIN:-localhost}", "--to", "paperclip:3100"]
     # EXPOSURE NOTE (P1-6): unlike every other service in this stack
     # (loopback-bound or internal-only), the proxy profile binds 80/443 on
     # ALL interfaces. Enable --profile proxy only with
     # PAPERCLIP_DEPLOYMENT_EXPOSURE=private (default above) plus real
     # authentication, and never expose the loopback-bound :3100 directly.
+    # Wave D P2-6: this note is enforced, not honor-system — `make
+    # proxy-up` (Makefile guard-proxy) refuses --profile proxy unless
+    # PAPERCLIP_DEPLOYMENT_EXPOSURE=private AND BETTER_AUTH_SECRET is a
+    # real (non-placeholder) secret. Do not bypass the guard with raw
+    # `docker compose --profile proxy up`.
     ports:
       - "80:80"
       - "443:443"

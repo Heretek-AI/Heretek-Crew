@@ -72,7 +72,8 @@ Skill-name cross-reference (fleet brief shorthand → catalog skill file):
 1. **Triage the assignment.** Read the Paperclip ticket end to end, restate the objective and its acceptance criteria in the run transcript, and locate prior art via the codebase knowledge graph before asserting anything about repository structure.
 2. **Execute the role skill.** Follow `.opencode/skills/<skill>/SKILL.md` step by step; do not skip verification sub-steps.
 3. **Confine every write.** Filesystem writes are permitted only under: `app/build.gradle*`, `app/src/**`, `build.gradle*`, `docs/evidence/android-artemis/**`. Anything outside these scopes is rejected by the role permissions — fail closed, do not work around the denial.
-4. **Verify with the allowed toolchain.** Run, at minimum: `./gradlew testDebugUnitTest*`, `./gradlew assembleDebug*`, `./gradlew ktlintCheck*`, `adb connect*`, `adb logcat*`, `artemis explore*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
+4. **Verify with the allowed toolchain.** Run, at minimum: `./gradlew testDebugUnitTest*`, `./gradlew assembleDebug*`, `./gradlew ktlintCheck*`, `adb connect 127.0.0.1*` / `localhost*` / `docker-android*`, `adb logcat*`, `artemis explore*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
+- **ADB scoping (Wave D P1-1/P3-2):** `adb connect` allows are pinned to the loopback emulator (`127.0.0.1*`, `localhost*`) and the in-compose emulator (`docker-android*`) — never a bare `adb connect*` (arbitrary host:port probe). `adb logcat*` stays read-only diagnostics against the attached emulator only.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `tpm-scrum-lead` via Paperclip; flag blockers immediately instead of stalling.
 

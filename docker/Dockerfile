@@ -14,12 +14,43 @@
 #        --build-arg PAPERCLIP_BASE_IMAGE=paperclip:official-local \
 #        -t heretek-crew/paperclip:wave1 .
 #
+# Wave D P1-8 Paperclip source pin (tracked, honest): the base is a LOCAL
+# build with no registry digest, so the reproducible pin is the upstream
+# SOURCE COMMIT it was built from. Record it before building:
+#   git -C /tmp/paperclip rev-parse HEAD   # paste below + into NOTES.md
+# PAPERCLIP_SOURCE_COMMIT=<paste-40-char-sha-here> (unrecorded until the
+# maintainer runs the command above on the build host — `docker inspect`
+# cannot recover it after the fact). Until recorded, Claim 3.1 (XDG /
+# OPENCODE_DISABLE_PROJECT_CONFIG enforcement inside
+# prepareOpenCodeRuntimeConfig) is config-advice, live-unverified: the
+# canary live test (plant canary opencode.json + .opencode/ in a scratch
+# workspace, run one agent turn, assert the canary was ignored) still
+# needs a live stack (see smoke-test.sh §10 live gate note).
+#
 # Pinned versions (never `latest`):
 #   node base ........... node:24-trixie-slim (inherited from official base)
 #   postgres ............ postgres:17-alpine (see docker-compose.yml)
 #   @opencode/cli ....... 2.0.32
 #   @opencode/client .... 2.0.32
 #   @heretek-ai/opencode-harness .. 1.0.7
+#     Wave D P0-1 upstream fix (NOT in this repo — dist/index.js is
+#     upstream npm, do not invent it here): 1.0.7 DIES on load under host
+#     @opencode/cli@2.0.32, which supplies an empty-string directory —
+#     `inferredRoot = ctx?.directory ?? ... ?? process.cwd()` never skips
+#     "", so resolveHarnessOptions({rootDir: ""}) throws (fail-closed)
+#     and every harness tool reads "not available". Upstream diff:
+#       const pick = (v) => (typeof v === "string" && v.trim() !== "" ? v : undefined);
+#       inferredRoot = pick(ctx?.directory) ?? pick(ctx?.worktree)
+#         ?? pick(ctx?.location?.directory) ?? pick(ctx?.location?.worktree)
+#         ?? process.cwd()
+#     Bump plan: when upstream publishes the fixed successor, set
+#     OPENCODE_HARNESS_VERSION to it here, re-enumerate
+#     EXTENDED_HARNESS_TOOL_NAMES into scripts/smoke-test.sh
+#     HARNESS_MANIFEST, and re-run the live tool-visibility gate
+#     (smoke §10: a real agent turn invoking file_hash_read must
+#     succeed — `npm ls` alone never catches a load-time Die).
+#     Until then the 1.0.7 pin stays (exact, no float) and Domain 4
+#     harness primitives are documented as load-broken, NOT working.
 #   opencode-mem ........ 2.31.3 (memory plugin referenced by fleet roles;
 #                         provides persistent Turso/libSQL-backed memory)
 #   @prevalentware/opencode-goal-plugin .. 0.1.64 (goal-tracking plugin
@@ -45,6 +76,13 @@ ENV OPENCODE_CLI_VERSION=2.0.32 \
 # by the inherited official entrypoint (see USER note below).
 USER root
 
+# Wave D P2-5 --force rationale (tracked, honest): --force is kept
+# deliberately because @opencode/cli@2.0.32 + @opencode/client@2.0.32 +
+# the three plugins resolve peer deps that conflict without it, and the
+# alternative (unpinned conflict resolution) is worse than a pinned
+# force-install. The pins above are exact, so --force cannot float
+# anything: it only permits the pinned set to install. Revisit (drop
+# --force) only with a lockfile-verified peer matrix in hand.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -100,6 +138,11 @@ WORKDIR /app
 # ENTRYPOINT is re-declared identical to the official base so this layer is
 # explicit about PID 1: tini reaps zombie agent/tool descendants and forwards
 # signals; the entrypoint then drops privileges to node.
+# Wave D P2-5 boot assertion: effective UID==1000 is verified live by
+# scripts/smoke-test.sh §8 (`docker compose exec paperclip id -u` must
+# print 1000) — if the base entrypoint ever stops dropping via gosu (or
+# PAPERCLIP_BASE_IMAGE is overridden), the live gate fails instead of
+# silently running the server (and every agent child) as root.
 ENTRYPOINT ["/usr/bin/tini", "--", "docker-entrypoint.sh"]
 CMD ["node", "--import", "./server/node_modules/tsx/dist/loader.mjs", "server/dist/index.js"]
 

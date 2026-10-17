@@ -30,6 +30,26 @@
     },
     {
       "action": "fs:read",
+      "resource": "**/secrets/**",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/kubeconfig*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.pem",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/id_rsa*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
       "resource": "**",
       "effect": "allow"
     },
@@ -261,6 +281,9 @@
           "uvx",
           "docker-mcp==0.2.0"
         ],
+        "env": {
+          "DOCKER_HOST": "tcp://docker-socket-proxy:2375"
+        },
         "timeout": 5000
       }
     }

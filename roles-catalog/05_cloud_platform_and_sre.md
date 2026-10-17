@@ -230,7 +230,10 @@ description: Audits and packages Kubernetes Helm charts to enforce non-root secu
       },
       "docker": {
         "type": "local",
-        "command": ["uvx", "docker-mcp"]
+        "command": ["uvx", "docker-mcp"],
+        "env": {
+          "DOCKER_HOST": "tcp://docker-socket-proxy:2375"
+        }
       }
     }
   }

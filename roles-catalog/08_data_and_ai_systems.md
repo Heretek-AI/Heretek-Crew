@@ -342,7 +342,10 @@ description: Configures, launches, and benchmarks vLLM/Ollama model serving engi
       },
       "docker": {
         "type": "local",
-        "command": ["uvx", "docker-mcp"]
+        "command": ["uvx", "docker-mcp"],
+        "env": {
+          "DOCKER_HOST": "tcp://docker-socket-proxy:2375"
+        }
       }
     }
   }

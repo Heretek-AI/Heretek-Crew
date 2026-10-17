@@ -355,5 +355,26 @@ check_go_fallback "go-key: neither set leaves key unset" \
 check_go_fallback "go-key: empty GO key does not clobber to empty" \
     "UNSET" -u OPENCODE_API_KEY OPENCODE_GO_API_KEY=
 
+# 21. P3-1: without realpath on PATH, a symlink-aliased self-reference
+# must still trip the recursion guard (device+inode comparison, not the
+# string fallback that misses aliases). Fail-closed: exit 127 with the
+# recursion message, never an exec loop.
+set +e
+mkdir -p "${SANDBOX}/norealpath"
+ln -sf "$(command -v stat)" "${SANDBOX}/norealpath/stat"
+ln -sf "${SHIM}" "${SANDBOX}/self-alias"
+# NOTE: the child must be spawned via "$BASH" (absolute path of this
+# interpreter) — a bare `PATH=... bash` would fail to resolve `bash`
+# itself under the stripped PATH before the shim ever runs.
+PATH="${SANDBOX}/norealpath" OPENCODE_REAL_BIN="${SANDBOX}/self-alias" \
+  "$BASH" "${SHIM}" run hi > /dev/null 2> "${SANDBOX}/selfref.err"
+code=$?
+set -e
+if [[ "${code}" -eq 127 ]] && grep -q "shim itself" "${SANDBOX}/selfref.err"; then
+    report PASS "self-recursion guard fires via device+inode when realpath is absent (P3-1)"
+else
+    report FAIL "self-recursion guard missed symlink alias without realpath (exit ${code})"
+fi
+
 printf '\n%d passed, %d failed\n' "${PASS}" "${FAIL}"
 [[ "${FAIL}" -eq 0 ]]

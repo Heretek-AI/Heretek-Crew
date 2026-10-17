@@ -13,14 +13,15 @@ Any AI coding assistant, autonomous agent, or paired developer working on this c
 - **Agent Runtime**: OpenCode v2 (`@opencode/cli@2.0.32` + `@opencode/client@2.0.32`).
 - **Database**: PostgreSQL 17 (`postgres:17-alpine`) with healthcheck and backup automation.
 - **Compatibility Layer**: Custom POSIX shell shim (`scripts/opencode-shim.sh`) installed at `/usr/local/bin/opencode` in the container.
-- **Network & Ingress**: Isolated user-defined bridge network (`heretek`), loopback-bound ports (`127.0.0.1:3100`), optional Caddy TLS reverse proxy (`--profile proxy`), and Tailscale mesh sidecar (`--profile tailscale`).
+- **Network & Ingress**: Isolated user-defined bridge network (`heretek`), loopback-bound ports (`127.0.0.1:3100`), optional Caddy TLS reverse proxy (`make proxy-up` — guarded; never raw `--profile proxy`), and Tailscale mesh sidecar (`--profile tailscale`).
 - **Fleet Scope**: 51 specialist roles organized into 9 departments (`roles-catalog/`, `roles/ai-red-teamer/`), supported by on-demand sidecar containers (`docker-compose.sidecars.yml`).
 
 ### Architectural Invariants
-1. **Per-Role Isolation via `XDG_CONFIG_HOME`**:
+1. **Per-Role Isolation via `XDG_CONFIG_HOME`** (config-advice, live-unverified):
    - Paperclip sets `OPENCODE_DISABLE_PROJECT_CONFIG=true` at runtime to prevent repository workspace git pollution.
    - Each agent is configured with `adapterConfig.env.XDG_CONFIG_HOME = "/roles/<role-id>"`.
    - Paperclip's `prepareOpenCodeRuntimeConfig` copies `/roles/<role-id>/opencode/opencode.json` into a temporary directory, merges runtime credentials and permissions, and passes it to OpenCode v2.
+   - **Live-unverified (Wave D P1-8):** the copying/merging code lives in upstream Paperclip (`/tmp/paperclip`, outside this repo) and the base image is pinned only to a locally-built tag — until the Paperclip source commit is recorded (`docker/Dockerfile` + `NOTES.md`) AND the canary live test passes (plant canary `opencode.json` + `.opencode/` in a scratch workspace, run one agent turn, assert the canary was ignored), treat this as config-advice, not proven isolation. The child-env scrub (no `DATABASE_URL`/`POSTGRES_PASSWORD`/`BETTER_AUTH_SECRET`/provider keys in `adapterConfig.env`) is likewise live-unverified — `scripts/smoke-test.sh` §4 asserts the seed payloads never carry those keys, but upstream inheritance scrubbing needs the same live run.
 2. **OpenCode v2 Breaking Changes Addressed by the Shim**:
    - `opencode run` in v2 removed `--dir` (runs in process `cwd`) and `--variant` (encoded as `--model provider/model#variant`).
    - Non-interactive unattended runs require `--auto` to avoid interactive permission blocks.
@@ -53,7 +54,7 @@ Any AI coding assistant, autonomous agent, or paired developer working on this c
 │   └── 01_*.md ... 09_*.md         # Departmental specifications (incl. Role 51)
 ├── scripts/
 │   ├── opencode-shim.sh            # Production CLI shim
-│   ├── test-shim.sh                # 45-assertion unit test suite for the shim
+│   ├── test-shim.sh                # 46-assertion unit test suite for the shim
 │   ├── seed-50-fleet.sh            # 51-agent fleet seeding script
 │   ├── generate-50-roles.py        # 51-role disk scaffolding generator
 │   ├── spec-gate.sh                # Spec-driven development gate (PRD/ADR/task deltas in CI)
@@ -77,7 +78,7 @@ Always use the `Makefile` or explicit scripts. Never construct ad-hoc commands t
 
 ```bash
 # Verification & Testing (run before committing any changes)
-make test                           # Runs unit shim tests (45/45 assertions)
+make test                           # Runs unit shim tests (46/46 assertions)
 bash scripts/spec-gate.sh --check-only   # 7 SDD gate verification checks
 bash scripts/smoke-test.sh --check-only  # 495+ static verification assertions
 shellcheck scripts/*.sh             # Shell script static analysis (zero warnings)
@@ -130,6 +131,18 @@ When modifying this repository, follow these non-negotiable rules:
      continuations such as `git status; <payload>` match the prefix when the
      enforcer is prefix-based. Treat these lists as defense-in-depth hints, not
      as a sandbox boundary; never rely on them alone for untrusted input.
+     Enforcer identity + version (Wave D P1-1d): upstream OpenCode v2
+     (`@opencode/cli@2.0.32`) with Paperclip's `opencode-local` adapter
+     (`/tmp/paperclip`, outside this repo) — exact allow-matching semantics
+     (prefix vs argv-aware) are unpinned and live-untested here. Live-probe
+     steps (need `make up` + seeded fleet): run `git status; id`,
+     `git status$(id)`, `git status||id`, and `npm test -- --unknown-flag`
+     through an agent turn and record whether each is denied; until denials
+     are observed, assume prefix semantics. Scoping rules that hold
+     regardless: `adb connect` is allowlisted to loopback + in-compose
+     emulator hosts (never bare `*`); piston `curl` allows are pinned to the
+     exact `piston:2000` host paths (advisory — the piston sandbox itself is
+     the only enforcement layer, see `docker-compose.sidecars.yml`).
    - **Known limitation — MCP namespaces bypass shell denies.** A role that
      denies `kubectl apply/delete` or `psql*` via `shell` but allows
      `kubernetes_*` / `postgres_*` MCP tools can still perform those operations
@@ -150,7 +163,8 @@ When modifying this repository, follow these non-negotiable rules:
    - Every role `opencode.json` must specify `"small_model": "anthropic/claude-haiku-4-5"` for summaries/compaction.
    - Every role `opencode.json` must include `"compaction": { "auto": true, "prune": true, "reserved": 10000 }`.
    - All local MCP server declarations must carry `"timeout": 5000` to prevent unhandled process hangs.
-   - Filesystem read permissions must deny `.env` and `*.env.*` secret paths.
+   - Filesystem read permissions must deny `.env` and `*.env.*` secret paths, AND (Wave D P0-3c) secret-material paths `**/secrets/**`, `**/kubeconfig*`, `**/*.pem`, `**/id_rsa*` — all denies sort before any `fs:read` allow (fail-closed under both first-match and deny-override semantics). `scripts/smoke-test.sh` §3b asserts presence + ordering fleet-wide.
+   - `k8s-orchestrator` + `mlops-serving-eng` docker MCP servers must declare `DOCKER_HOST=tcp://docker-socket-proxy:2375` explicitly (Wave D P1-6 — GET-only read-observer via the proxy; never a bare socket mount).
 6. **No Unpinned Versions**:
    - Forbidden: `:latest`, `@latest`, unversioned package installations.
 7. **Shell Script Standards**:

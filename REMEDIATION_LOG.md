@@ -1159,3 +1159,46 @@ Full report: `docs/reports/wave-c-implementation.md`.
 - Fail-closed kept throughout (see stage report §5); no `|| true`/`TODO`/dummy returns added; no floating tags (one tag REMOVED); deny tails 51/51; no secrets in repo.
 - Not done / residuals: live image build + publish-gate execution, prebuilt pull post-`v1.0.0`, charter-prose catalog back-sync, kafka-mcp package+sidecar, piston vendoring + hound migration (maintainer), full segmentation, `redis://redis:6379` hostname (unfiled by the audit — flagged, unchanged).
 - No commits, no merges, no subagents used.
+
+---
+
+# Wave D Remediation Log — Final Remediation (P0-1, P0-3, P1-1, P1-5, P1-6, P1-8, P2-5–P2-9, P3-1–P3-5)
+
+**Worktree:** `/home/john/Projects/Heretek-Crew` (no worktree — base clean at Wave C `d7c7aca`; branch `main`)
+**Date:** 2026-10-17 | **Source of truth:** `AUDIT_REPORT_FINDINGS.md` + task envelope (TARGETS + ACCEPTANCE)
+**Status:** all Wave D items closed or honestly recorded as tracked residuals, verified empirically. Changes left UNCOMMITTED for QA/Drift-Guard. No commits, no merges, no subagents used.
+Full report: `docs/reports/wave-d-implementation.md`.
+
+## What changed (by finding)
+
+- **P0-1:** upstream `pick()` diff + bump plan in `docker/Dockerfile` + `NOTES.md` (nothing invented — dist is upstream npm); pin stays 1.0.7, Domain 4 labeled load-broken; new §10b live-only gate (`HARNESS_LIVE_GATE=1`) + probe fixture `scripts/fixtures/harness-probe-opencode.json`; check-only carries two documented SKIP notes.
+- **P0-3:** kubeconfig mount kept `:ro` + MCP-env structural plan; §4 seed-payload env allowlist gate (no superuser/provider keys — green); 4 secret-material `fs:read` denies × 51 via generator + scratch-regen promotion (disk == generator, zero drift) + fleet-wide smoke gate.
+- **P1-1/P3-2:** `adb connect*` → loopback + docker-android allowlist (catalog + disk + charter + smoke gate); sabotage piston pins kept exact-host + advisory note; enforcer identity/version + live-probe steps in `AGENTS.md` §4.
+- **P1-5:** r2/ghidra/piston fronting plans + paperclip-as-bridge residual (`SUPPORTING_SERVICES.md` §12.7, per-service compose notes); firecrawl loopback-only decision + gate; `POST/BUILD/EXEC=0` untouched.
+- **P1-6/P3-5:** Domain 8 claims corrected to read-only-observer (both SUPPORTING mirrors + value prop); `:2375` GET-recon accepted risk; `DOCKER_HOST` declared in both docker MCP servers (catalog + disk + smoke gate; dead-MCP 9→7).
+- **P1-8:** Paperclip source-commit pin procedure; Claim 3.1 labeled config-advice, live-unverified; canary steps in §10b SKIP note.
+- **P2-5:** base-digest plan; §8 live UID==1000 gate (not-running vs wrong-user distinguished); `--force` rationale comment.
+- **P2-6:** `guard-proxy` + `proxy-up` (all four directions verified) + compose/`.env.example`/AGENTS/smoke routing.
+- **P2-7:** password-file plan + READONLY-only payload gate; `workspaces/scratch/.gitkeep` tracked (outputs ignored — both verified); signing secret `:?` + gate.
+- **P2-8:** digest/minor plans as comments (no blind bumps); hound host `:6081` (mirrors + gate); rabbitmq env auth (guest retired, first-boot caveat, gate); quarterly watchlist in §1b.
+- **P2-9:** fetch-once + double ROLE_DIR guard (shell + python `sys.argv` assert; `ROLE_DIR=wrong-role` → exit 1) + smoke gate.
+- **P3-1:** `stat -L` device+inode fallback + test 21 (46/46; old-code trace proved the miss at depth 0).
+- **P3-3/P3-4:** rabbitmq rotation done; Caddyfile tracked as optional.
+
+## Test results (must-keep-green set + Wave D proofs)
+
+- `bash scripts/test-shim.sh` → **46 passed, 0 failed**.
+- `bash scripts/smoke-test.sh --check-only` → **526 passed, 0 failed, 5 skipped** (3 environmental + 2 live-gate notes).
+- `bash scripts/spec-gate.sh --check-only` → 7/7. `shellcheck scripts/*.sh` → zero warnings.
+- `bash scripts/seed-50-fleet.sh --dry-run` → 52 payloads, total == cap, empty stderr; ROLE_DIR hazard probe → exit 1.
+- Mutation probes (restored green): secrets-deny removal → FAIL; bare adb → FAIL; DOCKER_HOST removal → 2 FAILs.
+- `docker compose config` → exit 0 on default, prebuilt, web-research, devsec, ai-gateway, observability, mobile, core+ci, qa-testing+core, proxy+tailscale. qa-testing-alone failure verified identical on stashed baseline (pre-existing pairing, not a regression).
+- Generator↔disk zero drift (scratch `--root` regen, before and after).
+- `make test` (live, stack down) → 526 passed / 3 environmental FAILs (all "stack not running" — full green needs `make up`).
+
+## Self-audit notes (Wave D)
+
+- Fail-closed kept: guards exit non-zero with descriptive errors; no `|| true`/`TODO`/dummies; deny tails 51/51 re-verified programmatically; no `:latest` introduced; no secrets (dummies/placeholders only).
+- Honestly unclaimed: P0-1 load-broken, 3.1 + scrub live-unverified, prefix semantics assumed, fronting/digests tracked-not-built. Residuals needing live stack/registry/auth listed in the stage report §4.
+- Mid-work scare: a `git stash`/`pop` baseline probe echoed a transient AGENTS.md revert in the file watcher — verified immediately (stash list empty, all 4 Wave D markers present, pop restored everything). No edits lost.
+- No commits, no merges, no subagents used.

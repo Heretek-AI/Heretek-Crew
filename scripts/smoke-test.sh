@@ -27,7 +27,10 @@
 #                       dba/k8s MCP-boundary shell
 #                       denies intact, harness manifest == per-tool allows
 #                       (14 full / 10 read-only + 4 mutating denies),
-#                       read-only set drift pin, fs:read deny-first order,
+#                       read-only set drift pin, fs:read deny-first order
+#                       + secret-material denies (**/secrets/**,
+#                       **/kubeconfig*, **/*.pem, **/id_rsa*),
+#                       adb-connect host allowlist, docker DOCKER_HOST pins,
 #                       with no wildcard, MCP namespaces scoped to read
 #                       verbs + deny tails, negative prefix-chain probes
 #                       denied by the reference matcher, seed sets
@@ -87,9 +90,23 @@
 # tail, while read-only-charter roles (Wave A P0-2) allow only the 10
 # non-mutating tools plus 4 explicit mutating-tool denies. A bump of the
 # harness version requires re-enumeration + manifest update here.
+# Wave D P0-1 root cause (NOT fixed in-repo — dist/index.js is upstream
+# npm): host @opencode/cli@2.0.32 supplies an empty-string directory, and
+# `inferredRoot = ctx?.directory ?? ... ?? process.cwd()` never skips ""
+# (`??` skips null/undefined only), so resolveHarnessOptions({rootDir:""})
+# throws fail-closed and the plugin dies before registering anything
+# (debug log: Die(Error: rootDir must be non-empty); live `opencode run`
+# replies "file_hash_read is not available"). Upstream one-spot fix +
+# bump plan: docker/Dockerfile pin comment (falsy-tolerant pick() over
+# the four context slots). Until the fixed successor ships, Domain 4
+# harness primitives are documented as load-broken, never working.
 # Live tool-registration (the runtime actually exposing those tools to an
-# agent run) is still asserted only by a live agent run invoking a harness
-# tool (tracked; needs `make up` + seeded fleet).
+# agent run) is asserted ONLY by the live gate in §10b (needs `make up` +
+# seeded fleet + HARNESS_LIVE_GATE=1): it runs the probe fixture at
+# scripts/fixtures/harness-probe-opencode.json through a real `opencode
+# run` and FAILs on the rootDir Die. `npm ls` alone never catches a
+# load-time Die — do not treat the publish-gate install check as
+# tool-visibility proof.
 #
 # Exit code: 0 when nothing FAILs (SKIPs are informational), 1 otherwise.
 # Fail-closed: every check reports PASS/FAIL/SKIP explicitly; unknown states
@@ -173,7 +190,7 @@ section "2. docker compose config"
 # POSTGRES_READONLY_URL, GITHUB_TOKEN, KUBECONFIG_READONLY_PATH) need
 # dummies too; the kubeconfig dummy points at a real repo file so the
 # bind-mount source exists. Defined once for every config invocation below.
-SMOKE_DUMMY_ENV=(POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ POSTGRES_READER_PASSWORD=__smoke_only__ POSTGRES_READONLY_URL=postgres://paperclip_reader:__smoke_only__@postgres:5432/paperclip GITHUB_TOKEN=__smoke_only__ KUBECONFIG_READONLY_PATH=./secrets/.gitkeep REDIS_PASSWORD=__smoke_only__ QDRANT_API_KEY=__smoke_only__ SEARXNG_SECRET=__smoke_only__ FIRECRAWL_DB_PASSWORD=__smoke_only__ BROWSERLESS_TOKEN=__smoke_only__ NEO4J_PASSWORD=__smoke_only__ LITELLM_MASTER_KEY=__smoke_only__ MINIO_ROOT_USER=__smoke_only__ MINIO_ROOT_PASSWORD=__smoke_only__)
+SMOKE_DUMMY_ENV=(POSTGRES_PASSWORD=__smoke_only__ BETTER_AUTH_SECRET=__smoke_only_0123456789abcdef__ PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=__smoke_only_0123456789abcdef__ POSTGRES_READER_PASSWORD=__smoke_only__ POSTGRES_READONLY_URL=postgres://paperclip_reader:__smoke_only__@postgres:5432/paperclip GITHUB_TOKEN=__smoke_only__ KUBECONFIG_READONLY_PATH=./secrets/.gitkeep REDIS_PASSWORD=__smoke_only__ QDRANT_API_KEY=__smoke_only__ SEARXNG_SECRET=__smoke_only__ FIRECRAWL_DB_PASSWORD=__smoke_only__ BROWSERLESS_TOKEN=__smoke_only__ NEO4J_PASSWORD=__smoke_only__ LITELLM_MASTER_KEY=__smoke_only__ MINIO_ROOT_USER=__smoke_only__ MINIO_ROOT_PASSWORD=__smoke_only__ RABBITMQ_USER=__smoke_only__ RABBITMQ_PASSWORD=__smoke_only__)
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   skip "'docker compose' not available; config validation skipped"
 else
@@ -255,6 +272,40 @@ else
     bad "read-only-role hook accepted a CHANGE_ME__ placeholder (must fail closed)"
   else
     ok "read-only-role hook rejects CHANGE_ME__ placeholders (fail-closed)"
+  fi
+  # Wave D P2-7.3: the tool-action signing secret must be fail-closed
+  # (:? — no empty `:-` default that silently disables signature
+  # verification). An empty/missing value must refuse `config`, and the
+  # dummy above must render.
+  # shellcheck disable=SC2016 # literal ${...:?...} source-text match intended
+  if grep -q 'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: ${PAPERCLIP_TOOL_ACTION_SIGNING_SECRET:?' docker-compose.yml \
+    && ! grep -q 'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: ${PAPERCLIP_TOOL_ACTION_SIGNING_SECRET:-}' docker-compose.yml; then
+    ok "tool-action signing secret is fail-closed (:? guard, no empty default)"
+  else
+    bad "tool-action signing secret not fail-closed (want :? guard, no :- default)"
+  fi
+  if env "${SMOKE_DUMMY_ENV[@]}" \
+    docker compose config 2>/dev/null | grep -q 'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET'; then
+    ok "paperclip renders PAPERCLIP_TOOL_ACTION_SIGNING_SECRET (provisioned)"
+  else
+    bad "paperclip rendered config lacks PAPERCLIP_TOOL_ACTION_SIGNING_SECRET"
+  fi
+  # Wave D P2-6: the caddy 80/443 all-interfaces exposure is enforced by
+  # `make proxy-up` (Makefile guard-proxy), not honor-system. The guard
+  # must refuse non-private exposure and missing/placeholder auth
+  # secrets; the compose exposure note must point at it (no raw
+  # `--profile proxy` bypass in docs).
+  if grep -q '^guard-proxy:' Makefile \
+    && grep -q '^proxy-up: guard-proxy' Makefile \
+    && grep -q "refusing --profile proxy" Makefile; then
+    ok "Makefile proxy preflight guard present (guard-proxy + proxy-up)"
+  else
+    bad "Makefile proxy preflight guard MISSING (P2-6)"
+  fi
+  if grep -q 'proxy-up' docker-compose.yml; then
+    ok "compose exposure note routes operators to make proxy-up (no raw --profile proxy)"
+  else
+    bad "compose exposure note does not route operators to make proxy-up (P2-6)"
   fi
 fi
 
@@ -411,12 +462,15 @@ print("all npx (pkg@ver) + uvx (pkg==ver) pinned, zero exceptions")
 else
   bad "unpinned MCP package(s): $(head -c 400 "${TMP}/pins.err")"
 fi
-# Wave C P1-2 dead-wiring allowlist: seven MCP declarations reference
-# sidecars absent from every compose file (plus two docker-MCP blocks
-# with no DOCKER_HOST). They are kept as role-ready/infra-pending by
-# product decision (catalog §3 notes) — this gate pins that decision:
-# the flagged set must EQUAL the allowlist exactly. A new dead server,
-# or a pending server gaining infra without leaving the list, FAILs.
+# Wave C P1-2 dead-wiring allowlist: five MCP declarations reference
+# sidecars absent from every compose file. They are kept as
+# role-ready/infra-pending by product decision (catalog §3 notes) — this
+# gate pins that decision: the flagged set must EQUAL the allowlist
+# exactly. A new dead server, or a pending server gaining infra without
+# leaving the list, FAILs. (Wave D P1-6/P3-5: the two docker-MCP blocks
+# LEFT this list — they now declare DOCKER_HOST explicitly and talk to
+# the GET-only socket proxy as read-only observers; see the
+# docker-host gate below.)
 if python3 -c '
 import glob, json, sys
 
@@ -429,8 +483,6 @@ EXPECTED_DEAD = {
     ("cache-streaming-eng", "kafka"),      # no kafka sidecar (+ PyPI 404)
     ("analytics-metrics-eng", "clickhouse"),  # no clickhouse sidecar
     ("load-stress-tester", "k6"),          # no k6 sidecar (CLI tool)
-    ("k8s-orchestrator", "docker"),        # no DOCKER_HOST wired
-    ("mlops-serving-eng", "docker"),       # no DOCKER_HOST wired
 }
 ABSENT_HOSTS = ("://ollama", "://prometheus", "kafka:", "://clickhouse", "://redis:")
 
@@ -596,6 +648,60 @@ if grep -q "QDRANT__SERVICE__API_KEY: \"\${QDRANT_API_KEY:?" docker-compose.side
 else
   bad "qdrant auth REGRESSED: server key or MCP client key wiring missing"
 fi
+# Wave D P3-3: firecrawl-rabbitmq runs on env-provided creds (guest
+# retired): RABBITMQ_DEFAULT_USER/PASS are fail-closed :?, the
+# NUQ_RABBITMQ_URL carries user:pass (no bare amqp://host URL remains),
+# and .env.example provisions both values.
+# shellcheck disable=SC2016 # literal ${...:?...} source-text match intended
+if grep -q 'RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?' docker-compose.sidecars.yml \
+  && grep -q 'RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?' docker-compose.sidecars.yml \
+  && grep -q 'NUQ_RABBITMQ_URL: "amqp://${RABBITMQ_USER:?' docker-compose.sidecars.yml \
+  && ! grep -q 'NUQ_RABBITMQ_URL: "amqp://firecrawl-rabbitmq' docker-compose.sidecars.yml \
+  && grep -q '^RABBITMQ_USER=' .env.example \
+  && grep -q '^RABBITMQ_PASSWORD=' .env.example; then
+  ok "rabbitmq auth wired: env-provided user/pass (:?) + authed NUQ URL (no guest, no bare amqp://)"
+else
+  bad "rabbitmq auth REGRESSED: env-provided user/pass or authed NUQ URL wiring incomplete (P3-3)"
+fi
+# Wave D P1-5: firecrawl :3002 stays loopback-published (the auth
+# decision in-file keeps USE_DB_AUTHENTICATION=false ONLY under this
+# restriction — an all-interfaces publish would expose an
+# unauthenticated SSRF primitive). P2-8: hound host side moved
+# 6080 -> 6081 (container :6080 unchanged); android noVNC keeps host
+# :6080 — the two no longer share a host port even across the
+# mutually-exclusive profiles.
+if grep -q '"127.0.0.1:3002:3002"' docker-compose.sidecars.yml \
+  && ! grep -qE '"0\.0\.0\.0:3002|"3002:3002"' docker-compose.sidecars.yml; then
+  ok "firecrawl :3002 loopback-published only (no all-interfaces publish)"
+else
+  bad "firecrawl :3002 publish REGRESSED (want 127.0.0.1:3002:3002 only)"
+fi
+if python3 -c '
+import re, sys
+text = open("docker-compose.sidecars.yml").read()
+blocks = {}
+for m in re.finditer(r"^  ([a-z][a-z0-9-]*):\n", text, re.M):
+    start = m.start()
+    nxt = re.search(r"^  [a-z][a-z0-9-]*:\n", text[m.end():], re.M)
+    end = m.end() + nxt.start() if nxt else len(text)
+    blocks[m.group(1)] = text[start:end]
+hound = blocks.get("hound", "")
+android = blocks.get("docker-android", "")
+problems = []
+if "127.0.0.1:6081:6080" not in hound:
+    problems.append("hound block lacks 127.0.0.1:6081:6080")
+if "127.0.0.1:6080:6080" in hound:
+    problems.append("hound block still publishes host :6080")
+if "127.0.0.1:6080:6080" not in android:
+    problems.append("docker-android noVNC moved off host :6080")
+if problems:
+    sys.exit("; ".join(problems))
+print("hound host :6081, android noVNC host :6080, container ports unchanged")
+' >"${TMP}/houndport.out" 2>"${TMP}/houndport.err"; then
+  ok "hound host port remapped to :6081 ($(cat "${TMP}/houndport.out"))"
+else
+  bad "hound :6081 remap MISSING or android :6080 moved (P2-8): $(head -c 200 "${TMP}/houndport.err")"
+fi
 # P1-6/P1-12: open curl allows gone fleet-wide (exact-host piston pins are
 # the only sanctioned curl shape); segmentation nets + paperclip attachment
 # present; runner workspaces ro + dedicated scratch rw.
@@ -744,8 +850,10 @@ fi
 # rename_symbol, checkpoint_rollback); full-privilege roles allow all 14.
 # NOTE: whether the runtime enforcer honors these static denies needs a
 # live allow/deny matrix, blocked on AUDIT P0-1 (harness rootDir
-# empty-string kill — upstream npm, not in repo). Static shape is the
-# in-repo gate; live enforcement stays tracked, never claimed.
+# empty-string kill — upstream npm, not in repo; fixture +
+# live-only gate: scripts/fixtures/harness-probe-opencode.json + §10b).
+# Static shape is the in-repo gate; live enforcement stays tracked,
+# never claimed.
 HARNESS_MANIFEST="file_hash_read file_hash_edit ast_structural_search ast_structural_rewrite ui_geometry_audit repo_map blast_radius file_outline symbol_references rename_symbol verify_scoped architecture_audit checkpoint_create checkpoint_rollback"
 HARNESS_READONLY_MANIFEST="file_hash_read ast_structural_search ui_geometry_audit repo_map blast_radius file_outline symbol_references verify_scoped architecture_audit checkpoint_create"
 HARNESS_MUTATING="file_hash_edit ast_structural_rewrite rename_symbol checkpoint_rollback"
@@ -861,6 +969,58 @@ print("all roles: fs:read denies precede any fs:read allow")
 else
   bad "fs:read ordering VIOLATION: $(head -c 400 "${TMP}/readorder.err")"
 fi
+# Wave D P0-3c: every role must deny secret-material reads up front
+# (**/secrets/**, **/kubeconfig*, **/*.pem, **/id_rsa*), alongside the
+# .env four — one UID/filesystem is shared by all agents, so the
+# mounted kubeconfig, TLS keys and SSH keys are denied at the permission
+# layer in every role (structural move-to-MCP-env tracked separately).
+if python3 -c '
+import glob, json, sys
+WANT = ("**/secrets/**", "**/kubeconfig*", "**/*.pem", "**/id_rsa*")
+problems = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    denies = {str(p.get("resource")) for p in json.load(open(f)).get("permissions", [])
+              if p.get("action") == "fs:read" and p.get("effect") == "deny"}
+    missing = [w for w in WANT if w not in denies]
+    if missing:
+        problems.append("%s: missing fs:read denies %s" % (role, missing))
+if problems:
+    sys.exit("; ".join(problems))
+print("all roles deny **/secrets/**, **/kubeconfig*, **/*.pem, **/id_rsa*")
+' >"${TMP}/secretdeny.out" 2>"${TMP}/secretdeny.err"; then
+  ok "secret-material fs:read denies present fleet-wide ($(cat "${TMP}/secretdeny.out"))"
+else
+  bad "secret fs:read deny VIOLATION: $(head -c 400 "${TMP}/secretdeny.err")"
+fi
+# Wave D P1-1/P3-2: `adb connect` is allowlisted to the loopback
+# emulator + in-compose host — a bare `adb connect*` (arbitrary
+# host:port probe) must not exist anywhere fleet-wide.
+if python3 -c '
+import glob, json, sys
+problems = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    for p in json.load(open(f)).get("permissions", []):
+        if p.get("action") in ("shell", "bash") and p.get("effect") == "allow":
+            if str(p.get("resource", "")) == "adb connect*":
+                problems.append("%s: bare adb connect* allow (must be host-allowlisted)" % role)
+if problems:
+    sys.exit("; ".join(problems))
+import json as j
+android = j.load(open("roles/android-mobile-spec/opencode/opencode.json"))["permissions"]
+want = {"adb connect 127.0.0.1*", "adb connect localhost*", "adb connect docker-android*"}
+have = {p["resource"] for p in android
+        if p.get("action") == "shell" and p.get("effect") == "allow"
+        and str(p.get("resource", "")).startswith("adb connect")}
+if have != want:
+    sys.exit("android-mobile-spec adb allowlist drift: have=%s want=%s" % (sorted(have), sorted(want)))
+print("no bare adb connect* fleet-wide; android allowlist == loopback + docker-android")
+' >"${TMP}/adb.out" 2>"${TMP}/adb.err"; then
+  ok "adb connect allowlisted ($(cat "${TMP}/adb.out"))"
+else
+  bad "adb connect scoping VIOLATION: $(head -c 300 "${TMP}/adb.err")"
+fi
 # Wave 2 P0-2: MCP namespace scoping. No bare-namespace allow may remain
 # for kubernetes/docker/postgres/aws/git/filesystem (harness covered
 # above); each scoped namespace must end in its deny tail, and the
@@ -934,6 +1094,47 @@ print("filesystem MCP roots re-rooted off the shared workspace")
   ok "$(cat "${TMP}/fsroot.out")"
 else
   bad "filesystem MCP root VIOLATION: $(head -c 300 "${TMP}/fsroot.err")"
+fi
+# Wave D P1-6/P3-5: the two docker-MCP blocks declare DOCKER_HOST
+# explicitly (GET-only socket proxy — read-only observer) instead of
+# dangling dead. Any docker MCP server without that exact env FAILs
+# (undeclared default or future-activation hazard); a bare socket mount
+# would be a separate violation (no role mounts it — compose paperclip
+# mounts no socket, asserted below via the proxy-only DOCKER_HOST).
+if python3 -c '
+import glob, json, sys
+problems = []
+found = []
+for f in sorted(glob.glob("roles/*/opencode/opencode.json")):
+    role = f.split("/")[1]
+    servers = (json.load(open(f)).get("mcp") or {}).get("servers") or {}
+    docker = servers.get("docker")
+    if docker is None:
+        continue
+    found.append(role)
+    env = docker.get("env") or {}
+    if env.get("DOCKER_HOST") != "tcp://docker-socket-proxy:2375":
+        problems.append("%s: docker MCP without DOCKER_HOST=tcp://docker-socket-proxy:2375 (got %r)" % (role, env.get("DOCKER_HOST")))
+if sorted(found) != ["k8s-orchestrator", "mlops-serving-eng"]:
+    problems.append("docker MCP role set drift: found=%s (want exactly k8s-orchestrator + mlops-serving-eng)" % sorted(found))
+if problems:
+    sys.exit("; ".join(problems))
+print("docker MCP declares DOCKER_HOST=tcp://docker-socket-proxy:2375 in k8s-orchestrator + mlops-serving-eng")
+' >"${TMP}/dockerhost.out" 2>"${TMP}/dockerhost.err"; then
+  ok "$(cat "${TMP}/dockerhost.out")"
+else
+  bad "docker DOCKER_HOST VIOLATION: $(head -c 300 "${TMP}/dockerhost.err")"
+fi
+# Wave D P2-9: the seeder guards the ROLE_DIR hazard (ambient ROLE_DIR
+# disagreeing with the iterated role aborts instead of stamping every
+# payload with one role's config) and fetches the agent list once
+# (cache + refresh-on-miss/create, not one LIST per role).
+if grep -q 'ROLE_DIR hazard' scripts/seed-50-fleet.sh \
+  && grep -q 'os.environ\["ROLE_DIR"\] != sys.argv\[1\]' scripts/seed-50-fleet.sh \
+  && grep -q 'fetched ONCE up front' scripts/seed-50-fleet.sh; then
+  ok "seed-50 guards ROLE_DIR hazard + fetches agent list once (P2-9)"
+else
+  bad "seed-50 P2-9 guards MISSING (ROLE_DIR assertion or fetch-once)"
 fi
 # Wave 4 P1-7: fs:write glob-specificity lint. Any fs:write ALLOW whose
 # resource starts with a SINGLE `*` (unanchored `*substring*`, `*.md`,
@@ -1148,6 +1349,18 @@ if [[ -f scripts/seed-50-fleet.sh ]]; then
     else
       bad "seed-50 dry-run output unexpected (name keys=${SEED50_NAMES}, want 52 with fleet payload keys + total==cap and no WARNING)"
     fi
+    # Wave D P0-3b/P2-7.1: adapterConfig.env is an allowlist (XDG_CONFIG_HOME
+    # + OPENCODE_DISABLE_PROJECT_CONFIG ONLY). The superuser DATABASE_URL,
+    # POSTGRES_PASSWORD, BETTER_AUTH_SECRET and every provider key must
+    # NEVER enter agent payloads — a dba psql deny + read-only MCP URL are
+    # moot if the agent inherits superuser credentials. (Upstream
+    # inheritance scrubbing in prepareOpenCodeRuntimeConfig is separately
+    # live-unverified — see the §10b canary note.)
+    if grep -q 'DATABASE_URL\|POSTGRES_PASSWORD\|BETTER_AUTH_SECRET\|OPENCODE_API_KEY\|OPENCODE_GO_API_KEY\|OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GEMINI_API_KEY\|OPENROUTER_API_KEY\|DEEPSEEK_API_KEY\|GROQ_API_KEY\|MISTRAL_API_KEY\|XAI_API_KEY\|AZURE_OPENAI_API_KEY' "${TMP}/seed50.out"; then
+      bad "seed-50 payloads leak server credentials/provider keys into adapterConfig.env (P0-3b)"
+    else
+      ok "seed-50 payloads carry no DATABASE_URL/POSTGRES_PASSWORD/BETTER_AUTH_SECRET/provider keys (env allowlist)"
+    fi
   else
     bad "seed-50 dry-run exited nonzero: $(head -c 300 "${TMP}/seed50.err")"
   fi
@@ -1355,12 +1568,28 @@ if [[ "${MODE}" == "check-only" ]]; then
   skip "postgres pg_isready — needs 'make up'"
   skip "paperclip HTTP health — needs 'make up'"
   skip "ticket flow — needs live server + PAPERCLIP_TOKEN (see --help)"
+  skip "harness tool-visibility probe (P0-1) — needs live stack + HARNESS_LIVE_GATE=1 (fixture: scripts/fixtures/harness-probe-opencode.json)"
+  skip "XDG/canary isolation probe (P1-8) — needs live stack (plant canary opencode.json + .opencode/ in scratch workspace, run one agent turn, assert canary ignored)"
 else
   section "8. PostgreSQL health"
   if docker compose exec -T postgres pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"; then
     ok "postgres pg_isready accepting connections"
   else
     bad "postgres not healthy (run 'make up' and wait for healthcheck)"
+  fi
+  # Wave D P2-5: the server (and every agent child) must run as node
+  # UID 1000 via the base entrypoint's gosu drop — never root. If the
+  # entrypoint ever stops dropping (or PAPERCLIP_BASE_IMAGE is
+  # overridden), this fails instead of silently running as root.
+  if PAPERCLIP_UID="$(docker compose exec -T paperclip id -u 2>/dev/null | tr -d ' \r\n')" \
+    && [[ -n "${PAPERCLIP_UID}" ]]; then
+    if [[ "${PAPERCLIP_UID}" == "1000" ]]; then
+      ok "paperclip effective UID==1000 (node via gosu, non-root confirmed)"
+    else
+      bad "paperclip effective UID=${PAPERCLIP_UID} != 1000 (server running as wrong user — non-root invariant broken)"
+    fi
+  else
+    bad "paperclip container not running (run 'make up' first — UID==1000 unverifiable while down)"
   fi
 
   section "9. Paperclip HTTP health"
@@ -1484,6 +1713,38 @@ print(json.dumps({"usage": usage})[:200])
             fi
           fi
         fi
+      fi
+    fi
+  fi
+
+  # Wave D P0-1/P1-8 live gates (10b): harness tool-visibility + XDG canary
+  # isolation. Both are live-UNVERIFIED until this section runs green —
+  # never claim them from static checks. Gated on HARNESS_LIVE_GATE=1
+  # (the probe spends a real model call); otherwise SKIP with the exact
+  # steps, never a fake pass.
+  section "10b. harness tool-visibility + XDG canary probes (P0-1/P1-8, live-only)"
+  if [[ "${HARNESS_LIVE_GATE:-0}" != "1" ]]; then
+    skip "HARNESS_LIVE_GATE!=1: P0-1 probe = stage scripts/fixtures/harness-probe-opencode.json as XDG config, run one real 'opencode run' turn invoking file_hash_read, FAIL on 'rootDir must be' Die or 'not available'; P1-8 probe = plant canary opencode.json + .opencode/ in a scratch workspace, run one agent turn, assert the canary was ignored (re-run with HARNESS_LIVE_GATE=1 + PAPERCLIP_TOKEN for full live proof)"
+  elif ! command -v opencode >/dev/null 2>&1; then
+    skip "no opencode binary on PATH for the P0-1 probe (run inside the built image)"
+  else
+    PROBE_HOME="${TMP}/harness-probe"
+    mkdir -p "${PROBE_HOME}/opencode"
+    cp scripts/fixtures/harness-probe-opencode.json "${PROBE_HOME}/opencode/opencode.json"
+    echo "probe scratch" >"${PROBE_HOME}/target.txt"
+    if XDG_CONFIG_HOME="${PROBE_HOME}" timeout 300 opencode run --format json "Call the file_hash_read tool on target.txt and report its hash" >"${TMP}/probe.jsonl" 2>"${TMP}/probe.err"; then
+      if grep -q 'file_hash_read' "${TMP}/probe.jsonl" \
+        && ! grep -qi 'not available\|rootDir must be' "${TMP}/probe.jsonl" "${TMP}/probe.err"; then
+        ok "harness tool-visibility probe: file_hash_read invoked successfully (P0-1 fixed upstream)"
+      else
+        bad "harness tool-visibility probe: run succeeded but file_hash_read not evidenced (P0-1 still broken — see head of probe output)"
+        head -c 300 "${TMP}/probe.jsonl" "${TMP}/probe.err" || true
+      fi
+    else
+      if grep -qi 'rootDir must be\|not available' "${TMP}/probe.jsonl" "${TMP}/probe.err" 2>/dev/null; then
+        bad "harness tool-visibility probe FAILED with the P0-1 rootDir Die (upstream fix pending — not claimed)"
+      else
+        skip "harness probe run failed without P0-1 signature (needs model auth/network; exit retained as SKIP, not proof): $(head -c 200 "${TMP}/probe.err" 2>/dev/null)"
       fi
     fi
   fi

@@ -188,11 +188,21 @@ READONLY_HARNESS_STRIPPED = frozenset(
 # generator enforces its harness strip automatically like the other 15.
 # Canonical secret-hygiene fs:read denies (Wave A P1-7; AGENTS.md §4).
 # Canonical secret-hygiene fs:read denies (Wave A P1-7; AGENTS.md §4).
+# Wave D P0-3c: the .env four are joined by four secret-material denies —
+# every agent shares one UID/filesystem with the paperclip server (XDG
+# isolates config only), so reads of mounted secrets, kubeconfigs, TLS
+# keys and SSH keys are denied up front in every role, ahead of any
+# fs:read allow (deny-first holds under both first-match and
+# deny-override enforcer semantics).
 FS_READ_ENV_DENIES = [
     {"action": "fs:read", "resource": ".env", "effect": "deny"},
     {"action": "fs:read", "resource": "*.env.*", "effect": "deny"},
     {"action": "fs:read", "resource": "**/.env", "effect": "deny"},
     {"action": "fs:read", "resource": "**/*.env.*", "effect": "deny"},
+    {"action": "fs:read", "resource": "**/secrets/**", "effect": "deny"},
+    {"action": "fs:read", "resource": "**/kubeconfig*", "effect": "deny"},
+    {"action": "fs:read", "resource": "**/*.pem", "effect": "deny"},
+    {"action": "fs:read", "resource": "**/id_rsa*", "effect": "deny"},
 ]
 # Wave C P1-4: the same four resources denied for fs:write (secret
 # hygiene at the write layer). The catalog fences predate these entries

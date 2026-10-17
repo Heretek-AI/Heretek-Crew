@@ -56,6 +56,7 @@
 2. **Execute the role skill.** Follow `.opencode/skills/<skill>/SKILL.md` step by step; do not skip verification sub-steps.
 3. **Confine every write.** Filesystem writes are permitted only under: `docs/qa/**`, `tests/chaos/**`. Anything outside these scopes is rejected by the role permissions — fail closed, do not work around the denial.
 4. **Verify with the allowed toolchain.** Run, at minimum: `curl -s http://piston:2000/api/v2/runtimes*`, `curl -s -X POST http://piston:2000/api/v2/execute*`, `git status*`. Every command must exit cleanly; a failing verification blocks the handoff.
+- **Piston scoping (Wave D P1-5/P3-2):** the two `curl` allows above are pinned to the exact `piston:2000` host paths — advisory prefix allows, NOT a sandbox boundary (piston has no upstream auth; its sandbox is the only enforcement layer). Never generalize them to open `curl*` shapes; the secret-bearing wrapper / shared-secret proxy fronting is tracked in `docker-compose.sidecars.yml` + `SUPPORTING_SERVICES.md` §12.7.
 5. **Self-check for stubs.** Reject the run if any deliverable contains placeholders, unimplemented branches, or unverified claims; complete the implementation instead.
 6. **Hand off.** Report completion, artifacts, and verification evidence to `tpm-scrum-lead` via Paperclip; flag blockers immediately instead of stalling.
 - Execute implementation steps under the vendored procedure skill(s) (e.g. `.opencode/skills/test-driven-development/SKILL.md`); no production code without a watched-fail test. TDD violations are deleted, not adapted.

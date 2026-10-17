@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "plugins": ["@heretek-ai/opencode-harness"],
+  "permissions": [
+    {
+      "action": "harness_file_hash_read",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "harness_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ]
+}

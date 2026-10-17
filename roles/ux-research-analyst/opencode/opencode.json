@@ -30,6 +30,26 @@
     },
     {
       "action": "fs:read",
+      "resource": "**/secrets/**",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/kubeconfig*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/*.pem",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
+      "resource": "**/id_rsa*",
+      "effect": "deny"
+    },
+    {
+      "action": "fs:read",
       "resource": "data/**",
       "effect": "allow"
     },

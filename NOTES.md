@@ -338,5 +338,63 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 3. **Prefix Enforcer Limits**: Chained command continuations (`garak;payload`) and MCP namespace write bypasses remain tracked defense-in-depth limitations per `AGENTS.md` §4.
 4. **Phase-A Spec Fallback**: `spec-gate.sh` S2 contains a standing Phase-A fallback passing changes while `PROMPT_*.md` and `RESEARCH_*.md` exist; retire/narrow post-Phase A.
 
+## Wave D Execution Log — Final Remediation (2026-10-17)
+
+### Decision: upstream harness fix documented, not invented (P0-1)
+- `@heretek-ai/opencode-harness@1.0.7` `dist/index.js` is upstream npm,
+  NOT in this repo — the repo action is documentation + gating, never a
+  vendored patch. Root cause (audit-verified): `inferredRoot =
+  ctx?.directory ?? ... ?? process.cwd()` — `??` does not skip `""`;
+  host 2.0.32 supplies empty-string directory, so
+  `resolveHarnessOptions({rootDir: ""})` throws fail-closed and the plugin
+  dies (`Die(Error: rootDir must be non-empty)`), leaving every
+  `file_hash_*` tool "not available". Upstream one-spot fix with exact
+  diff recorded in `docker/Dockerfile` (pin comment):
+  `pick=(v)=>(typeof v==="string"&&v.trim()!==""?v:undefined)` over the
+  four context slots, falling back to `process.cwd()`.
+- Version tracking: pin stays exact `1.0.7` (no float). On the fixed
+  successor release: bump `OPENCODE_HARNESS_VERSION`, re-enumerate
+  `EXTENDED_HARNESS_TOOL_NAMES` into `smoke-test.sh` `HARNESS_MANIFEST`,
+  and re-run the LIVE tool-visibility gate (`smoke-test.sh` §10: a real
+  agent turn invoking `file_hash_read` must succeed — `npm ls` alone
+  never catches a load-time `Die`). Until then Domain 4 harness
+  primitives are documented as load-broken, not working.
+
+### Decision: Paperclip source-commit pin (P1-8)
+- The base image (`paperclip:official-local`) is a local build with no
+  registry digest, so the reproducible pin is the upstream SOURCE COMMIT
+  (`git -C /tmp/paperclip rev-parse HEAD`, recorded in
+  `docker/Dockerfile` + here by the maintainer at build time). Until
+  recorded AND the canary live test passes (plant canary `opencode.json`
+  + `.opencode/` in a scratch workspace, run one agent turn, assert the
+  canary was ignored), Claim 3.1 (XDG / `OPENCODE_DISABLE_PROJECT_CONFIG`
+  enforcement in `prepareOpenCodeRuntimeConfig`) is labeled
+  config-advice, live-unverified (`AGENTS.md` §1 invariant 1) — as is the
+  child-env scrub (no superuser `DATABASE_URL` / provider keys in
+  `adapterConfig.env`; `smoke-test.sh` §4 asserts the seed payloads never
+  carry them, upstream inheritance needs the same live run).
+
+### Decision: secret-plane hardening without breaking boot (P0-3, P2-7)
+- Kubeconfig stays bind-mounted `:ro` (k8s-orchestrator keeps working);
+  every role gains `fs:read` denies for `**/secrets/**`,
+  `**/kubeconfig*`, `**/*.pem`, `**/id_rsa*` ahead of any allow
+  (generator `FS_READ_ENV_DENIES` + 51 regenerated configs + smoke §3b
+  gate). Structural fix tracked: move the kubeconfig into MCP-server env
+  via an fd the fs tools cannot address (`docker-compose.yml` comment).
+- Superuser `DATABASE_URL` stays server-side only (password-file/Docker
+  secret tracked as the preferred plan); agent DB access is
+  `POSTGRES_READONLY_URL` exclusively (seed preflight rejects superuser
+  URLs). `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` is now fail-closed (`:?`
+  — an empty default would silently disable signature verification).
+
+### Verified facts (Wave D)
+- Pins: `@opencode/cli@2.0.32` + `@opencode/client@2.0.32` (unchanged),
+  harness `1.0.7` (exact, load-broken per P0-1), `test-shim.sh` 46/46
+  (P3-1 `stat -L` device+inode fallback + regression test),
+  `smoke-test.sh --check-only` green (see stage report for the count),
+  `shellcheck` zero warnings, seed-50 dry-run 52 payloads / cap == sum /
+  empty stderr, `docker compose config` exit 0 on all profile selections
+  (with the two new `RABBITMQ_*` + signing-secret dummies).
+
 
 

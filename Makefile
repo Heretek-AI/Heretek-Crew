@@ -36,6 +36,29 @@ guard-profiles: ## Fail-closed guard: refuse mobile+devsec/web-research co-sched
 
 sidecars-up: guard-profiles ## Start sidecars: make sidecars-up SIDECAR_PROFILES="web-research" (mobile isolated; see guard-profiles).
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.sidecars.yml $(foreach p,$(SIDECAR_PROFILES),--profile $(p)) up -d
+
+# Wave D P2-6: the caddy proxy binds 80/443 on ALL interfaces — intentional
+# but one word away from an internet-facing auth surface. guard-proxy makes
+# the exposure note in docker-compose.yml enforced, not honor-system:
+# proxy-up refuses unless PAPERCLIP_DEPLOYMENT_EXPOSURE=private AND
+# BETTER_AUTH_SECRET is set to a real (non-placeholder, non-empty)
+# secret. (Compose already fail-closes a missing BETTER_AUTH_SECRET via
+# :?; this gate additionally refuses placeholder values and non-private
+# exposure.) Never bypass with raw `docker compose --profile proxy up`.
+guard-proxy: ## Fail-closed guard: refuse --profile proxy unless exposure is private + auth secret is real.
+	@if [ "$${PAPERCLIP_DEPLOYMENT_EXPOSURE:-private}" != "private" ]; then \
+		echo "error: refusing --profile proxy with PAPERCLIP_DEPLOYMENT_EXPOSURE='$${PAPERCLIP_DEPLOYMENT_EXPOSURE}' (must be 'private')" >&2; \
+		exit 1; \
+	fi; \
+	case "$${BETTER_AUTH_SECRET:-}" in \
+	  ""|CHANGE_ME__*) \
+		echo "error: refusing --profile proxy with missing/placeholder BETTER_AUTH_SECRET (provision a real secret first)" >&2; \
+		exit 1;; \
+	esac; \
+	echo "proxy preflight OK (exposure=private, BETTER_AUTH_SECRET provisioned)"
+
+proxy-up: guard-proxy ## Start the stack with the TLS reverse proxy (guarded; see guard-proxy).
+	$(COMPOSE) --profile proxy up -d
 COMPOSE_PREBUILT := $(COMPOSE) -f docker-compose.yml -f docker-compose.prebuilt.yml
 BACKUP_SCRIPT := ./scripts/backup-db.sh
 RESTORE_SCRIPT := ./scripts/restore-db.sh
@@ -44,7 +67,7 @@ GENERATE_ROLES_SCRIPT := ./scripts/generate-50-roles.py
 SMOKE_SCRIPT := ./scripts/smoke-test.sh
 
 .DEFAULT_GOAL := help
-.PHONY: help build up down logs seed-50 generate-roles backup restore test prebuilt-pull prebuilt-up prebuilt-config guard-profiles sidecars-up
+.PHONY: help build up down logs seed-50 generate-roles backup restore test prebuilt-pull prebuilt-up prebuilt-config guard-profiles sidecars-up guard-proxy proxy-up
 
 help: ## Show this help (lists all documented targets).
 	@echo "Heretek-Crew — Paperclip + OpenCode v2 stack"

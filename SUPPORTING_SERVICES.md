@@ -821,7 +821,7 @@ In `opencode.json`:
     expose:
       - "6080"
     ports:
-      - "127.0.0.1:6080:6080"
+      - "127.0.0.1:6081:6080"
     volumes:
       - ./docker/hound/config.json:/data/config.json:ro
       - ./workspaces:/workspaces:ro
@@ -850,10 +850,11 @@ preference order: **(a)** migrate to a maintained trigram index
 volume/API contract re-verified; **(b)** vendor hound at a fleet tag and
 self-build from the archived source. Until either lands, the exact
 digest pin stays (no floating tag) and hound remains expose-only with a
-loopback `:6080` publish (blast radius: read-only index). Also note the
-host-port overlap: hound `:6080` and `docker-android` `:6080` are in
-mutually-exclusive profiles (`devsec`/`web-research` vs `mobile`) — the
-Makefile co-scheduling guard enforces the separation.
+loopback publish (blast radius: read-only index). Wave D P2-8: the HOST
+side moved `6080` -> `6081` (container `:6080` unchanged) so hound no
+longer shares a host port with `docker-android`'s noVNC (`:6080` in the
+mutually-exclusive `mobile` profile) — the Makefile co-scheduling guard
+remains as defense-in-depth.
 
 ---
 
@@ -863,7 +864,7 @@ Makefile co-scheduling guard enforces the separation.
 * **Service Identity**: Docker Socket Proxy (`tecnativa/docker-socket-proxy`)
 * **Repository**: [https://github.com/Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
 * **Image Tag**: `tecnativa/docker-socket-proxy:0.3.0`
-* **Core Value Proposition**: Providing autonomous agents with raw `/var/run/docker.sock` access allows immediate root compromise of the host machine (e.g. `docker run -v /:/host alpine rm -rf /`). Docker Socket Proxy acts as a strict Layer 7 firewall for Docker's engine API, permitting container creation while blocking privileged flags, host mounts, network reconfiguration, and Swarm modifications.
+* **Core Value Proposition**: Providing autonomous agents with raw `/var/run/docker.sock` access allows immediate root compromise of the host machine (e.g. `docker run -v /:/host alpine rm -rf /`). Docker Socket Proxy acts as a strict Layer 7 firewall for Docker's engine API. Wave 3 P1-3 (design decision, option a — READ-ONLY OBSERVER): the proxy is GET-only by design (`POST/BUILD/EXEC/AUTH=0`, never weakened) — it permits inspection (containers, images, info, version) and blocks creation, builds, exec, volumes, networks, swarm and auth. Mutating CI runs on the HOST via host-installed `act`, never through the proxy.
 * **Target Roles**: DevOps / Infrastructure Specialist, CI Pipeline Engineer, Test Runner.
 
 #### Docker Compose Service Block
@@ -877,18 +878,26 @@ Makefile co-scheduling guard enforces the separation.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      # Explicit API white-listing: Read operations & controlled container starts
+      # Read-only proxy (fail-closed, Wave 3 P1-3 option a): GET-only BY
+      # DESIGN — POST/BUILD/EXEC/AUTH disabled so a compromised container
+      # cannot create privileged containers, build images, exec, or use
+      # auth endpoints. The local-ci-runner behind it is a quarantined
+      # read-only observer; mutating CI runs on the HOST via host `act`.
+      # Never weaken this posture to "fix" CI.
       CONTAINERS: "1"
       IMAGES: "1"
       INFO: "1"
       VERSION: "1"
-      POST: "1"
+      POST: "0"
+      BUILD: "0"
+      EXEC: "0"
       # Strict blocks on dangerous primitives
       VOLUMES: "0"
       NETWORKS: "0"
       NODES: "0"
       SWARM: "0"
       SYSTEM: "0"
+      AUTH: "0"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2375/version || exit 1"]
       interval: 10s
@@ -1443,6 +1452,24 @@ tag, verify it is live on the registry first — Stage 1 proved six "pinned"
 tags were already pruned upstream and broke pulls by construction. Until an
 automation bot lands, that check is manual: Hub tag API `200` (or GHCR
 manifest `200`) before the edit, `docker compose config` after.
+Wave D P2-8 residual watchlist (quarterly review, no blind bumps):
+`postgres:17-alpine` floating minor → exact `17.<x>-alpine` + digest once
+resolved live; `ghcr.io/firecrawl/firecrawl:2.10.19` mutable tag → digest
+with `#:2.10.19` comment once resolved live (`nuq-postgres` /
+`playwright-service` digests gain tag comments at the same pass);
+`blacktop/ghidra:11.2` → verify `:11.3+`, digest-pin, probe `:1337`
+(healthcheck is weak `pgrep` until then); `jaeger` `COLLECTOR_OTLP_ENABLED`
+harmless-if-ignored assumption → boot-verify on first
+observability-profile up; `neo4j` heap 512m–1536m + pagecache 512m inside
+2.5g → monitor OOM; `minio` RELEASE.2024-11-07 ~2yr stale → evaluate
+2026.x + localstack alternative (AGPLv3); `gotenberg`
+`--chromium-restart-after=30` bare number → confirm via
+`docker logs gotenberg | grep -i chromium`; dual redis share one
+`REDIS_PASSWORD` → per-service secrets at next rotation; `rabbitmq`
+512m → 1g (lean for management + quorum overhead); minor lags
+`wiremock:3.10.0` → 3.13+, `mailpit:v1.21.8`, `act:22.04` → 24.04;
+`local-ci-runner` / `semgrep` `sleep infinity` without healthchecks →
+fine as-is, or add no-op `true` healthchecks for `depends_on`.
 
 **MCP/plugin scope resolutions (Wave 4 P2-7/P2-8, verified live 2026-10-17).**
 `@modelcontextprotocol/server-github@2025.4.8` is already at target in all
@@ -1819,7 +1846,7 @@ services:
     expose:
       - "6080"
     ports:
-      - "127.0.0.1:6080:6080"
+      - "127.0.0.1:6081:6080"
     volumes:
       - ./workspaces:/workspaces:ro
       - hound-data:/data
@@ -1862,12 +1889,15 @@ services:
       IMAGES: "1"
       INFO: "1"
       VERSION: "1"
-      POST: "1"
+      POST: "0"
+      BUILD: "0"
+      EXEC: "0"
       VOLUMES: "0"
       NETWORKS: "0"
       NODES: "0"
       SWARM: "0"
       SYSTEM: "0"
+      AUTH: "0"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2375/version || exit 1"]
       interval: 10s
@@ -2167,3 +2197,7 @@ networks:
    agent checkouts.
 6. **Daemon Protection via Socket Proxy (Wave 3 P1-3, option a — read-only observer)**:
    The `docker-socket-proxy` sidecar eliminates the catastrophic vulnerability of mounting `/var/run/docker.sock` into agent containers. The proxy is GET-only by design (`POST/BUILD/EXEC/AUTH=0`, never weakened): the `local-ci-runner` container behind it is a quarantined read-only observer — it may inspect/list the daemon (containers, images, version/info) and read CI state, but cannot create, build, exec, or authenticate. Mutating CI work runs on the HOST via host-installed `act` against the host Docker daemon, never through the proxy and never from inside the runner container.
+   Accepted-risk residual (Wave D P1-6): `expose: 2375` with no host ports still lets ANY container on the shared `heretek` net run unauthenticated GET-recon (list images/containers, info/version). Accepted — the net is compose-managed and every attached workload is fleet first-party. Never attach untrusted third-party containers to `heretek`, never publish :2375 to the host.
+7. **Paperclip-as-bridge residual + unauthenticated-RCE fronting plan (Wave D P1-5)**:
+   Segmentation above contains sidecar-initiated movement, NOT agent-initiated movement: `paperclip` joins `heretek`, `heretek-devsec` and `heretek-mobile` so agents stay reachable, which means any agent code execution bridges the segments by design. Concretely: `radare2` (`r2 -qc=H 0.0.0.0:9090`, `/cmd/` exec), `ghidra` (`:1337`, no auth env upstream) and `piston` (`:2000/api/v2/execute`, no upstream auth env — the sandbox is the only layer) are all unauthenticated-RCE-capable by design on nets paperclip joins; `firecrawl` (`:3002`, `USE_DB_AUTHENTICATION=false`) is an SSRF-to-internal primitive for anyone reaching it. Structural fix (tracked): front r2/ghidra/piston with a shared-secret sidecar proxy (or per-request tokens mounted only into the roles that need them — `binary-reverse-eng`, `firmware-sec-analyst`, `sabotage-qa-tester`), enable firecrawl DB auth with a provisioned secret (or keep `:3002` loopback-only, which it is: `127.0.0.1:3002:3002`). Until then: expose-only, isolated nets, loopback-only publishes, no untrusted co-scheduling — and `sabotage-qa-tester`'s exact-host piston curl pins stay advisory-only (see AGENTS.md §4).
+8. **Wave D credential rotation (P3-3)**: `firecrawl-rabbitmq` no longer runs on default guest creds — `RABBITMQ_USER`/`RABBITMQ_PASSWORD` are env-provided (fail-closed `:?`; first-boot-only on fresh volumes, `rabbitmqctl` for existing ones) and `NUQ_RABBITMQ_URL` carries them. `RABBITMQ_PASSWORD` avoids `@ / : # ? &` (embedded in the AMQP URL).
