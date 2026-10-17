@@ -54,7 +54,7 @@
   "plugins": [
     "opencode-mem",
     "@prevalentware/opencode-goal-plugin",
-    "opencode-harness"
+    "@heretek-ai/opencode-harness"
   ],
   "mcp": {
     "servers": {

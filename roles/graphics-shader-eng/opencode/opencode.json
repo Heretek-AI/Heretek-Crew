@@ -68,7 +68,7 @@
   ],
   "plugins": [
     "opencode-mem",
-    "opencode-harness"
+    "@heretek-ai/opencode-harness"
   ],
   "mcp": {
     "servers": {

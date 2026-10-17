@@ -73,17 +73,17 @@ services:
     mem_limit: 512m
 
   firecrawl-rabbitmq:
-    image: rabbitmq:3.13.7-management-alpine
-    # VERSION PLAN (P1-9): RabbitMQ 4.x is current since 2024; 3.13 is
-    # EOL-adjacent. 4.x migration (quorum-queue defaults, config changes)
-    # is scheduled, NOT done here — no breaking bump without a migration
-    # test (see REMEDIATION_LOG.md Stage 2 P1-9).
+    image: rabbitmq:4.3.6-management-alpine
+    # MIGRATED 2026-10-17 (P0-7): 3.13.7 (community EOL 2024-09-30) -> 4.3.6.
+    # RabbitMQ 4.x enables quorum queues by default for newly declared
+    # classic-compatible queues; Firecrawl's crawl-queue declarations must be
+    # smoke-tested (see P0-7: run the crawl-queue smoke below) before prod use.
     profiles: ["web-research"]
     restart: unless-stopped
     # AUTH NOTE (P1-6): default guest credentials on a closed management
     # port (expose-only, no host ports). Reachable from any
     # heretek-networked container — same lateral-movement posture as the
-    # Redis/Qdrant notes. RabbitMQ 4.x migration is tracked (see P1-9).
+    # Redis/Qdrant notes. Guest-credential rotation is tracked (see P1-6).
     command: rabbitmq-server
     expose:
       - "5672"
@@ -205,7 +205,9 @@ services:
     mem_limit: 2g
 
   gotenberg:
-    image: gotenberg/gotenberg:8.15.0
+    # Pinned 2026-10-17: 8.37.0 >= 8.33.0 fixes CVE-2026-42596 (SSRF 9.4, fixed
+    # 8.32.0), CVE-2026-44829 (traversal, fixed 8.33.0), CVE-2026-42592 (SSRF).
+    image: gotenberg/gotenberg:8.37.0
     profiles: ["web-research", "qa-testing"]
     restart: unless-stopped
     expose:
