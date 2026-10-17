@@ -285,5 +285,21 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
   3. **Queue Broker & Database Harness**: Added `rabbitmq:3.13.7-management-alpine` (`firecrawl-rabbitmq`) and `ghcr.io/firecrawl/nuq-postgres@sha256:9b638af78d99873bc0ba2b57c9cbcd01df6ce96efeaa72d36cfbe0f76521e8fc` (`firecrawl-nuq-postgres`, pre-configured with `pg_cron` and `010-nuq.sql`) to satisfy NuQ job processing requirements.
   4. **Unattended Local Auth & Harness Command**: Configured `USE_DB_AUTHENTICATION=false` and entrypoint `command: node dist/src/harness.js --start-docker` for seamless, unauthenticated local agent access over the isolated `heretek` network.
 
+## Wave 8 Architectural Decision — Long-Term Sovereign Factory Roadmap (2026-10-17)
+
+### Multi-Track Research & Ecosystem Synthesis
+- Synthesized findings from 8 research tracks (`RESEARCH_EXPANSION_REPORT.md`) and 4 Heretek companion repositories (`HERETEK_ECOSYSTEM_INTEGRATION_PLAN.md`).
+- **Core Verdict**: Retain Paperclip as the active production orchestrator during Waves 1–3 while executing Phase A immediate wins (`PROMPT_INTEGRATE_RESEARCH_EXPANSION.md`).
+- **Tracking Issue Logged**: Opened `Heretek-AI/agency-control-plane#2` tracking the 5 readiness blockers (G-1 through G-5) identified in the audit.
+- **Master Roadmap Established**: Formalized 8 Strategic Long-Term Goals in `ROADMAP_LONG_TERM_GOALS.md`:
+  - **LTG-1**: Devcontainers Core Mesh & Dual-Gateway Shadow Run (Bifrost vs. LiteLLM, AgentGateway CEL policies).
+  - **LTG-2**: Context-Router, Invariant Prompt Caching & Lazy Tool Broker (`heretek-lazy-broker`, L1+L2 frozen bytes).
+  - **LTG-3**: Epistemic Factory Quality Gates & TDD Manifest Locking (8-state machine, 85% mutation threshold).
+  - **LTG-4**: Agency Control Plane Cutover & Sovereign Orchestrator Launch (closing Issue #2 G-1 through G-5).
+  - **LTG-5**: Cognitive Memory Plane (Cognee on existing Qdrant + Neo4j sidecars).
+  - **LTG-6**: Tree-Sitter Persistent Code Intelligence (`codebase-memory-mcp` + `serena` LSP editing).
+  - **LTG-7**: Script Workflow & Event Automation (Windmill + loopback n8n).
+  - **LTG-8**: Fleet Expansion — 4 Remaining Cyber & Resilience Roles (R2–R5).
+
 
 
