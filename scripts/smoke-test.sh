@@ -1770,6 +1770,7 @@ fi
 # the staged temp instead of littering the archive dir); branch naming is
 # ticket-<id> with a dash (never ticket/<id> with a slash); removal is
 # never --force (dirty worktrees abort, branch retained).
+# shellcheck disable=SC2016 # literal ${RANDOM} source-text match intended
 if grep -q 'timestamp}-${RANDOM}' scripts/worktree-manager.sh \
   && grep -q 'archive_tmp' scripts/worktree-manager.sh \
   && grep -q 'removed staged' scripts/worktree-manager.sh; then
@@ -1777,6 +1778,7 @@ if grep -q 'timestamp}-${RANDOM}' scripts/worktree-manager.sh \
 else
   bad "worktree archive missing temp-stage or RANDOM guard (P1-10)"
 fi
+# shellcheck disable=SC2016 # literal ${ticket_id} source-text match intended
 if grep -q 'branch_name="ticket-${ticket_id}"' scripts/worktree-manager.sh \
   && ! grep -q 'ticket/${ticket_id}\|ticket/\${ticket_id}' scripts/worktree-manager.sh \
   && ! grep -q 'worktree remove --force\|worktree remove -f' scripts/worktree-manager.sh; then
