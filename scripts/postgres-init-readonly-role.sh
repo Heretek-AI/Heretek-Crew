@@ -15,6 +15,30 @@
 # `query` tool's own READ ONLY transaction still cannot write. No
 # INSERT/UPDATE/DELETE/DDL grant is ever issued here.
 #
+# Incident (evileye 2026-10-18): a psql invocation lacking the secret
+# binding sent an unsubstituted :'reader_pwd' reference to the server
+# (syntax error at ":") → initdb hook exited 3 → entrypoint skipped
+# hooks forever, leaving paperclip_reader missing on the fresh volume.
+#
+# Secret channel: the password travels via the existing container env,
+# read inside psql with `\getenv _pw POSTGRES_READER_PASSWORD` (env var
+# NAME only in this template text — safe to log/diff), never via argv
+# (-v leaks into the process table). Requires psql >= 16
+# for \getenv (pinned image is postgres 17.11). --dry-run output
+# contains the env var NAME only, never the secret value.
+#
+# Channel shape (verified live against postgres 17.11 — do NOT simplify):
+# psql performs NO variable substitution inside dollar-quoted DO bodies,
+# so the password cannot be referenced as :'var' there (that is exactly
+# the evileye exit-3 class). Instead \getenv feeds a top-level SET into
+# the session GUC app.reader_pwd, and the DO block reads it back with
+# current_setting(). Two fail-loud guards, same message: a psql \if on
+# :{?_pw} aborts when the env var never reached psql (e.g. hand-applying
+# --dry-run SQL without exporting POSTGRES_READER_PASSWORD first), and a
+# NULL/empty guard inside the DO block fires if the GUC is ever unset.
+# Either produces RAISE 'reader_pwd empty (...)' + nonzero exit, never a
+# server syntax error.
+#
 # Usage:
 #   POSTGRES_USER=paperclip POSTGRES_DB=paperclip \
 #     POSTGRES_READER_PASSWORD=<secret> ./scripts/postgres-init-readonly-role.sh [--dry-run] [--help]
@@ -54,14 +78,25 @@ case "${POSTGRES_READER_PASSWORD}" in
     ;;
 esac
 
-# Static SQL body: the secret travels via psql -v reader_pwd (quoted as a
-# literal with :'reader_pwd'), never interpolated into this text, so
-# --dry-run output is safe to log and diff.
+# Static SQL body: the secret is pulled inside psql via \getenv from the
+# existing container env (NAME only in this text) and staged through a
+# session GUC — quoted safely as a literal with :'_pw' at the top level
+# only, never interpolated into this text and never passed on argv, so
+# --dry-run output is safe to log and diff. The \if guard plus the
+# NULL/empty guard below turn a dropped channel into a loud RAISE
+# (nonzero exit) instead of a cryptic server syntax error.
 read -r -d '' READONLY_SQL <<'EOSQL' || true
+\getenv _pw POSTGRES_READER_PASSWORD
+\if :{?_pw}
+SELECT set_config('app.reader_pwd', :'_pw', false);
+\else
+DO $loud$ BEGIN RAISE EXCEPTION 'reader_pwd empty (substitution failed: POSTGRES_READER_PASSWORD not visible to psql)'; END $loud$;
+\endif
 DO $readonly_role$
 DECLARE
-  pwd text := :'reader_pwd';
+  pwd text := current_setting('app.reader_pwd', true);
 BEGIN
+  IF pwd IS NULL OR pwd = '' THEN RAISE EXCEPTION 'reader_pwd empty (substitution failed: POSTGRES_READER_PASSWORD not visible to psql)'; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paperclip_reader') THEN
     EXECUTE format('CREATE ROLE paperclip_reader WITH LOGIN PASSWORD %L', pwd);
   ELSE
@@ -87,5 +122,4 @@ if [ "${DRY_RUN}" = "true" ]; then
 fi
 
 command -v psql >/dev/null 2>&1 || { echo "error: psql is required" >&2; exit 1; }
-psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER}" --dbname "${POSTGRES_DB}" \
-  -v reader_pwd="${POSTGRES_READER_PASSWORD}" <<<"${READONLY_SQL}"
+psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER}" --dbname "${POSTGRES_DB}" <<<"${READONLY_SQL}"
