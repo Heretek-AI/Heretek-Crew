@@ -249,8 +249,8 @@ else
     bad "paperclip rendered config lacks GITHUB_TOKEN"
   fi
   if env "${SMOKE_DUMMY_ENV[@]}" \
-    docker compose config 2>/dev/null | grep -A 3 'target: /paperclip/secrets/kubeconfig-readonly' | grep -q 'read_only: true'; then
-    ok "kubeconfig read-only volume renders (/paperclip/secrets/kubeconfig-readonly:ro)"
+    docker compose config 2>/dev/null | grep -A 3 'target: /kubeconfig/kubeconfig-readonly' | grep -q 'read_only: true'; then
+    ok "kubeconfig read-only volume renders (/kubeconfig/kubeconfig-readonly:ro)"
   else
     bad "rendered config lacks the read-only kubeconfig volume"
   fi

@@ -57,7 +57,7 @@
 #                             PAT for the 7 github-backed roles. CHANGE_ME__
 #                             placeholders are rejected. Never echoed.
 #   KUBECONFIG_READONLY_PATH    Host path of the read-only kubeconfig bound
-#                             to /paperclip/secrets/kubeconfig-readonly.
+#                             to /kubeconfig/kubeconfig-readonly.
 #                             Default: ./secrets/kubeconfig-readonly. Must be
 #                             a regular file; absence fails the run.
 #
@@ -136,7 +136,7 @@ fi
 # Wave 2 (P0-2/P1-8) provisioning preflight (fail-closed, dry-run AND live):
 # the fleet's MCP configs reference ${POSTGRES_READONLY_URL}
 # (dba-specialist), ${GITHUB_TOKEN} (7 github-backed roles) and
-# /paperclip/secrets/kubeconfig-readonly (k8s-orchestrator). Seeding with
+# /kubeconfig/kubeconfig-readonly (k8s-orchestrator). Seeding with
 # any of them absent or still a CHANGE_ME__ placeholder leaves agents with
 # unresolvable credentials — refuse instead. Secret VALUES are never echoed;
 # only the variable name and the remediation are printed.

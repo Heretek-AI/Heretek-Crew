@@ -225,7 +225,7 @@ description: Audits and packages Kubernetes Helm charts to enforce non-root secu
         "type": "local",
         "command": ["uvx", "mcp-server-kubernetes"],
         "env": {
-          "KUBECONFIG": "/paperclip/secrets/kubeconfig-readonly"
+          "KUBECONFIG": "/kubeconfig/kubeconfig-readonly"
         }
       },
       "docker": {

@@ -271,7 +271,7 @@
           "mcp-server-kubernetes==0.1.6"
         ],
         "env": {
-          "KUBECONFIG": "/paperclip/secrets/kubeconfig-readonly"
+          "KUBECONFIG": "/kubeconfig/kubeconfig-readonly"
         },
         "timeout": 5000
       },

@@ -163,6 +163,11 @@ services:
       # ClusterRole. Fail-closed chain: :? requires the path, the seed gate
       # requires it to be a regular file (compose bind-mounts would otherwise
       # materialize a directory), :ro blocks container writes.
+      # Mounted at /kubeconfig (NOT /paperclip/...) because the upstream
+      # entrypoint runs `chown -R node:node $home_dir` (/paperclip) under
+      # `set -e` at every boot (2026-10-18 crash-loop: any :ro bind under
+      # /paperclip makes the chown hit EROFS and exit 1, restart-looping
+      # paperclip; /kubeconfig is outside that walk so it is never touched).
       # Wave D P0-3a scoping plan (tracked, honest): this bind is visible
       # to the whole paperclip server (one UID/mount namespace shared by
       # all agents — XDG isolates config only), so every role carries
@@ -172,7 +177,7 @@ services:
       # env via a file descriptor the fs tools cannot address — so only
       # k8s-orchestrator's server process ever sees it. Until that
       # lands, the read-only ClusterRole binding is the containment.
-      - ${KUBECONFIG_READONLY_PATH:?KUBECONFIG_READONLY_PATH must be set in .env (host path of the read-only kubeconfig)}:/paperclip/secrets/kubeconfig-readonly:ro
+      - ${KUBECONFIG_READONLY_PATH:?KUBECONFIG_READONLY_PATH must be set in .env (host path of the read-only kubeconfig)}:/kubeconfig/kubeconfig-readonly:ro
     networks:
       - heretek
     # Resource limits: a runaway agent fleet must not starve the host.

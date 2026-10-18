@@ -34,7 +34,7 @@
    - **Transport**: `stdio`
    - **Command**: `uvx mcp-server-kubernetes`
    - **Configuration / Environment Variables**: `KUBECONFIG` (read-only cluster context).
-   - **Wave 2 P0-2 containment:** `KUBECONFIG=/paperclip/secrets/kubeconfig-readonly`
+   - **Wave 2 P0-2 containment:** `KUBECONFIG=/kubeconfig/kubeconfig-readonly`
      (bind-mounted `:ro` by `docker-compose.yml` from `KUBECONFIG_READONLY_PATH`;
      the seed-50 preflight requires it to be a regular file). The mounted
      context MUST be bound to a read-only ClusterRole (no `exec` into pods —
