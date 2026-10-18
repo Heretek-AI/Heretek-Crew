@@ -33,18 +33,35 @@
 #   ROLES_DIR                 Directory holding the per-role charters.
 #                             Default: <repo>/roles (resolved from this script's path).
 #
-# Upstream API contracts (verified against /tmp/paperclip @73659c6):
-#   1. Read bundle first: GET /api/agents/:id/instructions-bundle
-#      (routes/agents.ts) -> entryFile + head revision.
-#   2. Write entry: PUT /api/agents/:id/instructions-bundle/file
+# Upstream API contracts (VERIFIED live 2026-10-18 against the local
+# stack, dba-specialist agent — verbatim ground truth, not guesses):
+#   1. Read bundle first: GET /api/agents/:id/instructions-bundle returns
+#      top-level keys agentId, companyId, editable, entryFile, files,
+#      legacyBootstrapPromptTemplateActive, legacyPromptTemplateActive,
+#      managedRootPath, mode, persistence, resolvedEntryPath, rootPath,
+#      warnings. files[] entries carry {path, size, language, markdown,
+#      isEntryFile, editable, binary, contentHash, deprecated, virtual} —
+#      NO inline content, NO top-level revision id. The bundle names the
+#      entry file only; entryFile defaults to AGENTS.md.
+#   2. Read entry next: GET /api/agents/:id/instructions-bundle/file?path=AGENTS.md
+#      returns {path, content, contentHash, size, revision: {id, entryFile,
+#      contentHash, byteLength, parentRevisionId, baseRevisionId, ...},
+#      language, markdown, isEntryFile, editable, deprecated, virtual}.
+#      revision.id is the baseRevisionId to send on PUT. Content IS
+#      present here.
+#   3. Write entry: PUT /api/agents/:id/instructions-bundle/file
 #      {path: "AGENTS.md", content, baseRevisionId}
 #      (validators/agent.ts: path 1-512 chars, content <= 1MiB,
-#      baseRevisionId required for the entry path, null for new).
-#   3. Non-entry managed files take baseHash instead of baseRevisionId —
-#      not used here (S1 syncs the AGENTS.md entry only).
-#   4. Instruction paths must stay in the bundle root (no symlinks);
+#      baseRevisionId required for the entry path, null ONLY for a
+#      genuinely new entry). The old code guessed bundle-level revision
+#      fields that do not exist and sent baseRevisionId:null for every
+#      existing bundle -> server 409 on all 51 live PUTs.
+#   4. A genuinely missing entry reports file-GET 404 (or a 200 with no
+#      content/contentHash): ONLY then is null baseRevisionId correct —
+#      preserved here as the fallback, never the default.
+#   5. Instruction paths must stay in the bundle root (no symlinks);
 #      the entry file is AGENTS.md.
-#   5. New agents could take instructionsBundle at create — IRRELEVANT
+#   6. New agents could take instructionsBundle at create — IRRELEVANT
 #      here (all 51 agents already exist); this script uses the PUT file
 #      API only and never creates agents. If the fleet company or an
 #      agent is missing, the run fails that scope fail-closed with a
@@ -52,13 +69,17 @@
 # If any assumption breaks against your Paperclip build, --dry-run output
 # shows the intended local payloads (bytes + hashes) to adapt.
 #
-# Idempotency: per role, the server entry content hash is compared with
-# the local roles/<id>/AGENTS.md sha256; identical hashes skip with
-# "already current". Stale/missing entries are PUT with the bundle's
-# baseRevisionId (null only when the bundle reports none), then re-read
-# to confirm the hashes match. A role that fails at any step is reported
-# and the run continues with the rest; the exit code is nonzero with a
-# failure count when any role failed.
+# Idempotency: per role, the bundle is read for the entry file name
+# (default AGENTS.md), then the file endpoint is read and its server
+# content (sha256 of `content`, or `contentHash` when inline content is
+# absent) is compared with the local roles/<id>/AGENTS.md sha256;
+# identical hashes skip with "already current". Stale entries are PUT
+# with baseRevisionId = revision.id from the file GET (null only when
+# the file endpoint reports no revision, i.e. a genuinely missing
+# entry), then the file endpoint is re-read to confirm the hashes
+# match. A role that fails at any step is reported and the run
+# continues with the rest; the exit code is nonzero with a failure
+# count when any role failed.
 #
 # Secret hygiene: file contents are never echoed (only byte counts and
 # sha256 digests appear in logs; at most nothing beyond that); the token
@@ -348,14 +369,13 @@ for a in items:
 '
 }
 
-bundle_inspect() {
-  # $1 = instructions-bundle JSON file. Prints
-  # "<entryFile>\t<baseRevisionId or empty>\t<serverSha or empty>\t<true|false>".
-  # found=true only when the entry carries content (hashed here) or an
-  # explicit hash field. Unparseable bodies exit NONZERO (fail-closed:
-  # never "empty bundle, write with null revision" on a 500 page).
+bundle_entry_file() {
+  # $1 = instructions-bundle JSON file. Prints the entry file name
+  # (default AGENTS.md). The bundle carries NO inline content and NO
+  # revision id — it only names the entry. Unparseable bodies exit
+  # NONZERO (fail-closed: never proceed on a 500 page).
   python3 -c '
-import hashlib, json, sys
+import json, sys
 raw = open(sys.argv[1], "r", encoding="utf-8").read()
 try:
     doc = json.loads(raw)
@@ -372,42 +392,80 @@ for key in ("bundle", "data"):
         body = inner
         break
 entry = body.get("entryFile") or body.get("entryPath") or body.get("entry") or "AGENTS.md"
-rev = body.get("headRevisionId") or body.get("headRevision") or body.get("revisionId") or body.get("baseRevisionId") or ""
-if isinstance(rev, dict):
-    rev = rev.get("id", "")
-rev = "" if rev is None else str(rev)
-files = body.get("files")
-if isinstance(files, dict):
-    files = list(files.values())
-if not isinstance(files, list):
-    files = []
+print(str(entry))
+' "$1"
+}
+
+file_inspect() {
+  # $1 = file-endpoint JSON body
+  # (GET .../instructions-bundle/file?path=<entry>). Prints
+  # "<serverSha>\t<baseRevisionId or empty>\t<true|false>".
+  # found=true only when the entry carries content (hashed here) or an
+  # explicit contentHash. baseRevisionId is revision.id ("" when the
+  # endpoint reports no revision — genuinely new entry). Unparseable
+  # bodies exit NONZERO (fail-closed: never "missing entry, write with
+  # null revision" on a 500 page).
+  python3 -c '
+import hashlib, json, sys
+raw = open(sys.argv[1], "r", encoding="utf-8").read()
+try:
+    doc = json.loads(raw)
+except Exception as exc:
+    sys.stderr.write("error: file response is not valid JSON: %s\n" % (exc,))
+    sys.exit(1)
+if not isinstance(doc, dict):
+    sys.stderr.write("error: file response has unexpected shape (not an object)\n")
+    sys.exit(1)
+body = doc
+for key in ("file", "data"):
+    inner = doc.get(key)
+    if isinstance(inner, dict) and ("content" in inner or "contentHash" in inner or "revision" in inner):
+        body = inner
+        break
+rev = ""
+revision = body.get("revision")
+if isinstance(revision, dict):
+    rid = revision.get("id")
+    rev = "" if rid is None else str(rid)
 server_sha = ""
 found = "false"
-for item in files:
-    if not isinstance(item, dict):
-        continue
-    path = str(item.get("path", "") or "")
-    if path == entry or path == ("./" + entry) or path.rsplit("/", 1)[-1] == entry.rsplit("/", 1)[-1]:
-        content = item.get("content")
-        if isinstance(content, str):
-            server_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
-            found = "true"
-        else:
-            for hk in ("sha256", "hash", "contentHash", "content_sha256"):
-                hv = item.get(hk)
-                if isinstance(hv, str) and hv:
-                    server_sha = hv
-                    found = "true"
-                    break
-        break
-if found == "false":
-    for key in ("entryContent", "content", "headContent"):
-        if isinstance(body.get(key), str):
-            server_sha = hashlib.sha256(body[key].encode("utf-8")).hexdigest()
+content = body.get("content")
+if isinstance(content, str):
+    server_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    found = "true"
+else:
+    for hk in ("contentHash", "sha256", "hash", "content_sha256"):
+        hv = body.get(hk)
+        if isinstance(hv, str) and hv:
+            server_sha = hv
             found = "true"
             break
-print("%s\t%s\t%s\t%s" % (entry, rev, server_sha, found))
+print("%s\t%s\t%s" % (server_sha, rev, found))
 ' "$1"
+}
+
+urlencode_path() {
+  # $1 = raw ?path= value. Prints its percent-encoded form.
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+api_file_get() {
+  # $1 = agent id, $2 = entry path, $3 = output body file.
+  # Prints the HTTP status code. 200 (entry present) and 404
+  # (genuinely missing entry) are both successful reads; anything else
+  # is left to the caller to fail closed on. Connection failures exit
+  # nonzero. The token travels header-only, never in logs.
+  local agent_id="$1"
+  local entry_path="$2"
+  local out_body="$3"
+  local enc_path http_code curl_rc
+  enc_path="$(urlencode_path "${entry_path}")"
+  curl_rc=0
+  http_code="$(curl -sS -m 30 -o "${out_body}" -w '%{http_code}' -H "Authorization: Bearer ${PAPERCLIP_TOKEN}" "${PAPERCLIP_URL}/api/agents/${agent_id}/instructions-bundle/file?path=${enc_path}")" || curl_rc=$?
+  if [ "${curl_rc}" -ne 0 ]; then
+    return "${curl_rc}"
+  fi
+  printf '%s' "${http_code}"
 }
 
 build_put_payload() {
@@ -525,34 +583,70 @@ for role in "${TARGET_ROLES[@]}"; do
     continue
   fi
 
-  # Pass 1: read the bundle, learn entryFile + baseRevisionId, compare hashes.
+  # Pass 1: read the bundle for the entry file name (default
+  # AGENTS.md), then read the file endpoint for server content plus
+  # revision.id — the ONLY valid PUT base. The bundle itself carries
+  # neither inline content nor a revision id.
   if ! api GET "/api/agents/${agent_id}/instructions-bundle" > "${TMPDIR_WORK}/bundle-${role}.json"; then
     bad "role '${role}': bundle read failed for agent '${name}'; skipping role"
     failed=$((failed + 1))
     FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
     continue
   fi
-  bundle_info=""
-  if ! bundle_info="$(bundle_inspect "${TMPDIR_WORK}/bundle-${role}.json")"; then
+  entry_file=""
+  if ! entry_file="$(bundle_entry_file "${TMPDIR_WORK}/bundle-${role}.json")"; then
     bad "role '${role}': bundle response for agent '${name}' is unparseable; skipping role"
     failed=$((failed + 1))
     FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
     continue
   fi
-  entry_file="$(printf '%s' "${bundle_info}" | cut -f1)"
-  base_rev="$(printf '%s' "${bundle_info}" | cut -f2)"
-  server_sha="$(printf '%s' "${bundle_info}" | cut -f3)"
-  server_found="$(printf '%s' "${bundle_info}" | cut -f4)"
-  if [ "${entry_file}" != "AGENTS.md" ]; then
-    log "role '${role}': server reports entryFile '${entry_file}' (expected 'AGENTS.md'); writing the S1 entry path 'AGENTS.md' per contract"
+  if [ -z "${entry_file}" ]; then
+    entry_file="AGENTS.md"
   fi
+  if [ "${entry_file}" != "AGENTS.md" ]; then
+    log "role '${role}': server reports entryFile '${entry_file}' (expected 'AGENTS.md'); reading that entry, writing the S1 entry path 'AGENTS.md' per contract"
+  fi
+  file_code=""
+  if ! file_code="$(api_file_get "${agent_id}" "${entry_file}" "${TMPDIR_WORK}/file-${role}.json")"; then
+    bad "role '${role}': file read failed for agent '${name}' (network error); skipping role"
+    failed=$((failed + 1))
+    FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
+    continue
+  fi
+  server_sha=""
+  base_rev=""
+  server_found="false"
+  case "${file_code}" in
+    200)
+      file_info=""
+      if ! file_info="$(file_inspect "${TMPDIR_WORK}/file-${role}.json")"; then
+        bad "role '${role}': file response for agent '${name}' is unparseable; skipping role"
+        failed=$((failed + 1))
+        FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
+        continue
+      fi
+      server_sha="$(printf '%s' "${file_info}" | cut -f1)"
+      base_rev="$(printf '%s' "${file_info}" | cut -f2)"
+      server_found="$(printf '%s' "${file_info}" | cut -f3)"
+      ;;
+    404)
+      log "role '${role}': server has no entry '${entry_file}' for agent '${name}' (file 404); will create with null baseRevisionId"
+      ;;
+    *)
+      bad "role '${role}': file read for agent '${name}' returned HTTP ${file_code}; skipping role"
+      failed=$((failed + 1))
+      FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
+      continue
+      ;;
+  esac
   if [ "${server_found}" = "true" ] && [ -n "${server_sha}" ] && [ "${server_sha}" = "${local_sha}" ]; then
     log "agent '${name}' instructions already current (AGENTS.md ${local_bytes} bytes, sha256:${local_sha}); skipping"
     skipped=$((skipped + 1))
     continue
   fi
 
-  # Pass 2: PUT stale/missing entries only, then re-GET to verify.
+  # Pass 2: PUT stale/missing entries only, then re-GET the FILE
+  # endpoint (the path just written) and compare contentHash.
   if [ "${server_found}" = "true" ]; then
     reason="stale"
   else
@@ -575,21 +669,28 @@ for role in "${TARGET_ROLES[@]}"; do
     FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
     continue
   fi
-  if ! api GET "/api/agents/${agent_id}/instructions-bundle" > "${TMPDIR_WORK}/verify-${role}.json"; then
-    bad "role '${role}': post-write bundle re-read failed for agent '${name}'; skipping role"
+  verify_code=""
+  if ! verify_code="$(api_file_get "${agent_id}" "AGENTS.md" "${TMPDIR_WORK}/verify-${role}.json")"; then
+    bad "role '${role}': post-write file re-read failed for agent '${name}'; skipping role"
+    failed=$((failed + 1))
+    FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
+    continue
+  fi
+  if [ "${verify_code}" != "200" ]; then
+    bad "role '${role}': post-write file re-read for agent '${name}' returned HTTP ${verify_code}; skipping role"
     failed=$((failed + 1))
     FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
     continue
   fi
   verify_info=""
-  if ! verify_info="$(bundle_inspect "${TMPDIR_WORK}/verify-${role}.json")"; then
-    bad "role '${role}': post-write bundle response for agent '${name}' is unparseable; skipping role"
+  if ! verify_info="$(file_inspect "${TMPDIR_WORK}/verify-${role}.json")"; then
+    bad "role '${role}': post-write file response for agent '${name}' is unparseable; skipping role"
     failed=$((failed + 1))
     FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
     continue
   fi
-  verify_sha="$(printf '%s' "${verify_info}" | cut -f3)"
-  verify_found="$(printf '%s' "${verify_info}" | cut -f4)"
+  verify_sha="$(printf '%s' "${verify_info}" | cut -f1)"
+  verify_found="$(printf '%s' "${verify_info}" | cut -f3)"
   if [ "${verify_found}" = "true" ] && [ "${verify_sha}" = "${local_sha}" ]; then
     ok "agent '${name}' entry verified (AGENTS.md ${local_bytes} bytes, sha256:${local_sha})"
     wrote=$((wrote + 1))
