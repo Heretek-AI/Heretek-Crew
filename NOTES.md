@@ -392,7 +392,8 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
   carry them, upstream inheritance needs the same live run).
 
 ### Decision: secret-plane hardening without breaking boot (P0-3, P2-7)
-- Kubeconfig stays bind-mounted `:ro` (k8s-orchestrator keeps working);
+- Kubeconfig stays bind-mounted `:ro` at `/kubeconfig/kubeconfig-readonly`
+  (k8s-orchestrator keeps working);
   every role gains `fs:read` denies for `**/secrets/**`,
   `**/kubeconfig*`, `**/*.pem`, `**/id_rsa*` ahead of any allow
   (generator `FS_READ_ENV_DENIES` + 51 regenerated configs + smoke §3b
@@ -415,5 +416,23 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
   empty stderr, `docker compose config` exit 0 on all profile selections
   (with the two new `RABBITMQ_*` + signing-secret dummies).
 
+## Operator runbook note — onboarding (2026-10-18)
 
+### Symptom: OpenCode not offered in the onboarding wizard
 
+- Symptom (2026-10-18): fresh-instance step 4 "Connect a model" shows only
+  Claude Code + Codex tiles, no skip; footer is Back + gated primary only.
+- Root cause (upstream Paperclip, base commit 73659c6): step-4 tile row renders
+  `recommendedAdapters` only (`ui/src/components/OnboardingWizard.tsx` ~2731);
+  `recommended: true` only on `claude_local`+`codex_local` (`ui/src/adapters/adapter-display-registry.ts:72-82`);
+  `opencode_local` (`:116`) has neither flag nor server `loginCapability`
+  (`server/src/adapters/registry.ts:848` vs `:284`/`:359`/`:794`), since OpenCode
+  auths via API keys/env; deliberate per `ui/src/components/onboarding/ConnectModelPreview.tsx:40-46`.
+- Operator path: finish onboarding with Claude/Codex (subscription or "Use API keys
+  instead"), then add OpenCode credentials via Settings → AI connections; fleet roles
+  consume `OPENCODE_API_KEY`/provider keys from compose env, not the onboarding login.
+- Origin note (observed 2026-10-18): compose default `PAPERCLIP_PUBLIC_URL=http://localhost:3100`
+  — open `http://localhost:3100/`, not `http://127.0.0.1:3100/`, or set
+  `PAPERCLIP_ALLOWED_HOSTNAMES`; else Better Auth 403s the origin and no session is
+  created ("Invalid origin: http://127.0.0.1:3100").
+- Upstream issue (filed 2026-10-18): https://github.com/paperclipai/paperclip/issues/16694
