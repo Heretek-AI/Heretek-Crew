@@ -82,7 +82,7 @@ jobs:
             heretek.paperclip.base=${{ inputs.paperclip_base || 'ghcr.io/paperclipai/paperclip:sha-73659c6' }}
             heretek.opencode.cli=2.0.32
             heretek.opencode.client=2.0.32
-            heretek.opencode.harness=1.0.7
+            heretek.opencode.harness=1.0.9
 
       - name: Pre-publish Image Verification (Native amd64)
         run: |
@@ -162,10 +162,13 @@ jobs:
           # 6. Wave B P1-11 harness plugin-load gate: the pinned harness must
           # initialize with an empty-string directory (the AUDIT P0-1
           # fail-closed rootDir kill) instead of throwing. Sequencing note:
-          # this gate FAILs until the upstream harness fix lands and
-          # docker/Dockerfile bumps past the affected version — that failure
-          # is the gate working, not gate breakage. Re-pin the export lookup
-          # below when the harness module map changes.
+          # the upstream fix LANDED in 1.0.9 (pick() guard over the four
+          # context slots, verified 2026-10-18: live setup({directory:''})
+          # NO-THROW) and docker/Dockerfile now pins 1.0.9 — so this gate
+          # expects PASSED on the bumped harness. A FAIL here is the gate
+          # working (fail-closed must-not-throw on empty-string), not gate
+          # breakage. Re-pin the export lookup below when the harness
+          # module map changes.
           echo "Running harness plugin-load gate..."
           docker run --rm --entrypoint /bin/sh heretek-crew:verify -c '
             set -euo pipefail

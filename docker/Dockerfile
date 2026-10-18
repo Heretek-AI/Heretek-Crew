@@ -32,25 +32,31 @@
 #   postgres ............ postgres:17.11-alpine@sha256:b0f956… (see docker-compose.yml; resolved live 2026-10-17)
 #   @opencode/cli ....... 2.0.32
 #   @opencode/client .... 2.0.32
-#   @heretek-ai/opencode-harness .. 1.0.7
-#     Wave D P0-1 upstream fix (NOT in this repo — dist/index.js is
-#     upstream npm, do not invent it here): 1.0.7 DIES on load under host
-#     @opencode/cli@2.0.32, which supplies an empty-string directory —
-#     `inferredRoot = ctx?.directory ?? ... ?? process.cwd()` never skips
-#     "", so resolveHarnessOptions({rootDir: ""}) throws (fail-closed)
-#     and every harness tool reads "not available". Upstream diff:
-#       const pick = (v) => (typeof v === "string" && v.trim() !== "" ? v : undefined);
-#       inferredRoot = pick(ctx?.directory) ?? pick(ctx?.worktree)
-#         ?? pick(ctx?.location?.directory) ?? pick(ctx?.location?.worktree)
-#         ?? process.cwd()
-#     Bump plan: when upstream publishes the fixed successor, set
-#     OPENCODE_HARNESS_VERSION to it here, re-enumerate
-#     EXTENDED_HARNESS_TOOL_NAMES into scripts/smoke-test.sh
-#     HARNESS_MANIFEST, and re-run the live tool-visibility gate
-#     (smoke §10: a real agent turn invoking file_hash_read must
-#     succeed — `npm ls` alone never catches a load-time Die).
-#     Until then the 1.0.7 pin stays (exact, no float) and Domain 4
-#     harness primitives are documented as load-broken, NOT working.
+#   @heretek-ai/opencode-harness .. 1.0.9
+#     Wave D P0-1 upstream fix FIXED-IN-1.0.9 (upstream npm
+#     dist/index.js, verified 2026-10-18 — do not invent it here):
+#     1.0.9 contains the falsy-tolerant pick() guard
+#     (dist/index.js:638-642,
+#     `pick=(v)=>typeof v==="string"&&v.trim()!=""?v:undefined`
+#     over the four context slots, fallback `process.cwd()`).
+#     Pre-1.0.9 `inferredRoot = ctx?.directory ?? ... ?? process.cwd()`
+#     never skipped "" (`??` skips null/undefined only), so
+#     resolveHarnessOptions({rootDir: ""}) threw fail-closed and
+#     every harness tool read "not available". In 1.0.9 the
+#     empty/whitespace directory is skipped to `process.cwd()` instead:
+#     live `setup({directory:''})` NO-THROW (verified 2026-10-18, four
+#     contexts: "", whitespace, {directory:"",worktree:/tmp},
+#     {}), while direct `resolveHarnessOptions({rootDir: ""})` still
+#     throws fail-closed (contract preserved).
+#     Bump completed 2026-10-18: `OPENCODE_HARNESS_VERSION` set to 1.0.9
+#     below, `EXTENDED_HARNESS_TOOL_NAMES` re-enumerated into
+#     scripts/smoke-test.sh `HARNESS_MANIFEST` (unchanged: 10 readonly
+#     + 4 mutating), docker-publish harness plugin-load gate now expects
+#     PASSED (fail-closed must-not-throw on empty-string), and the live
+#     tool-visibility gate (smoke §10: a real agent turn invoking
+#     file_hash_read must succeed — `npm ls` alone never catches a
+#     load-time Die) is re-armed for the next live run. Domain 4
+#     harness primitives are fixed-in-1.0.9 pending Crew publish green.
 #   opencode-mem ........ 2.31.3 (memory plugin referenced by fleet roles;
 #                         provides persistent Turso/libSQL-backed memory)
 #   @prevalentware/opencode-goal-plugin .. 0.1.64 (goal-tracking plugin
@@ -68,7 +74,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Promote pins to ENV so `docker inspect` records exactly what is installed.
 ENV OPENCODE_CLI_VERSION=2.0.32 \
     OPENCODE_CLIENT_VERSION=2.0.32 \
-    OPENCODE_HARNESS_VERSION=1.0.7 \
+    OPENCODE_HARNESS_VERSION=1.0.9 \
     OPENCODE_MEM_VERSION=2.31.3 \
     OPENCODE_GOAL_PLUGIN_VERSION=0.1.64
 

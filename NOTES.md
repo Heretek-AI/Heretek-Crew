@@ -359,6 +359,23 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
   agent turn invoking `file_hash_read` must succeed — `npm ls` alone
   never catches a load-time `Die`). Until then Domain 4 harness
   primitives are documented as load-broken, not working.
+- 2026-10-18 update — FIXED-IN-1.0.9, bump applied: upstream published
+  `@heretek-ai/opencode-harness@1.0.9` (`latest` dist-tag = 1.0.9;
+  versions `[..., 1.0.7, 1.0.8, 1.0.9]`), issue
+  `Heretek-AI/opencode-harness#4` CLOSED, publish run `39093090307`
+  green. Verified in-repo: `dist/index.js:638-642` carries the
+  `pick()` guard (`pick=(v)=>typeof v==="string"&&v.trim()!==""?v:undefined`
+  over the four context slots, fallback `process.cwd()`); live
+  `setup({directory:''})` NO-THROW across four contexts (`""`,
+  whitespace, `{directory:"",worktree:"/tmp"}`, `{}`) while direct
+  `resolveHarnessOptions({rootDir:""})` still throws fail-closed
+  (contract preserved); `EXTENDED_HARNESS_TOOL_NAMES` re-enumerated —
+  unchanged at 14 (10 readonly + 4 mutating), so `HARNESS_MANIFEST`
+  values stand. Bumped: `OPENCODE_HARNESS_VERSION=1.0.9`
+  (`docker/Dockerfile`), `heretek.opencode.harness=1.0.9` label + gate
+  comments now expecting PASSED (`.github/workflows/docker-publish.yml`),
+  `smoke-test.sh` manifest comments re-verified. Domain 4 status moves
+  from load-broken to fixed-in-1.0.9 pending Crew publish green.
 
 ### Decision: Paperclip source-commit pin (P1-8)
 - The base image (`paperclip:official-local`) is a local build with no
@@ -389,7 +406,8 @@ Because Paperclip's built-in `opencode-local` adapter pushes `--dir` (which fail
 
 ### Verified facts (Wave D)
 - Pins: `@opencode/cli@2.0.32` + `@opencode/client@2.0.32` (unchanged),
-  harness `1.0.7` (exact, load-broken per P0-1), `test-shim.sh` 57/57
+  harness `1.0.9` (exact, fixed-in-1.0.9 per P0-1 — pick() guard verified
+  2026-10-18, live NO-THROW), `test-shim.sh` 57/57
   (P3-1 `stat -L` device+inode fallback + regression test; P0-1
   --dir consume-iff-on-disk-dir + 3 new translation cases),
   `smoke-test.sh --check-only` green (see stage report for the count),

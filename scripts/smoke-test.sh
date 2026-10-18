@@ -83,24 +83,29 @@
 #
 # NOTE (P1-7 / Wave 2 P0-3): the harness tool manifest IS verified
 # statically. HARNESS_READONLY_MANIFEST in §3b pins the 10 non-mutating
-# tools registered by @heretek-ai/opencode-harness@1.0.7 (enumerated
+# tools registered by @heretek-ai/opencode-harness@1.0.9 (enumerated
 # empirically via `npm pack` + dist/index.js EXTENDED_HARNESS_TOOL_NAMES
-# — the live setupOpenCodeV2Harness path registers all 14): every role
+# re-verified 2026-10-18: EXTENDED 14 = 10 readonly + 4 mutating unchanged —
+# the live setupOpenCodeV2Harness path registers all 14): every role
 # that declares the harness plugin must allow exactly that 10-tool set
 # (per-tool allows, no `harness_*` allow), must DENY the 4 mutating
 # tools (P0-9: zero mutating harness allows fleet-wide), and must carry
 # a `harness_*` deny tail. A bump of the harness version requires
 # re-enumeration + manifest update here.
-# Wave D P0-1 root cause (NOT fixed in-repo — dist/index.js is upstream
-# npm): host @opencode/cli@2.0.32 supplies an empty-string directory, and
+# Wave D P0-1 root cause FIXED-IN-1.0.9 (upstream npm dist/index.js,
+# verified 2026-10-18 — not fixed in-repo): pre-1.0.9, host
+# @opencode/cli@2.0.32 supplied an empty-string directory, and
 # `inferredRoot = ctx?.directory ?? ... ?? process.cwd()` never skips ""
 # (`??` skips null/undefined only), so resolveHarnessOptions({rootDir:""})
-# throws fail-closed and the plugin dies before registering anything
+# threw fail-closed and the plugin died before registering anything
 # (debug log: Die(Error: rootDir must be non-empty); live `opencode run`
-# replies "file_hash_read is not available"). Upstream one-spot fix +
-# bump plan: docker/Dockerfile pin comment (falsy-tolerant pick() over
-# the four context slots). Until the fixed successor ships, Domain 4
-# harness primitives are documented as load-broken, never working.
+# replies "file_hash_read is not available"). The 1.0.9 fix is the
+# falsy-tolerant pick() guard (dist/index.js:638-642) over the four
+# context slots with `process.cwd()` fallback: live
+# `setup({directory:''})` NO-THROW, while direct empty rootDir still
+# throws fail-closed (contract preserved). Domain 4 harness primitives
+# are fixed-in-1.0.9 pending Crew publish green. Keep the live gate
+# reference in §10b.
 # Live tool-registration (the runtime actually exposing those tools to an
 # agent run) is asserted ONLY by the live gate in §10b (needs `make up` +
 # seeded fleet + HARNESS_LIVE_GATE=1): it runs the probe fixture at
@@ -1005,7 +1010,7 @@ else
   bad "MCP-boundary shell deny REGRESSED: $(head -c 200 "${TMP}/mcpbound.err")"
 fi
 # Wave 2 P0-3: harness tool manifest assertion. Manifest pinned from the
-# registry tarball @heretek-ai/opencode-harness@1.0.7 (dist/index.js
+# registry tarball @heretek-ai/opencode-harness@1.0.9 (dist/index.js
 # EXTENDED_HARNESS_TOOL_NAMES — the live setupOpenCodeV2Harness path
 # registers all 14): every role declaring the harness plugin must allow
 # exactly the 10 non-mutating tools (per-tool allows, NEVER a
@@ -1017,9 +1022,10 @@ fi
 # explicitly allowed here). Roles without the plugin must carry no
 # harness allows at all.
 # NOTE: whether the runtime enforcer honors these static denies needs a
-# live allow/deny matrix, blocked on AUDIT P0-1 (harness rootDir
-# empty-string kill — upstream npm, not in repo; fixture +
-# live-only gate: scripts/fixtures/harness-probe-opencode.json + §10b).
+# live allow/deny matrix, tracked separately (fixture +
+# live-only gate: scripts/fixtures/harness-probe-opencode.json + §10b —
+# re-armed for 1.0.9 now that the P0-1 empty-string kill is fixed
+# upstream; direct empty rootDir still throws fail-closed).
 # Static shape is the in-repo gate; live enforcement stays tracked,
 # never claimed.
 HARNESS_READONLY_MANIFEST="file_hash_read ast_structural_search ui_geometry_audit repo_map blast_radius file_outline symbol_references verify_scoped architecture_audit checkpoint_create"
