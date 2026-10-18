@@ -2,8 +2,32 @@
 #
 # enrich-fleet-model-env.sh — stamp the fleet-wide Go model cutover onto every
 # seeded fleet agent: adapterConfig.model := opencode-go/muse-spark-1.3-contributor
-# plus the two managed env keys OPENCODE_GO_API_KEY and
-# PAPERCLIP_OPENCODE_SMALL_MODEL, preserving every other env key verbatim.
+# plus the two managed env keys OPENCODE_GO_API_KEY (as a secret_ref binding
+# to a company secret — NEVER a plaintext value, see STRICT SECRET MODE
+# below) and PAPERCLIP_OPENCODE_SMALL_MODEL (as a plain binding), preserving
+# every other env key verbatim.
+#
+# STRICT SECRET MODE (b): the server rejects a `type:"plain"` (or bare-string)
+# binding for a sensitive key — any key matching `*_KEY`, which includes
+# OPENCODE_GO_API_KEY — with HTTP 422
+# "Strict secret mode requires secret references for sensitive key: ..."
+# (server/src/services/secrets.ts:1905-1913, isSensitiveEnvKey gate inside
+# normalizeEnvConfig; binding schema at
+# packages/shared/src/validators/secret.ts:15-44). A PATCH carrying the Go
+# key as a bare string therefore fails closed server-side. This script
+# instead ENSURES a company secret named "OpenCode Go API Key" (POST
+# /api/companies/:companyId/secrets, routes/secrets.ts:887, idempotent via a
+# prior GET /api/companies/:companyId/secrets, routes/secrets.ts:594) holding
+# the live key, then stamps each agent with the reference shape (verified
+# live end-to-end, HTTP 200):
+#   {"type":"secret_ref","secretId":"<company secret uuid>","version":"latest"}
+# Reads return env values as BINDING OBJECTS, not bare strings — e.g.
+# {"type":"plain","value":"***REDACTED***"} for live plaintext (redaction.ts)
+# — so the merge echoes every existing entry VERBATIM (redacted placeholders
+# ride along for server-side restore via restoreRedactedAgentEnv,
+# routes/agents.ts:2894-2914) and "already stamped" means: model matches AND
+# OPENCODE_GO_API_KEY is a secret_ref (any secretId — ids legitimately change
+# after a re-create) AND PAPERCLIP_OPENCODE_SMALL_MODEL is present.
 #
 # WHY (a): the fleet is cut over from anthropic/claude-sonnet-4-5 to the
 # gateway-served Go model opencode-go/muse-spark-1.3-contributor (verified
@@ -34,7 +58,8 @@
 #                             Falls back to ADMIN_API_KEY. Required unless
 #                             --dry-run is passed.
 #   ADMIN_API_KEY             Fallback for PAPERCLIP_TOKEN.
-#   OPENCODE_GO_API_KEY       The Go subscription key stamped into every
+#   OPENCODE_GO_API_KEY       The Go subscription key stored in the managed
+#                             company secret and referenced (by id) from every
 #                             agent's adapterConfig.env. REQUIRED unless
 #                             --dry-run is passed. Never echoed: only the key
 #                             NAME and match/mismatch are logged.
@@ -104,19 +129,26 @@
 # script must be re-run to restore the cutover.
 #
 # Idempotency: per role the script GETs the agent, compares adapterConfig
-# model plus the two managed env KEY names, and skips ("already stamped")
-# when the model matches and both keys are present. Otherwise it PATCHes
-# the merged config, re-GETs, and verifies: model equality, both managed
-# keys present with a held (non-empty) value shape, and every pre-existing
-# env key still present (merge-not-replace proof). A role that fails at any
-# step is reported and the run continues; the exit code is nonzero with a
-# failure count when any role failed.
+# model plus the two managed env KEY names/shapes, and skips ("already
+# stamped") when the model matches AND OPENCODE_GO_API_KEY is a secret_ref
+# binding (type == secret_ref; a plaintext/bare entry counts as DRIFT and is
+# re-stamped) AND PAPERCLIP_OPENCODE_SMALL_MODEL is present. Otherwise it
+# PATCHes the merged config, re-GETs, and verifies: model equality,
+# OPENCODE_GO_API_KEY present as a secret_ref,
+# PAPERCLIP_OPENCODE_SMALL_MODEL present, and every pre-existing env key
+# still present (merge-not-replace proof). A role that fails at any step is
+# reported and the run continues; the exit code is nonzero with a failure
+# count when any role failed. The company-secret ensure step is itself
+# idempotent (GET-then-create).
 #
 # Secret hygiene: secret VALUES are never echoed, never hashed-to-log, never
-# appear in error text. Logs carry only key NAMES (OPENCODE_GO_API_KEY,
-# PAPERCLIP_OPENCODE_SMALL_MODEL), model strings (not secrets), key-presence
-# match/mismatch, and counts. The token travels only as an Authorization
-# header; the Go key travels only inside the PATCH JSON body.
+# appear in error text — including the company-secret create response, from
+# which only the secret `id` is extracted and logged. Logs carry only key
+# NAMES (OPENCODE_GO_API_KEY, PAPERCLIP_OPENCODE_SMALL_MODEL), model strings
+# (not secrets), key-presence match/mismatch, the company secret id, and
+# counts. The token travels only as an Authorization header; the Go key
+# travels only inside the company-secret POST body; per-agent PATCH bodies
+# carry only the secret_ref (secretId), never the key value.
 #
 # Exit codes: 0 all roles stamped-or-already-stamped (verified); 1 one or
 # more roles failed (count printed) or a fail-closed preflight tripped;
@@ -141,6 +173,12 @@ HEALTH_TIMEOUT_SEC="${HEALTH_TIMEOUT_SEC:-120}"
 TARGET_MODEL="opencode-go/muse-spark-1.3-contributor"
 MANAGED_KEY_GO="OPENCODE_GO_API_KEY"
 MANAGED_KEY_SMALL="PAPERCLIP_OPENCODE_SMALL_MODEL"
+
+# Company secret holding the live Go key (ensured idempotently before the
+# per-role loop; agents reference it by id — see STRICT SECRET MODE above).
+GO_SECRET_NAME="OpenCode Go API Key"
+GO_SECRET_CREATE_KEY="OPENCODE_GO_API_KEY"
+GO_SECRET_DESC="Fleet-wide Go subscription key for opencode-go models (managed by enrich-fleet-model-env.sh)"
 
 # Canonical 51 role IDs in catalog order (Roles 01-51; Role 51
 # ai-red-teamer promoted Wave C P1-4 — see ROLE_CATALOG_50.md Total line).
@@ -280,7 +318,7 @@ if [ "${DRY_RUN}" != "true" ] && [ -z "${PAPERCLIP_TOKEN}" ]; then
 fi
 
 if [ "${DRY_RUN}" != "true" ] && [ -z "${OPENCODE_GO_API_KEY}" ]; then
-  echo "error: OPENCODE_GO_API_KEY must be set (the Go subscription key stamped into every agent)" >&2
+  echo "error: OPENCODE_GO_API_KEY must be set (the Go subscription key stored in the managed company secret)" >&2
   exit 1
 fi
 
@@ -341,12 +379,14 @@ bad() { printf '[enrich-model-env] ERROR: %s\n' "$*" >&2; }
 if [ "${DRY_RUN}" = "true" ]; then
   log "--dry-run: per-role model+env stamp plan (no network calls)"
   log "target model: '${TARGET_MODEL}' (pinned fleet-wide; not overridable — see WHY)"
-  log "managed env keys: '${MANAGED_KEY_GO}' (from OPENCODE_GO_API_KEY: $([ -n "${OPENCODE_GO_API_KEY}" ] && echo 'set' || echo 'UNSET — required live')) + '${MANAGED_KEY_SMALL}' (from GO_SMALL_MODEL='${GO_SMALL_MODEL}')"
-  log "merge rule: PATCH adapterConfig {model, env} where env = every existing key echoed verbatim + the two managed keys overwritten; server top-level-merges, nested env replaces (routes/agents.ts:5294) — hence client-side merge"
-  log "verify rule: re-GET must show model equality + both managed keys present with a held value + every pre-existing env key still present"
+  log "managed env keys: '${MANAGED_KEY_GO}' (as secret_ref to company secret '${GO_SECRET_NAME}'; strict secret mode rejects plaintext — services/secrets.ts:1905) + '${MANAGED_KEY_SMALL}' (as plain binding from GO_SMALL_MODEL='${GO_SMALL_MODEL}')"
+  log "company secret: GET /api/companies/:companyId/secrets, reuse id when key/name matches, else POST create (name/key/description only logged; value never logged)"
+  log "live inputs: OPENCODE_GO_API_KEY $([ -n "${OPENCODE_GO_API_KEY}" ] && echo 'set' || echo 'UNSET — required live') (goes ONLY into the company-secret POST body, never into a PATCH)"
+  log "merge rule: PATCH adapterConfig {model, env} where env = every existing binding echoed verbatim (incl. ***REDACTED*** plain objects for server-side restore) + the two managed keys overwritten with binding objects; server top-level-merges, nested env replaces (routes/agents.ts:5294) — hence client-side merge"
+  log "verify rule: re-GET must show model equality + ${MANAGED_KEY_GO} as secret_ref + ${MANAGED_KEY_SMALL} present + every pre-existing env key still present"
   for role in "${TARGET_ROLES[@]}"; do
     name="$(role_display_name "${role}")"
-    log "role '${role}' (agent '${name}'): would GET /api/agents/<id> -> skip when model matches and both managed keys present ('already stamped'); else PATCH merged adapterConfig then re-GET and verify"
+    log "role '${role}' (agent '${name}'): would GET /api/agents/<id> -> skip when model matches AND ${MANAGED_KEY_GO} is a secret_ref AND ${MANAGED_KEY_SMALL} present ('already stamped'); else ensure company secret then PATCH merged adapterConfig then re-GET and verify"
   done
   log "dry-run summary: ${#TARGET_ROLES[@]} role(s) would be checked (GET -> compare -> PATCH-if-drift -> re-GET verify); zero network calls attempted"
   exit 0
@@ -416,12 +456,16 @@ for a in items:
 
 agent_model_keys() {
   # $1 = GET /api/agents/:id detail JSON. Prints the adapterConfig model on
-  # line 1, then one "KEY:<name>" line per env key (sorted). Accepts
-  # {agent,...}/{data,...} wrappers defensively. Exits NONZERO on
+  # line 1, then one "KEY:<name>\t<kind>" line per env key (sorted by name).
+  # <kind> is the binding shape as read back from the API: the `type` of a
+  # binding object (plain, secret_ref, user_secret_ref), "bare" for a legacy
+  # bare-string value, or "object" for a dict without a string `type`.
+  # Accepts {agent,...}/{data,...} wrappers defensively. Exits NONZERO on
   # unparseable bodies or when adapterConfig/adapterConfig.env has an
   # unexpected shape (fail-closed: never treat a 500 page as "unstamped").
-  # NOTE: env VALUES are redacted display placeholders — only key names are
-  # extracted; values are never printed, hashed, or compared here.
+  # NOTE: env VALUES are redacted display placeholders — only key names and
+  # binding kinds are extracted; values are never printed, hashed, or
+  # compared here.
   python3 -c '
 import json, sys
 raw = open(sys.argv[1], "r", encoding="utf-8").read()
@@ -454,28 +498,143 @@ if not isinstance(env, dict):
     sys.exit(1)
 print(model)
 for name in sorted(env.keys()):
-    print("KEY:%s" % (name,))
+    binding = env[name]
+    if isinstance(binding, dict):
+        btype = binding.get("type")
+        kind = btype if isinstance(btype, str) and btype else "object"
+    elif isinstance(binding, str):
+        kind = "bare"
+    else:
+        kind = "object"
+    print("KEY:%s\t%s" % (name, kind))
+' "$1"
+}
+
+find_go_secret_id() {
+  # Reads a GET /api/companies/:companyId/secrets list body on stdin and
+  # prints the id of the existing Go company secret, else prints nothing.
+  # Match: secret `key` equal to OPENCODE_GO_API_KEY modulo case (the server
+  # normalizes keys, e.g. "opencode_go_api_key"), or `name` equal to the
+  # managed GO_SECRET_NAME. Accepts a bare list or {secrets:[...]}/{data:...}
+  # wrappers. Exits NONZERO on unparseable/unexpected bodies (fail-closed:
+  # never silently conclude "absent" from a 500 page and double-create).
+  GO_SECRET_NAME="${GO_SECRET_NAME}" python3 -c '
+import json, os, sys
+raw = sys.stdin.read()
+try:
+    doc = json.loads(raw)
+except Exception:
+    sys.exit(1)
+items = doc
+if isinstance(doc, dict):
+    for wrapper in ("secrets", "data", "items"):
+        inner = doc.get(wrapper)
+        if isinstance(inner, list):
+            items = inner
+            break
+if not isinstance(items, list):
+    sys.exit(1)
+want_name = os.environ["GO_SECRET_NAME"]
+for s in items:
+    if not isinstance(s, dict):
+        continue
+    skey = s.get("key")
+    sname = s.get("name")
+    sid = s.get("id")
+    if not isinstance(sid, str) or not sid:
+        continue
+    if (isinstance(skey, str) and skey.lower() == "opencode_go_api_key") or \
+       (isinstance(sname, str) and sname == want_name):
+        print(sid)
+        break
+'
+}
+
+build_secret_create_payload() {
+  # $1 = output POST-body path for POST /api/companies/:companyId/secrets.
+  # Writes {"name","key","value","description"}; the value arrives via
+  # environment (never argv) and is never printed. Exits NONZERO when the
+  # value is empty (fail-closed: never create an empty secret).
+  OUT_PATH="$1" OPENCODE_GO_API_KEY="${OPENCODE_GO_API_KEY}" GO_SECRET_NAME="${GO_SECRET_NAME}" GO_SECRET_CREATE_KEY="${GO_SECRET_CREATE_KEY}" GO_SECRET_DESC="${GO_SECRET_DESC}" python3 -c '
+import json, os, sys
+out_path = os.environ["OUT_PATH"]
+go_key = os.environ.get("OPENCODE_GO_API_KEY", "")
+if not go_key:
+    sys.stderr.write("error: OPENCODE_GO_API_KEY is empty; refusing to create an empty company secret\n")
+    sys.exit(1)
+body = {
+    "name": os.environ["GO_SECRET_NAME"],
+    "key": os.environ["GO_SECRET_CREATE_KEY"],
+    "value": go_key,
+    "description": os.environ["GO_SECRET_DESC"],
+}
+with open(out_path, "w", encoding="utf-8") as fh:
+    json.dump(body, fh)
+'
+}
+
+secret_id_from_create() {
+  # $1 = POST /api/companies/:companyId/secrets 201 response body path.
+  # Prints the created secret `id` (uuid). Fail-closed: a missing/empty id
+  # exits NONZERO instead of stamping agents against a phantom secret.
+  # Only the id is printed — the response value (if echoed) is never shown.
+  python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as fh:
+        doc = json.load(fh)
+except Exception as exc:
+    sys.stderr.write("error: secret create response is not valid JSON: %s\n" % (exc,))
+    sys.exit(1)
+body = doc
+if isinstance(doc, dict):
+    for wrapper in ("secret", "data"):
+        inner = doc.get(wrapper)
+        if isinstance(inner, dict) and isinstance(inner.get("id"), str):
+            body = inner
+            break
+sid = body.get("id") if isinstance(body, dict) else None
+if not isinstance(sid, str) or not sid:
+    sys.stderr.write("error: secret create response carries no secret id; refusing to continue\n")
+    sys.exit(1)
+print(sid)
 ' "$1"
 }
 
 build_stamp_payload() {
   # $1 = GET /api/agents/:id detail JSON, $2 = output PATCH payload path.
   # Writes {"adapterConfig": {<existing keys...>, model: TARGET, env: merged}}
-  # where merged env = every existing entry echoed VERBATIM (redacted
-  # placeholders ride along for server-side restore) plus the two managed
-  # keys overwritten with live values. Live values arrive via environment
-  # (never argv) and are never printed. Exits NONZERO when the detail is
-  # unparseable, adapterConfig/env has an unexpected shape, or a managed
-  # value is empty (fail-closed: never stamp an empty secret).
-  DETAIL_PATH="$1" OUT_PATH="$2" python3 -c '
+  # where merged env = every existing entry echoed VERBATIM (binding objects
+  # ride along untouched — redacted plain placeholders are restored
+  # server-side; pre-existing secret_refs are never reinterpreted) plus the
+  # two managed keys overwritten with binding OBJECTS:
+  #   OPENCODE_GO_API_KEY -> {"type":"secret_ref","secretId":<id>,"version":"latest"}
+  #   PAPERCLIP_OPENCODE_SMALL_MODEL -> {"type":"plain","value":<small model>}
+  # Plaintext for the Go key is REJECTED server-side with 422 under strict
+  # secret mode (services/secrets.ts:1905-1913), so no plaintext Go value is
+  # emitted here — only the company-secret reference. XDG_CONFIG_HOME and
+  # OPENCODE_DISABLE_PROJECT_CONFIG are never touched: they are preserved
+  # from the read because they are role-specific.
+  # All inputs arrive via per-invocation environment (never argv, never
+  # globals — see BUG-1 fix: TARGET_MODEL/MANAGED_KEY_* are plain shell
+  # variables, so they are passed explicitly on the invocation line, in the
+  # same VAR=... python3 style as DETAIL_PATH/OUT_PATH). The live Go key
+  # value is NOT needed here at all: it travels only in the company-secret
+  # POST body, never in a per-agent PATCH. Exits NONZERO when the detail is
+  # unparseable, adapterConfig/env has an unexpected shape, the secret id is
+  # empty, or the small-model reference is empty (fail-closed: never stamp
+  # a dangling reference or an empty small-model value).
+  DETAIL_PATH="$1" OUT_PATH="$2" TARGET_MODEL="${TARGET_MODEL}" MANAGED_KEY_GO="${MANAGED_KEY_GO}" MANAGED_KEY_SMALL="${MANAGED_KEY_SMALL}" GO_SECRET_ID="${GO_SECRET_ID}" GO_SMALL_MODEL="${GO_SMALL_MODEL}" python3 -c '
 import json, os, sys
 detail_path = os.environ["DETAIL_PATH"]
 out_path = os.environ["OUT_PATH"]
 target_model = os.environ["TARGET_MODEL"]
-go_key = os.environ.get("OPENCODE_GO_API_KEY", "")
+managed_go = os.environ["MANAGED_KEY_GO"]
+managed_small = os.environ["MANAGED_KEY_SMALL"]
+secret_id = os.environ.get("GO_SECRET_ID", "")
 small_model = os.environ.get("GO_SMALL_MODEL", "")
-if not go_key:
-    sys.stderr.write("error: OPENCODE_GO_API_KEY is empty; refusing to stamp an empty secret\n")
+if not secret_id:
+    sys.stderr.write("error: GO_SECRET_ID is empty; refusing to stamp a dangling secret reference\n")
     sys.exit(1)
 if not small_model:
     sys.stderr.write("error: GO_SMALL_MODEL is empty; refusing to stamp an empty small-model reference\n")
@@ -506,8 +665,8 @@ if not isinstance(env, dict):
     sys.stderr.write("error: agent detail adapterConfig.env is not an object; refusing to merge blindly\n")
     sys.exit(1)
 merged = dict(env)
-merged[os.environ["MANAGED_KEY_GO"]] = go_key
-merged[os.environ["MANAGED_KEY_SMALL"]] = small_model
+merged[managed_go] = {"type": "secret_ref", "secretId": secret_id, "version": "latest"}
+merged[managed_small] = {"type": "plain", "value": small_model}
 new_cfg = dict(cfg)
 new_cfg["model"] = target_model
 new_cfg["env"] = merged
@@ -544,13 +703,46 @@ if [ -z "${COMPANY_ID}" ]; then
 fi
 log "company exists: ${COMPANY_ID}"
 
+# ---- Ensure the company secret holding the Go key (idempotent). ----
+# Strict secret mode forbids plaintext for OPENCODE_GO_API_KEY, so agents
+# reference this secret by id; the key VALUE travels only in the POST body
+# below (when creation is needed), never in per-agent PATCHes.
+log "ensuring company secret '${GO_SECRET_NAME}'"
+if ! api GET "/api/companies/${COMPANY_ID}/secrets" > "${TMPDIR_WORK}/secrets.json"; then
+  echo "error: company secret list read failed; aborting (no agent will be touched)" >&2
+  exit 1
+fi
+GO_SECRET_ID=""
+if ! GO_SECRET_ID="$(find_go_secret_id < "${TMPDIR_WORK}/secrets.json")"; then
+  echo "error: company secret list response is unparseable; aborting (refusing to double-create blindly)" >&2
+  exit 1
+fi
+if [ -z "${GO_SECRET_ID}" ]; then
+  log "company secret '${GO_SECRET_NAME}' absent; creating (value never logged)"
+  if ! build_secret_create_payload "${TMPDIR_WORK}/secret-create.json"; then
+    echo "error: failed to build company secret create payload; aborting" >&2
+    exit 1
+  fi
+  if ! api POST "/api/companies/${COMPANY_ID}/secrets" "${TMPDIR_WORK}/secret-create.json" > "${TMPDIR_WORK}/secret-create.resp.json"; then
+    echo "error: company secret create failed (server response above); aborting" >&2
+    exit 1
+  fi
+  if ! GO_SECRET_ID="$(secret_id_from_create "${TMPDIR_WORK}/secret-create.resp.json")"; then
+    echo "error: company secret create returned no usable id; aborting" >&2
+    exit 1
+  fi
+  ok "company secret created: ${GO_SECRET_ID}"
+else
+  log "company secret exists: ${GO_SECRET_ID} (reused; no new secret created)"
+fi
+
 # The agent list is fetched ONCE up front and reused from the cache
 # (mirrors seed-50-fleet.sh): refreshed only when a lookup misses, so
 # steady-state runs cost exactly one LIST and correctness never depends
 # on cache freshness.
 api GET "/api/companies/${COMPANY_ID}/agents" > "${TMPDIR_WORK}/agents.json"
 
-log "target model '${TARGET_MODEL}'; managed keys '${MANAGED_KEY_GO}' + '${MANAGED_KEY_SMALL}' (names only; values never logged)"
+log "target model '${TARGET_MODEL}'; managed keys '${MANAGED_KEY_GO}' (secret_ref ${GO_SECRET_ID}) + '${MANAGED_KEY_SMALL}' (plain); names/ids only, values never logged"
 
 total=0
 nstamped=0
@@ -598,7 +790,7 @@ for role in "${TARGET_ROLES[@]}"; do
     continue
   fi
 
-  # ---- Compare: GET the agent and check model + managed key presence. ----
+  # ---- Compare: GET the agent and check model + managed key name/kind. ----
   if ! api GET "/api/agents/${agent_id}" > "${TMPDIR_WORK}/detail-${role}.json"; then
     bad "role '${role}': agent detail read failed for agent '${name}'; skipping role"
     nfailed=$((nfailed + 1))
@@ -614,26 +806,40 @@ for role in "${TARGET_ROLES[@]}"; do
   fi
   current_model="$(printf '%s\n' "${snapshot}" | sed -n '1p')"
   current_keys="$(printf '%s\n' "${snapshot}" | sed -n '2,$p' | sed 's/^KEY://')"
-  # Key-name match/mismatch only — values are redacted server-side and are
-  # never compared or printed (see header contract 2).
+  # Name+kind match/mismatch only — values are redacted server-side and are
+  # never compared or printed (see header contract 2). The Go key counts as
+  # stamped ONLY when its binding kind is secret_ref: a plaintext/bare
+  # entry is drift (the server would 422 it) and must be re-stamped. Any
+  # secret_ref id counts — ids legitimately change after a re-create.
   model_match="mismatch"
   [ "${current_model}" = "${TARGET_MODEL}" ] && model_match="match"
   go_match="mismatch"
+  go_kind="absent"
   small_match="mismatch"
+  small_kind="absent"
   while IFS= read -r have; do
     [ -n "${have}" ] || continue
-    [ "${have}" = "${MANAGED_KEY_GO}" ] && go_match="match"
-    [ "${have}" = "${MANAGED_KEY_SMALL}" ] && small_match="match"
+    have_name="${have%%$'\t'*}"
+    have_kind="${have#*$'\t'}"
+    [ "${have_name}" = "${have}" ] && have_kind="bare"
+    if [ "${have_name}" = "${MANAGED_KEY_GO}" ]; then
+      go_kind="${have_kind}"
+      [ "${have_kind}" = "secret_ref" ] && go_match="match"
+    fi
+    if [ "${have_name}" = "${MANAGED_KEY_SMALL}" ]; then
+      small_kind="${have_kind}"
+      small_match="match"
+    fi
   done <<< "${current_keys}"
-  # Snapshot the pre-stamp key set for the merge-not-replace proof below.
-  printf '%s\n' "${current_keys}" > "${TMPDIR_WORK}/prekeys-${role}.txt"
+  # Snapshot the pre-stamp key NAMES for the merge-not-replace proof below.
+  printf '%s\n' "${current_keys}" | sed 's/\t.*//' > "${TMPDIR_WORK}/prekeys-${role}.txt"
 
   if [ "${model_match}" = "match" ] && [ "${go_match}" = "match" ] && [ "${small_match}" = "match" ]; then
-    log "role '${role}' already stamped (model ${model_match}, ${MANAGED_KEY_GO} ${go_match}, ${MANAGED_KEY_SMALL} ${small_match}); skipping"
+    log "role '${role}' already stamped (model ${model_match}, ${MANAGED_KEY_GO} ${go_match} [${go_kind}], ${MANAGED_KEY_SMALL} ${small_match} [${small_kind}]); skipping"
     nskipped=$((nskipped + 1))
     continue
   fi
-  log "role '${role}': drift detected (model ${model_match}, ${MANAGED_KEY_GO} ${go_match}, ${MANAGED_KEY_SMALL} ${small_match}); stamping"
+  log "role '${role}': drift detected (model ${model_match}, ${MANAGED_KEY_GO} ${go_match} [${go_kind}], ${MANAGED_KEY_SMALL} ${small_match} [${small_kind}]); stamping"
 
   # ---- Stamp: PATCH the client-side-merged adapterConfig. ----
   if ! build_stamp_payload "${TMPDIR_WORK}/detail-${role}.json" "${TMPDIR_WORK}/patch-${role}.json"; then
@@ -665,13 +871,26 @@ for role in "${TARGET_ROLES[@]}"; do
   fi
   post_model="$(printf '%s\n' "${verified}" | sed -n '1p')"
   post_keys="$(printf '%s\n' "${verified}" | sed -n '2,$p' | sed 's/^KEY://')"
+  # Re-verify asserts: (a) OPENCODE_GO_API_KEY is a secret_ref in the
+  # re-read (not merely present — plaintext would 422 on the next write and
+  # means the stamp did not take), (b) the model matches, (c) every
+  # pre-existing env key is still present (merge-not-replace).
   post_go="mismatch"
+  post_go_kind="absent"
   post_small="mismatch"
   while IFS= read -r have; do
     [ -n "${have}" ] || continue
-    [ "${have}" = "${MANAGED_KEY_GO}" ] && post_go="match"
-    [ "${have}" = "${MANAGED_KEY_SMALL}" ] && post_small="match"
+    have_name="${have%%$'\t'*}"
+    have_kind="${have#*$'\t'}"
+    [ "${have_name}" = "${have}" ] && have_kind="bare"
+    if [ "${have_name}" = "${MANAGED_KEY_GO}" ]; then
+      post_go_kind="${have_kind}"
+      [ "${have_kind}" = "secret_ref" ] && post_go="match"
+    fi
+    [ "${have_name}" = "${MANAGED_KEY_SMALL}" ] && post_small="match"
   done <<< "${post_keys}"
+  # Names-only view for the merge-not-replace proof below.
+  post_names="$(printf '%s\n' "${post_keys}" | sed 's/\t.*//')"
   # Merge-not-replace proof: every pre-stamp env key must still be present.
   # (Managed keys are in both sets by construction; this guards the rest,
   # e.g. XDG_CONFIG_HOME + OPENCODE_DISABLE_PROJECT_CONFIG.)
@@ -685,18 +904,18 @@ for role in "${TARGET_ROLES[@]}"; do
         found="true"
         break
       fi
-    done <<< "${post_keys}"
+    done <<< "${post_names}"
     if [ "${found}" = "false" ]; then
       dropped="${dropped:+${dropped} }${want}"
     fi
   done < "${TMPDIR_WORK}/prekeys-${role}.txt"
   if [ "${post_model}" != "${TARGET_MODEL}" ] || [ "${post_go}" != "match" ] || [ "${post_small}" != "match" ] || [ -n "${dropped}" ]; then
-    bad "role '${role}': post-stamp verification failed for agent '${name}' (model '${post_model}', ${MANAGED_KEY_GO} ${post_go}, ${MANAGED_KEY_SMALL} ${post_small}, dropped keys:${dropped:+ }${dropped:-none}); skipping role"
+    bad "role '${role}': post-stamp verification failed for agent '${name}' (model '${post_model}', ${MANAGED_KEY_GO} ${post_go} [${post_go_kind}], ${MANAGED_KEY_SMALL} ${post_small}, dropped keys:${dropped:+ }${dropped:-none}); skipping role"
     nfailed=$((nfailed + 1))
     FAILED_LIST="${FAILED_LIST:+${FAILED_LIST} }${role}"
     continue
   fi
-  ok "agent '${name}' stamped+verified (model '${TARGET_MODEL}', ${MANAGED_KEY_GO} ${post_go}, ${MANAGED_KEY_SMALL} ${post_small}, 0 keys dropped)"
+  ok "agent '${name}' stamped+verified (model '${TARGET_MODEL}', ${MANAGED_KEY_GO} ${post_go} [${post_go_kind}], ${MANAGED_KEY_SMALL} ${post_small}, 0 keys dropped)"
   nstamped=$((nstamped + 1))
 done
 
