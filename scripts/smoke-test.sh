@@ -1832,14 +1832,31 @@ elif [[ "${code}" -eq 1 && "${refusal}" == *"refusing plaintext dump"* ]]; then
 else
   bad "backup refusal has wrong exit/message (P2-13)"
 fi
-if BACKUP_PLAINTEXT_OK=0 ./scripts/backup-db.sh --plaintext-ok >/dev/null 2>&1; then
-  bad "backup --plaintext-ok unexpectedly fully succeeded without a stack (P2-13)"
+# P2-13 (--plaintext-ok, environment-robust): the explicit opt-in must
+# PASS the encryption gate in every environment — it must never trip
+# "refusing plaintext dump". The downstream outcome is
+# environment-dependent and BOTH are acceptable: exit 0 with a real dump
+# when a live postgres is reachable, or fail-closed health refusal (exit
+# 1) without a stack. BACKUP_DIR is isolated to a mktemp dir (removed
+# afterwards) so a live-stack success never litters backups/. NOTE:
+# backup-db.sh sources ./.env unconditionally after startup, which
+# overrides VAR=value prefixes — verified the repo .env defines no
+# BACKUP_DIR / BACKUP_PLAINTEXT_OK / BACKUP_AGE_RECIPIENT keys (names
+# only), so the exports below survive; env -u clears any inherited
+# recipient and CLI --plaintext-ok opts in via OR logic a sourced .env
+# cannot undo.
+plaintext_tmp="$(mktemp -d)"
+plaintext_code=0
+plaintext_out="$(env -u BACKUP_AGE_RECIPIENT BACKUP_PLAINTEXT_OK=0 BACKUP_DIR="${plaintext_tmp}" ./scripts/backup-db.sh --plaintext-ok 2>&1)" || plaintext_code=$?
+rm -rf "${plaintext_tmp}"
+if [[ "${plaintext_out}" == *"refusing plaintext dump"* ]]; then
+  bad "backup --plaintext-ok still trips the plaintext gate (P2-13)"
+elif [[ "${plaintext_code}" -eq 0 ]]; then
+  ok "backup --plaintext-ok passes the encryption gate (live dump succeeded — P2-13)"
+elif [[ "${plaintext_code}" -eq 1 ]]; then
+  ok "backup --plaintext-ok passes the encryption gate (fail-closed downstream refusal without a stack — P2-13)"
 else
-  if ./scripts/backup-db.sh --plaintext-ok 2>&1 | grep -q "refusing plaintext dump"; then
-    bad "backup --plaintext-ok still trips the plaintext gate (P2-13)"
-  else
-    ok "backup --plaintext-ok passes the encryption gate (P2-13)"
-  fi
+  bad "backup --plaintext-ok exits ${plaintext_code}, want 0 (live dump) or 1 (fail-closed refusal) (P2-13)"
 fi
 # P2-3: explicit CLI --file/--yes must survive .env sourcing; the
 # FILE-required hint must list encrypted dumps; the terminate query must
