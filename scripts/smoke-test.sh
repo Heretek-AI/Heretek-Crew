@@ -12,6 +12,13 @@
 #                       seeder when the fleet track is present)
 #                    2. `docker compose config` parses (with throwaway dummy
 #                       secrets when .env is absent — validation only)
+#                    2b. EROFS nested-mount contract, TEXT ONLY (no docker,
+#                       no .env, no containers): parent ./roles:/roles:ro,z
+#                       once + per-role long-syntax tmpfs (explicit mode
+#                       1777/size 16M) + :ro,:z file bind; counts ==
+#                       role dirs with zero missing/extra (each named);
+#                       parent<tmpfs<file line order; no short-syntax
+#                       tmpfs: key; no :ro under /paperclip
 #                    3. every roles/*/opencode/opencode.json discovered
 #                       dynamically under roles/ is a valid v2 config
 #                       (valid JSON, provider/model string, non-empty
@@ -313,6 +320,121 @@ else
   else
     bad "compose exposure note does not route operators to make proxy-up (P2-6)"
   fi
+fi
+
+# --- 2b. EROFS per-role mounts (text-only, no docker/.env needed) -------------
+# Wave EROFS remediation (issues #1/#4, Drift F1/F4): §2 above asserts
+# nothing about the /roles mount shape, so deleting one role's lines
+# still passed green. This gate parses docker-compose.yml TEXT ONLY
+# (never `docker compose config`, never .env, never containers — it
+# runs even when docker is absent and in --check-only/--dry-run) and
+# fail-closed asserts the full nested-mount contract per role dir
+# discovered under roles/ (never a hardcoded list, so role 52 with a
+# new dir but no compose lines FAILs loud and names the role):
+#   (a) the shared parent bind `./roles:/roles:ro,z` is present once;
+#   (b) every role has its file bind
+#       `./roles/<r>/opencode/opencode.json:/roles/<r>/opencode/opencode.json:ro,z`
+#       carrying BOTH :ro and :z, with the source file on disk;
+#   (c) every role has a long-syntax `type: tmpfs` entry targeting
+#       `/roles/<r>/opencode` with explicit `mode: 1777` + `size: 16M`;
+#   (d) counts match exactly (role dirs == file binds == tmpfs
+#       entries) with zero missing/extra, each named;
+#   (e) line order is parent bind < tmpfs entry < file bind per role
+#       (single ordered `volumes:` list — the F3 parent-before-child
+#       contract; a drifted order FAILs here, live `docker inspect`
+#       Mounts[] order is the post-merge proof);
+#   (f) no service-level short-syntax `tmpfs:` key remains (that split
+#       key is the unordered shape — drift back FAILs);
+#   (g) no :ro mount targets anything under /paperclip (eaa9394
+#       entrypoint-chown precedent).
+section "2b. EROFS per-role mounts (text-only)"
+if EROFS_ERR="$(python3 -c '
+import glob, os, re, sys
+
+text = open("docker-compose.yml").read().splitlines()
+roles = sorted(os.path.basename(p.rstrip("/")) for p in glob.glob("roles/*/") if os.path.isdir(p))
+if not roles:
+    sys.exit("no role directories discovered under roles/")
+
+problems = []
+
+parent = [i for i, l in enumerate(text) if l.strip() == "- ./roles:/roles:ro,z"]
+if len(parent) != 1:
+    problems.append("parent bind ./roles:/roles:ro,z present %dx (want exactly 1)" % len(parent))
+parent_idx = parent[0] if parent else -1
+
+if [i for i, l in enumerate(text) if re.match(r"^    tmpfs:\s*$", l)]:
+    problems.append("service-level short-syntax tmpfs: key present (want long-syntax type: tmpfs in volumes: only)")
+
+file_idx, tmpfs_idx = {}, {}
+extra_files, extra_tmpfs = [], []
+for i, l in enumerate(text):
+    s = l.strip()
+    m = re.match(r"^-\s+\./roles/([^/]+)/opencode/opencode\.json:/roles/\1/opencode/opencode\.json:(.*)$", s)
+    if m:
+        role, opts = m.group(1), m.group(2).split(",")
+        file_idx.setdefault(role, []).append(i)
+        if "ro" not in opts:
+            problems.append("%s: file bind lacks :ro" % role)
+        if "z" not in opts:
+            problems.append("%s: file bind lacks :z" % role)
+        if role in extra_files:
+            pass
+        continue
+    m = re.match(r"^target:\s+/roles/([^/]+)/opencode\s*$", s)
+    if m:
+        tmpfs_idx.setdefault(m.group(1), []).append(i)
+
+for role, idxs in file_idx.items():
+    if role not in roles:
+        extra_files.append(role)
+    if len(idxs) > 1:
+        problems.append("%s: %d file binds (want exactly 1)" % (role, len(idxs)))
+for role, idxs in tmpfs_idx.items():
+    if role not in roles:
+        extra_tmpfs.append(role)
+    if len(idxs) > 1:
+        problems.append("%s: %d tmpfs targets (want exactly 1)" % (role, len(idxs)))
+
+missing_files = [r for r in roles if r not in file_idx]
+missing_tmpfs = [r for r in roles if r not in tmpfs_idx]
+for r in missing_files:
+    problems.append("missing file bind for role: %s (add ./roles/%s/opencode/opencode.json:/roles/%s/opencode/opencode.json:ro,z)" % (r, r, r))
+for r in missing_tmpfs:
+    problems.append("missing tmpfs entry for role: %s (add type: tmpfs target /roles/%s/opencode)" % (r, r))
+for r in sorted(set(extra_files)):
+    problems.append("file bind for unknown role dir: %s (no roles/%s/ on disk)" % (r, r))
+for r in sorted(set(extra_tmpfs)):
+    problems.append("tmpfs target for unknown role dir: %s (no roles/%s/ on disk)" % (r, r))
+
+for r in roles:
+    src = "roles/%s/opencode/opencode.json" % r
+    if not os.path.isfile(src):
+        problems.append("missing source file on disk: %s" % src)
+    if r in file_idx and r in tmpfs_idx:
+        ti = tmpfs_idx[r][0]
+        fi = file_idx[r][0]
+        window = "\n".join(text[ti:ti + 6])
+        if "type: tmpfs" not in "\n".join(text[max(0, ti - 1):ti + 1]):
+            problems.append("%s: tmpfs target not under a type: tmpfs entry" % r)
+        if "mode: 1777" not in window:
+            problems.append("%s: tmpfs entry lacks explicit mode: 1777" % r)
+        if "size: 16M" not in window:
+            problems.append("%s: tmpfs entry lacks explicit size: 16M" % r)
+        if not (parent_idx < ti < fi):
+            problems.append("%s: mount order violated (want parent:%d < tmpfs:%d < file:%d)" % (r, parent_idx, ti, fi))
+
+for i, l in enumerate(text):
+    if ":ro" in l and re.search(r"/paperclip[^:]*:ro", l):
+        problems.append("line %d: :ro mount under /paperclip (eaa9394 entrypoint-chown crash-loop): %s" % (i + 1, l.strip()))
+
+if problems:
+    sys.exit("; ".join(problems))
+print("%d roles: parent :ro,z + %d tmpfs (mode 1777/size 16M) + %d file binds (:ro,:z) in parent-before-child order" % (len(roles), len(tmpfs_idx), len(file_idx)))
+' 2>&1)"; then
+  ok "EROFS nested mounts intact ($(printf '%s' "${EROFS_ERR}"))"
+else
+  bad "EROFS mount contract VIOLATION: $(printf '%s' "${EROFS_ERR}" | head -c 600)"
 fi
 
 # --- 3. role configs valid + pins -------------------------------------------
