@@ -55,7 +55,10 @@ services:
       # (SELECT-only + default_transaction_read_only) on first boot against a
       # fresh volume. Existing volumes do not re-run initdb hooks — apply the
       # --dry-run SQL manually there (see the script header).
-      - ./scripts/postgres-init-readonly-role.sh:/docker-entrypoint-initdb.d/01-readonly-role.sh:ro
+      # Issue #1: :z shared SELinux relabel (Enforcing hosts label repo
+      # files user_home_t; without :z the entrypoint hook is unreadable
+      # and postgres boot-loops Permission denied; no-op elsewhere).
+      - ./scripts/postgres-init-readonly-role.sh:/docker-entrypoint-initdb.d/01-readonly-role.sh:ro,z
     networks:
       - heretek
     # Resource caps (P1-9): bound the database alongside the fleet.
@@ -155,9 +158,96 @@ services:
       - paperclip-data:/paperclip
       # Per-role OpenCode v2 configs (roles/<role>/opencode/opencode.json),
       # consumed via each agent's env.XDG_CONFIG_HOME=/roles/<role>.
-      - ./roles:/roles:ro
+      # Issue #1 (:z): shared SELinux relabel so Enforcing hosts
+      # (user_home_t repo files) are readable in-container without a
+      # host chcon workaround (no-op on non-SELinux hosts). Named
+      # volumes (pgdata, paperclip-data) are unaffected.
+      - ./roles:/roles:ro,z
+      # Wave EROFS remediation (issue #4, heartbeat-run
+      # 12be42ed-f5ea-4706-bd45-5a3a813787af, 2026-10-18): the runtime
+      # writes a registry file (service.json.tmp) beside the role
+      # config at /roles/<role>/opencode/, but /roles above is
+      # intentionally :ro — the write died EROFS pre-model-call
+      # (0 tokens; every probe opencode_models_discovery_failed).
+      # Design (a) — per-role tmpfs scratch + ro config restore
+      # (chosen): each /roles/<role>/opencode is an ephemeral tmpfs
+      # (mode 1777 default, so the node runtime user can create the
+      # .tmp beside the config) and the host's opencode.json is bound
+      # back over it as an :ro file (51 binds below, one per role).
+      # Role configs stay read-only end to end (parent :ro + file
+      # :ro); only the ephemeral registry scratch is writable and it
+      # holds zero config at boot. Rejected: (b) relocating the write
+      # outside /roles needs XDG_CONFIG_HOME/seed-payload or upstream
+      # Paperclip changes (outside this compose-only wave); (c) a bare
+      # rw file submount for service.json cannot work — the runtime
+      # CREATES service.json.tmp, which needs directory write, and a
+      # rw dir submount alone would shadow opencode.json.
+      # eaa9394 precedent honored: every new mount stays OUTSIDE
+      # /paperclip (the entrypoint `chown -R node:node /paperclip`
+      # under set -e EROFS-crash-loops on any :ro bind under it).
+      # Residual risk (recorded, NOT asserted): the same :ro mount
+      # served 51/51 PASS + billed turns before the recreate —
+      # candidates are cold-cache re-init after container recreate vs
+      # harness behavior drift; let evidence decide. tmpfs gives a
+      # deterministic cold slate every boot, so behavior no longer
+      # depends on container age. If the nested mounts ever applied
+      # out of order, boot fails LOUD (missing opencode.json breaks
+      # seed/verify) rather than silent — fail-closed by construction.
+      - ./roles/a11y-specialist/opencode/opencode.json:/roles/a11y-specialist/opencode/opencode.json:ro,z
+      - ./roles/ai-red-teamer/opencode/opencode.json:/roles/ai-red-teamer/opencode/opencode.json:ro,z
+      - ./roles/analytics-metrics-eng/opencode/opencode.json:/roles/analytics-metrics-eng/opencode/opencode.json:ro,z
+      - ./roles/android-mobile-spec/opencode/opencode.json:/roles/android-mobile-spec/opencode/opencode.json:ro,z
+      - ./roles/api-contract-tester/opencode/opencode.json:/roles/api-contract-tester/opencode/opencode.json:ro,z
+      - ./roles/appsec-engineer/opencode/opencode.json:/roles/appsec-engineer/opencode/opencode.json:ro,z
+      - ./roles/binary-reverse-eng/opencode/opencode.json:/roles/binary-reverse-eng/opencode/opencode.json:ro,z
+      - ./roles/brand-copy-spec/opencode/opencode.json:/roles/brand-copy-spec/opencode/opencode.json:ro,z
+      - ./roles/cache-streaming-eng/opencode/opencode.json:/roles/cache-streaming-eng/opencode/opencode.json:ro,z
+      - ./roles/cloud-platform-eng/opencode/opencode.json:/roles/cloud-platform-eng/opencode/opencode.json:ro,z
+      - ./roles/cloud-sec-auditor/opencode/opencode.json:/roles/cloud-sec-auditor/opencode/opencode.json:ro,z
+      - ./roles/compliance-auditor/opencode/opencode.json:/roles/compliance-auditor/opencode/opencode.json:ro,z
+      - ./roles/cpp-lowlevel-eng/opencode/opencode.json:/roles/cpp-lowlevel-eng/opencode/opencode.json:ro,z
+      - ./roles/data-pipeline-eng/opencode/opencode.json:/roles/data-pipeline-eng/opencode/opencode.json:ro,z
+      - ./roles/dba-specialist/opencode/opencode.json:/roles/dba-specialist/opencode/opencode.json:ro,z
+      - ./roles/dependency-patcher/opencode/opencode.json:/roles/dependency-patcher/opencode/opencode.json:ro,z
+      - ./roles/design-system-eng/opencode/opencode.json:/roles/design-system-eng/opencode/opencode.json:ro,z
+      - ./roles/e2e-browser-qa/opencode/opencode.json:/roles/e2e-browser-qa/opencode/opencode.json:ro,z
+      - ./roles/engine-systems-eng/opencode/opencode.json:/roles/engine-systems-eng/opencode/opencode.json:ro,z
+      - ./roles/exec-director/opencode/opencode.json:/roles/exec-director/opencode/opencode.json:ro,z
+      - ./roles/fe-perf-eng/opencode/opencode.json:/roles/fe-perf-eng/opencode/opencode.json:ro,z
+      - ./roles/firmware-sec-analyst/opencode/opencode.json:/roles/firmware-sec-analyst/opencode/opencode.json:ro,z
+      - ./roles/game-ai-dev/opencode/opencode.json:/roles/game-ai-dev/opencode/opencode.json:ro,z
+      - ./roles/game-systems-dev/opencode/opencode.json:/roles/game-systems-dev/opencode/opencode.json:ro,z
+      - ./roles/git-drift-coord/opencode/opencode.json:/roles/git-drift-coord/opencode/opencode.json:ro,z
+      - ./roles/go-backend-eng/opencode/opencode.json:/roles/go-backend-eng/opencode/opencode.json:ro,z
+      - ./roles/graphics-shader-eng/opencode/opencode.json:/roles/graphics-shader-eng/opencode/opencode.json:ro,z
+      - ./roles/ios-mobile-spec/opencode/opencode.json:/roles/ios-mobile-spec/opencode/opencode.json:ro,z
+      - ./roles/java-kotlin-eng/opencode/opencode.json:/roles/java-kotlin-eng/opencode/opencode.json:ro,z
+      - ./roles/k8s-orchestrator/opencode/opencode.json:/roles/k8s-orchestrator/opencode/opencode.json:ro,z
+      - ./roles/load-stress-tester/opencode/opencode.json:/roles/load-stress-tester/opencode/opencode.json:ro,z
+      - ./roles/mlops-serving-eng/opencode/opencode.json:/roles/mlops-serving-eng/opencode/opencode.json:ro,z
+      - ./roles/mobile-web-eng/opencode/opencode.json:/roles/mobile-web-eng/opencode/opencode.json:ro,z
+      - ./roles/observability-eng/opencode/opencode.json:/roles/observability-eng/opencode/opencode.json:ro,z
+      - ./roles/physics-sim-eng/opencode/opencode.json:/roles/physics-sim-eng/opencode/opencode.json:ro,z
+      - ./roles/product-director/opencode/opencode.json:/roles/product-director/opencode/opencode.json:ro,z
+      - ./roles/python-backend-spec/opencode/opencode.json:/roles/python-backend-spec/opencode/opencode.json:ro,z
+      - ./roles/release-qa-officer/opencode/opencode.json:/roles/release-qa-officer/opencode/opencode.json:ro,z
+      - ./roles/rust-systems-spec/opencode/opencode.json:/roles/rust-systems-spec/opencode/opencode.json:ro,z
+      - ./roles/sabotage-qa-tester/opencode/opencode.json:/roles/sabotage-qa-tester/opencode/opencode.json:ro,z
+      - ./roles/sre-incident-eng/opencode/opencode.json:/roles/sre-incident-eng/opencode/opencode.json:ro,z
+      - ./roles/static-analysis-lead/opencode/opencode.json:/roles/static-analysis-lead/opencode/opencode.json:ro,z
+      - ./roles/system-architect/opencode/opencode.json:/roles/system-architect/opencode/opencode.json:ro,z
+      - ./roles/tech-artist-pipeline/opencode/opencode.json:/roles/tech-artist-pipeline/opencode/opencode.json:ro,z
+      - ./roles/tech-docs-lead/opencode/opencode.json:/roles/tech-docs-lead/opencode/opencode.json:ro,z
+      - ./roles/threat-modeler/opencode/opencode.json:/roles/threat-modeler/opencode/opencode.json:ro,z
+      - ./roles/tpm-scrum-lead/opencode/opencode.json:/roles/tpm-scrum-lead/opencode/opencode.json:ro,z
+      - ./roles/ts-node-fullstack/opencode/opencode.json:/roles/ts-node-fullstack/opencode/opencode.json:ro,z
+      - ./roles/ui-ux-designer/opencode/opencode.json:/roles/ui-ux-designer/opencode/opencode.json:ro,z
+      - ./roles/ux-research-analyst/opencode/opencode.json:/roles/ux-research-analyst/opencode/opencode.json:ro,z
+      - ./roles/vector-rag-spec/opencode/opencode.json:/roles/vector-rag-spec/opencode/opencode.json:ro,z
       # Agent working checkouts live here on the host for inspection/backup.
-      - ./workspaces:/paperclip/workspaces
+      # Issue #1: :z shared SELinux relabel (rw bind stays rw; no-op on
+      # non-SELinux hosts).
+      - ./workspaces:/paperclip/workspaces:z
       # Read-only kubeconfig for k8s-orchestrator's kubernetes MCP server
       # (P0-2): the mounted file's context must be bound to a read-only
       # ClusterRole. Fail-closed chain: :? requires the path, the seed gate
@@ -177,7 +267,67 @@ services:
       # env via a file descriptor the fs tools cannot address — so only
       # k8s-orchestrator's server process ever sees it. Until that
       # lands, the read-only ClusterRole binding is the containment.
-      - ${KUBECONFIG_READONLY_PATH:?KUBECONFIG_READONLY_PATH must be set in .env (host path of the read-only kubeconfig)}:/kubeconfig/kubeconfig-readonly:ro
+      # Issue #1: :z shared SELinux relabel on this file bind too
+      # (Enforcing hosts; no-op elsewhere). :ro unchanged.
+      - ${KUBECONFIG_READONLY_PATH:?KUBECONFIG_READONLY_PATH must be set in .env (host path of the read-only kubeconfig)}:/kubeconfig/kubeconfig-readonly:ro,z
+    # Registry scratch dirs (issue #4 design (a) — see the volumes
+    # comment above): one ephemeral tmpfs per role opencode dir, holding
+    # only the runtime-written registry (service.json + .tmp). No host
+    # state, no named volume to prune: --force-recreate and full
+    # container recreate deterministically rebuild the cold slate, so
+    # registry behavior no longer depends on container age.
+    tmpfs:
+      - /roles/a11y-specialist/opencode
+      - /roles/ai-red-teamer/opencode
+      - /roles/analytics-metrics-eng/opencode
+      - /roles/android-mobile-spec/opencode
+      - /roles/api-contract-tester/opencode
+      - /roles/appsec-engineer/opencode
+      - /roles/binary-reverse-eng/opencode
+      - /roles/brand-copy-spec/opencode
+      - /roles/cache-streaming-eng/opencode
+      - /roles/cloud-platform-eng/opencode
+      - /roles/cloud-sec-auditor/opencode
+      - /roles/compliance-auditor/opencode
+      - /roles/cpp-lowlevel-eng/opencode
+      - /roles/data-pipeline-eng/opencode
+      - /roles/dba-specialist/opencode
+      - /roles/dependency-patcher/opencode
+      - /roles/design-system-eng/opencode
+      - /roles/e2e-browser-qa/opencode
+      - /roles/engine-systems-eng/opencode
+      - /roles/exec-director/opencode
+      - /roles/fe-perf-eng/opencode
+      - /roles/firmware-sec-analyst/opencode
+      - /roles/game-ai-dev/opencode
+      - /roles/game-systems-dev/opencode
+      - /roles/git-drift-coord/opencode
+      - /roles/go-backend-eng/opencode
+      - /roles/graphics-shader-eng/opencode
+      - /roles/ios-mobile-spec/opencode
+      - /roles/java-kotlin-eng/opencode
+      - /roles/k8s-orchestrator/opencode
+      - /roles/load-stress-tester/opencode
+      - /roles/mlops-serving-eng/opencode
+      - /roles/mobile-web-eng/opencode
+      - /roles/observability-eng/opencode
+      - /roles/physics-sim-eng/opencode
+      - /roles/product-director/opencode
+      - /roles/python-backend-spec/opencode
+      - /roles/release-qa-officer/opencode
+      - /roles/rust-systems-spec/opencode
+      - /roles/sabotage-qa-tester/opencode
+      - /roles/sre-incident-eng/opencode
+      - /roles/static-analysis-lead/opencode
+      - /roles/system-architect/opencode
+      - /roles/tech-artist-pipeline/opencode
+      - /roles/tech-docs-lead/opencode
+      - /roles/threat-modeler/opencode
+      - /roles/tpm-scrum-lead/opencode
+      - /roles/ts-node-fullstack/opencode
+      - /roles/ui-ux-designer/opencode
+      - /roles/ux-research-analyst/opencode
+      - /roles/vector-rag-spec/opencode
     networks:
       - heretek
     # Resource limits: a runaway agent fleet must not starve the host.
@@ -199,7 +349,8 @@ services:
     # repairs /paperclip ownership as root before `exec gosu node`
     # (see docker/Dockerfile runtime-user note); dropping caps would break
     # first boot on fresh named volumes. Least-privilege is enforced above
-    # it: loopback-only ports, read-only /roles mount, scoped env.
+    # it: loopback-only ports, read-only /roles mount (+ ephemeral
+    # per-role registry tmpfs, zero config inside), scoped env.
     # read_only is likewise NOT set (P2-3): the server writes
     # ./workspaces:/paperclip/workspaces and paperclip-data:/paperclip by
     # design (agent checkouts, sqlite/state), plus /tmp — a read-only root
