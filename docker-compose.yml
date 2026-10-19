@@ -171,12 +171,30 @@ services:
       # (0 tokens; every probe opencode_models_discovery_failed).
       # Design (a) — per-role tmpfs scratch + ro config restore
       # (chosen, rework 2026-10-19): each /roles/<role>/opencode is an
-      # ephemeral tmpfs with EXPLICIT mode 1777 (no implicit default —
-      # the node runtime user must create service.json.tmp beside the
-      # config) and size 16M (registry files are KB; the cap bounds a
-      # runaway writer without risking legitimate growth), and the
-      # host's opencode.json is bound back over it as an :ro file
-      # (51 binds below, one per role, each :ro AND :z).
+      # ephemeral tmpfs with EXPLICIT mode 0o1777 (YAML 1.2 octal —
+      # no implicit default; the node runtime user must create
+      # service.json.tmp beside the config) and size 16M (registry
+      # files are KB; the cap bounds a runaway writer without risking
+      # legitimate growth), and the host's opencode.json is bound back
+      # over it as an :ro file (51 binds below, one per role, each
+      # :ro AND :z).
+      # DECIMAL-vs-OCTAL TRAP (live-found blocker, rework cycle 2/3,
+      # 2026-10-19, issues #1/#4): compose `tmpfs.mode` is a uint32 of
+      # raw permission bits, but unprefixed YAML `mode: 1777` parses
+      # as DECIMAL 1777 = octal 3361 (python: oct(1777) == 0o3361,
+      # 0o1777 == 1023 decimal). Post-merge recreate proved it live:
+      # `docker exec stat` showed 3361 d-wxrwS--t root:root on
+      # /roles/tech-docs-lead/opencode (want 1777 drwxrwxrwt), root
+      # write OK but `docker exec -u node touch` FAILED Permission
+      # denied (EACCES not EROFS — the runtime runs as node, so the
+      # registry write was still blocked). `mode: 0o1777` renders
+      # 1023 → stat 1777 drwxrwxrwt, UID 1000 write OK (orchestrator
+      # scratch probe /tmp/opencode/modetest/compose.yml; `mode:
+      # 01777` also renders 1023 but 0o1777 is the unambiguous YAML
+      # 1.2 octal). The quoted string "1777" is NOT an alternative —
+      # the compose schema rejects it (expected uint32 got string).
+      # Smoke §2b asserts the literal `mode: 0o1777` per role, so a
+      # bare `mode: 1777` red-test FAILs naming the role.
       # Role configs stay read-only end to end (parent :ro + file
       # :ro); only the ephemeral registry scratch is writable and it
       # holds zero config at boot. Rejected: (b) relocating the write
@@ -221,8 +239,13 @@ services:
       # host — worktree host paths differ, so they CANNOT run here):
       #   docker compose up -d --force-recreate
       #   docker compose config | grep -E 'target: /roles'   # order check
+      #   docker compose config | grep -c 'mode: 1023'       # want 51
+      #     (0o1777 source renders decimal 1023; bare 1777 rendered 1777)
       #   docker inspect <paperclip> --format '{{json .Mounts}}'  # parent-before-child
       #   stat -c '%a %n' <each opencode dir>                # want 1777
+      #     (before fix: 3361 d-wxrwS--t; after: 1777 drwxrwxrwt)
+      #   docker exec -u node <paperclip> touch /roles/<role>/opencode/.wtest
+      #     # want OK (before fix: Permission denied; runtime runs as node)
       #   df -h | grep /roles/<role>/opencode               # tmpfs + 16M
       #   bash scripts/enrich-fleet-verify.sh                # want 51/51
       #   PAPERCLIP_URL=... PAPERCLIP_TOKEN=... bash scripts/first-agent-run.sh --only tech-docs-lead
@@ -230,307 +253,307 @@ services:
         target: /roles/a11y-specialist/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/a11y-specialist/opencode/opencode.json:/roles/a11y-specialist/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/ai-red-teamer/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/ai-red-teamer/opencode/opencode.json:/roles/ai-red-teamer/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/analytics-metrics-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/analytics-metrics-eng/opencode/opencode.json:/roles/analytics-metrics-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/android-mobile-spec/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/android-mobile-spec/opencode/opencode.json:/roles/android-mobile-spec/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/api-contract-tester/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/api-contract-tester/opencode/opencode.json:/roles/api-contract-tester/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/appsec-engineer/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/appsec-engineer/opencode/opencode.json:/roles/appsec-engineer/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/binary-reverse-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/binary-reverse-eng/opencode/opencode.json:/roles/binary-reverse-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/brand-copy-spec/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/brand-copy-spec/opencode/opencode.json:/roles/brand-copy-spec/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/cache-streaming-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/cache-streaming-eng/opencode/opencode.json:/roles/cache-streaming-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/cloud-platform-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/cloud-platform-eng/opencode/opencode.json:/roles/cloud-platform-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/cloud-sec-auditor/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/cloud-sec-auditor/opencode/opencode.json:/roles/cloud-sec-auditor/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/compliance-auditor/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/compliance-auditor/opencode/opencode.json:/roles/compliance-auditor/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/cpp-lowlevel-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/cpp-lowlevel-eng/opencode/opencode.json:/roles/cpp-lowlevel-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/data-pipeline-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/data-pipeline-eng/opencode/opencode.json:/roles/data-pipeline-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/dba-specialist/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/dba-specialist/opencode/opencode.json:/roles/dba-specialist/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/dependency-patcher/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/dependency-patcher/opencode/opencode.json:/roles/dependency-patcher/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/design-system-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/design-system-eng/opencode/opencode.json:/roles/design-system-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/e2e-browser-qa/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/e2e-browser-qa/opencode/opencode.json:/roles/e2e-browser-qa/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/engine-systems-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/engine-systems-eng/opencode/opencode.json:/roles/engine-systems-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/exec-director/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/exec-director/opencode/opencode.json:/roles/exec-director/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/fe-perf-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/fe-perf-eng/opencode/opencode.json:/roles/fe-perf-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/firmware-sec-analyst/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/firmware-sec-analyst/opencode/opencode.json:/roles/firmware-sec-analyst/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/game-ai-dev/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/game-ai-dev/opencode/opencode.json:/roles/game-ai-dev/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/game-systems-dev/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/game-systems-dev/opencode/opencode.json:/roles/game-systems-dev/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/git-drift-coord/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/git-drift-coord/opencode/opencode.json:/roles/git-drift-coord/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/go-backend-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/go-backend-eng/opencode/opencode.json:/roles/go-backend-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/graphics-shader-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/graphics-shader-eng/opencode/opencode.json:/roles/graphics-shader-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/ios-mobile-spec/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/ios-mobile-spec/opencode/opencode.json:/roles/ios-mobile-spec/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/java-kotlin-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/java-kotlin-eng/opencode/opencode.json:/roles/java-kotlin-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/k8s-orchestrator/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/k8s-orchestrator/opencode/opencode.json:/roles/k8s-orchestrator/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/load-stress-tester/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/load-stress-tester/opencode/opencode.json:/roles/load-stress-tester/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/mlops-serving-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/mlops-serving-eng/opencode/opencode.json:/roles/mlops-serving-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/mobile-web-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/mobile-web-eng/opencode/opencode.json:/roles/mobile-web-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/observability-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/observability-eng/opencode/opencode.json:/roles/observability-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/physics-sim-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/physics-sim-eng/opencode/opencode.json:/roles/physics-sim-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/product-director/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/product-director/opencode/opencode.json:/roles/product-director/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/python-backend-spec/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/python-backend-spec/opencode/opencode.json:/roles/python-backend-spec/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/release-qa-officer/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/release-qa-officer/opencode/opencode.json:/roles/release-qa-officer/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/rust-systems-spec/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/rust-systems-spec/opencode/opencode.json:/roles/rust-systems-spec/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/sabotage-qa-tester/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/sabotage-qa-tester/opencode/opencode.json:/roles/sabotage-qa-tester/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/sre-incident-eng/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/sre-incident-eng/opencode/opencode.json:/roles/sre-incident-eng/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/static-analysis-lead/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/static-analysis-lead/opencode/opencode.json:/roles/static-analysis-lead/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/system-architect/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/system-architect/opencode/opencode.json:/roles/system-architect/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/tech-artist-pipeline/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/tech-artist-pipeline/opencode/opencode.json:/roles/tech-artist-pipeline/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/tech-docs-lead/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/tech-docs-lead/opencode/opencode.json:/roles/tech-docs-lead/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/threat-modeler/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/threat-modeler/opencode/opencode.json:/roles/threat-modeler/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/tpm-scrum-lead/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/tpm-scrum-lead/opencode/opencode.json:/roles/tpm-scrum-lead/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/ts-node-fullstack/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/ts-node-fullstack/opencode/opencode.json:/roles/ts-node-fullstack/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/ui-ux-designer/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/ui-ux-designer/opencode/opencode.json:/roles/ui-ux-designer/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/ux-research-analyst/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/ux-research-analyst/opencode/opencode.json:/roles/ux-research-analyst/opencode/opencode.json:ro,z
       - type: tmpfs
         target: /roles/vector-rag-spec/opencode
         tmpfs:
           size: 16M
-          mode: 1777
+          mode: 0o1777
       - ./roles/vector-rag-spec/opencode/opencode.json:/roles/vector-rag-spec/opencode/opencode.json:ro,z
       # Agent working checkouts live here on the host for inspection/backup.
       # Issue #1: :z shared SELinux relabel (rw bind stays rw; no-op on

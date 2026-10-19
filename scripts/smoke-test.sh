@@ -15,7 +15,7 @@
 #                    2b. EROFS nested-mount contract, TEXT ONLY (no docker,
 #                       no .env, no containers): parent ./roles:/roles:ro,z
 #                       once + per-role long-syntax tmpfs (explicit mode
-#                       1777/size 16M) + :ro,:z file bind; counts ==
+#                       0o1777/size 16M) + :ro,:z file bind; counts ==
 #                       role dirs with zero missing/extra (each named);
 #                       parent<tmpfs<file line order; no short-syntax
 #                       tmpfs: key; no :ro under /paperclip
@@ -336,7 +336,10 @@ fi
 #       `./roles/<r>/opencode/opencode.json:/roles/<r>/opencode/opencode.json:ro,z`
 #       carrying BOTH :ro and :z, with the source file on disk;
 #   (c) every role has a long-syntax `type: tmpfs` entry targeting
-#       `/roles/<r>/opencode` with explicit `mode: 1777` + `size: 16M`;
+#       `/roles/<r>/opencode` with explicit `mode: 0o1777` (YAML 1.2
+#       octal — bare `mode: 1777` parses as DECIMAL 1777 = octal 3361
+#       and blocked the node runtime write live 2026-10-19; 0o1777
+#       renders 1023 → stat 1777) + `size: 16M`;
 #   (d) counts match exactly (role dirs == file binds == tmpfs
 #       entries) with zero missing/extra, each named;
 #   (e) line order is parent bind < tmpfs entry < file bind per role
@@ -417,8 +420,11 @@ for r in roles:
         window = "\n".join(text[ti:ti + 6])
         if "type: tmpfs" not in "\n".join(text[max(0, ti - 1):ti + 1]):
             problems.append("%s: tmpfs target not under a type: tmpfs entry" % r)
-        if "mode: 1777" not in window:
-            problems.append("%s: tmpfs entry lacks explicit mode: 1777" % r)
+        if "mode: 0o1777" not in window:
+            if re.search(r"mode:\s*1777", window):
+                problems.append("%s: tmpfs entry uses bare decimal mode: 1777 (= octal 3361, node write blocked live 2026-10-19); want mode: 0o1777" % r)
+            else:
+                problems.append("%s: tmpfs entry lacks explicit mode: 0o1777" % r)
         if "size: 16M" not in window:
             problems.append("%s: tmpfs entry lacks explicit size: 16M" % r)
         if not (parent_idx < ti < fi):
@@ -430,7 +436,7 @@ for i, l in enumerate(text):
 
 if problems:
     sys.exit("; ".join(problems))
-print("%d roles: parent :ro,z + %d tmpfs (mode 1777/size 16M) + %d file binds (:ro,:z) in parent-before-child order" % (len(roles), len(tmpfs_idx), len(file_idx)))
+print("%d roles: parent :ro,z + %d tmpfs (mode 0o1777/size 16M) + %d file binds (:ro,:z) in parent-before-child order" % (len(roles), len(tmpfs_idx), len(file_idx)))
 ' 2>&1)"; then
   ok "EROFS nested mounts intact ($(printf '%s' "${EROFS_ERR}"))"
 else
